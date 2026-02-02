@@ -1,8 +1,0 @@
-/home/faranaiki/Git/kampwng/CMakeFiles/intrinsics_gen.dir
-/home/faranaiki/Git/kampwng/CMakeFiles/vt_gen.dir
-/home/faranaiki/Git/kampwng/CMakeFiles/omp_gen.dir
-/home/faranaiki/Git/kampwng/CMakeFiles/acc_gen.dir
-/home/faranaiki/Git/kampwng/CMakeFiles/target_parser_gen.dir
-/home/faranaiki/Git/kampwng/CMakeFiles/kampwng.dir
-/home/faranaiki/Git/kampwng/CMakeFiles/edit_cache.dir
-/home/faranaiki/Git/kampwng/CMakeFiles/rebuild_cache.dir

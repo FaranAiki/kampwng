@@ -1,1 +1,0 @@
-/usr/bin/cc -Wl,--dependency-file=CMakeFiles/kampwng-comp.dir/link.d "CMakeFiles/kampwng-comp.dir/main.c.o" -o kampwng-comp  /usr/lib/libLLVM.so.21.1 -lm -lpthread -ldl -lz -lncurses
