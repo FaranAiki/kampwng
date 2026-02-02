@@ -1,0 +1,6 @@
+int x = 5;
+
+loop [10 + x] {
+  print "Hello, World!";
+}
+

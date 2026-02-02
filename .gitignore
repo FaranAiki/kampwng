@@ -1,0 +1,27 @@
+# build 
+build/
+
+# outshit 
+out 
+output
+
+# exes
+*.o
+*.out
+*.elf 
+*.exe
+
+# files 
+kampwng-comp
+kampwng 
+
+# cmake  
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# makefile
+Makefile
+Testing/
+CPackConfig.cmake
+CPackSourceConfig.cmake
