@@ -4,7 +4,7 @@
  *
  */
 
-#include "kampwng.h"
+#include "alkyl.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <llvm-c/ExecutionEngine.h>
@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
     LLVMInitializeNativeAsmPrinter();
     LLVMInitializeNativeAsmParser();
 
-    LLVMModuleRef module = codegen_generate(root, "kampwng_mod");
+    LLVMModuleRef module = codegen_generate(root, "alkyl_mod");
 
     char *error = NULL;
     if (LLVMVerifyModule(module, LLVMAbortProcessAction, &error)) {

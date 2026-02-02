@@ -6,7 +6,7 @@
 typedef enum {
     TOKEN_EOF,
     TOKEN_LOOP,     // loop
-    TOKEN_PRINT,    // print
+    // TOKEN_PRINT removed (now an identifier)
     TOKEN_LBRACKET, // [
     TOKEN_RBRACKET, // ]
     TOKEN_LBRACE,   // {
@@ -14,18 +14,22 @@ typedef enum {
     TOKEN_LPAREN,   // (
     TOKEN_RPAREN,   // )
     TOKEN_SEMICOLON,// ;
+    TOKEN_COMMA,    // ,
+    
     TOKEN_NUMBER,   // 10, 42
     TOKEN_FLOAT,    // 3.14, 0.5
     TOKEN_STRING,   // "Hello"
-    TOKEN_IDENTIFIER, // myVar, x, count
+    TOKEN_IDENTIFIER, // myVar, x, count, print, input
     TOKEN_ASSIGN,   // =
     
     // Control Flow
     TOKEN_IF,       // if
     TOKEN_ELIF,     // elif
     TOKEN_ELSE,     // else
+    TOKEN_RETURN,   // return
 
     // Primitive Types
+    TOKEN_KW_VOID,   // void
     TOKEN_KW_INT,    // int
     TOKEN_KW_CHAR,   // char
     TOKEN_KW_BOOL,   // bool
@@ -35,6 +39,9 @@ typedef enum {
     // Boolean Literals
     TOKEN_TRUE,      // true
     TOKEN_FALSE,     // false
+
+    // Logical Operators
+    TOKEN_NOT,       // ! or not
 
     // Arithmetic & Bitwise Operators
     TOKEN_PLUS,     // +
