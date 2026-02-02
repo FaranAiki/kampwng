@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Global current token
 Token current_token = {TOKEN_UNKNOWN, NULL, 0, 0.0};
 
 void safe_free_current_token() {
@@ -24,7 +23,7 @@ void eat(Lexer *l, TokenType type) {
     }
 }
 
-// --- EXPRESSION PARSER (Builds AST) ---
+// --- EXPRESSION PARSER ---
 
 ASTNode* parse_expression(Lexer *l);
 
@@ -40,7 +39,7 @@ ASTNode* parse_factor(Lexer *l) {
     else if (current_token.type == TOKEN_FLOAT) {
         LiteralNode *node = calloc(1, sizeof(LiteralNode));
         node->base.type = NODE_LITERAL;
-        node->var_type = VAR_DOUBLE; // Default to double for literals
+        node->var_type = VAR_DOUBLE;
         node->val.double_val = current_token.double_val;
         eat(l, TOKEN_FLOAT);
         return (ASTNode*)node;
@@ -57,7 +56,7 @@ ASTNode* parse_factor(Lexer *l) {
         VarRefNode *node = calloc(1, sizeof(VarRefNode));
         node->base.type = NODE_VAR_REF;
         node->name = current_token.text;
-        current_token.text = NULL; // Take ownership
+        current_token.text = NULL; 
         eat(l, TOKEN_IDENTIFIER);
         return (ASTNode*)node;
     }
@@ -73,10 +72,9 @@ ASTNode* parse_factor(Lexer *l) {
     }
 }
 
-// Helper to build binary ops
+// Generic binary op helper
 ASTNode* parse_binary_op(Lexer *l, ASTNode* (*sub_parser)(Lexer*), TokenType* ops, int num_ops) {
     ASTNode *left = sub_parser(l);
-    
     while (1) {
         int found = 0;
         for (int i = 0; i < num_ops; i++) {
@@ -115,9 +113,21 @@ ASTNode* parse_shift(Lexer *l) {
     return parse_binary_op(l, parse_additive, ops, 2);
 }
 
+// Relational: <, >, <=, >=
+ASTNode* parse_relational(Lexer *l) {
+    TokenType ops[] = {TOKEN_LT, TOKEN_GT, TOKEN_LTE, TOKEN_GTE};
+    return parse_binary_op(l, parse_shift, ops, 4);
+}
+
+// Equality: ==, !=
+ASTNode* parse_equality(Lexer *l) {
+    TokenType ops[] = {TOKEN_EQ, TOKEN_NEQ};
+    return parse_binary_op(l, parse_relational, ops, 2);
+}
+
 ASTNode* parse_bitwise(Lexer *l) {
     TokenType ops[] = {TOKEN_XOR};
-    return parse_binary_op(l, parse_shift, ops, 1);
+    return parse_binary_op(l, parse_equality, ops, 1);
 }
 
 ASTNode* parse_expression(Lexer *l) {
@@ -134,7 +144,6 @@ ASTNode* parse_print(Lexer *l) {
     node->base.type = NODE_PRINT;
     
     if (current_token.type == TOKEN_STRING) {
-        if (!current_token.text) { fprintf(stderr, "Empty string\n"); exit(1); }
         node->message = current_token.text;
         current_token.text = NULL;
         eat(l, TOKEN_STRING);
@@ -149,22 +158,47 @@ ASTNode* parse_print(Lexer *l) {
 ASTNode* parse_loop(Lexer *l) {
     eat(l, TOKEN_LOOP);
     eat(l, TOKEN_LBRACKET);
-    
     ASTNode *expr = parse_expression(l);
-    
     eat(l, TOKEN_RBRACKET);
     eat(l, TOKEN_LBRACE);
-    
     LoopNode *node = calloc(1, sizeof(LoopNode));
     node->base.type = NODE_LOOP;
     node->iterations = expr;
     node->body = parse_statements(l);
-    
     eat(l, TOKEN_RBRACE);
     return (ASTNode*)node;
 }
 
-// Handles: int x = 5;
+ASTNode* parse_if(Lexer *l) {
+    eat(l, TOKEN_IF);
+    ASTNode *cond = parse_expression(l);
+    eat(l, TOKEN_LBRACE);
+    ASTNode *then_body = parse_statements(l);
+    eat(l, TOKEN_RBRACE);
+    
+    ASTNode *else_body = NULL;
+    
+    if (current_token.type == TOKEN_ELIF) {
+        // Recursively handle elif as a nested if inside the else block
+        // Consuming ELIF by converting it to IF logic virtually
+        // We act as if we just saw "else { if ... }"
+        current_token.type = TOKEN_IF; // Hack: Reuse parse_if for the elif part
+        else_body = parse_if(l);
+    } else if (current_token.type == TOKEN_ELSE) {
+        eat(l, TOKEN_ELSE);
+        eat(l, TOKEN_LBRACE);
+        else_body = parse_statements(l);
+        eat(l, TOKEN_RBRACE);
+    }
+
+    IfNode *node = calloc(1, sizeof(IfNode));
+    node->base.type = NODE_IF;
+    node->condition = cond;
+    node->then_body = then_body;
+    node->else_body = else_body;
+    return (ASTNode*)node;
+}
+
 ASTNode* parse_var_decl(Lexer *l, TokenType type_token) {
     VarType vtype = VAR_INT;
     switch(type_token) {
@@ -177,10 +211,7 @@ ASTNode* parse_var_decl(Lexer *l, TokenType type_token) {
     }
     eat(l, type_token);
 
-    if (current_token.type != TOKEN_IDENTIFIER) {
-        fprintf(stderr, "Expected variable name\n");
-        exit(1);
-    }
+    if (current_token.type != TOKEN_IDENTIFIER) { fprintf(stderr, "Expected variable name\n"); exit(1); }
     
     VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
     node->base.type = NODE_VAR_DECL;
@@ -193,7 +224,7 @@ ASTNode* parse_var_decl(Lexer *l, TokenType type_token) {
         eat(l, TOKEN_ASSIGN);
         node->initializer = parse_expression(l);
     } else {
-        fprintf(stderr, "Error: Variables must be initialized (e.g. int x = 0;)\n");
+        fprintf(stderr, "Error: Variables must be initialized\n");
         exit(1);
     }
 
@@ -208,14 +239,11 @@ ASTNode* parse_statements(Lexer *l) {
     while (current_token.type != TOKEN_EOF && current_token.type != TOKEN_RBRACE) {
         ASTNode *stmt = NULL;
         
-        if (current_token.type == TOKEN_PRINT) {
-            stmt = parse_print(l);
-        } else if (current_token.type == TOKEN_LOOP) {
-            stmt = parse_loop(l);
-        } else if (current_token.type == TOKEN_KW_INT || 
-                   current_token.type == TOKEN_KW_CHAR ||
-                   current_token.type == TOKEN_KW_BOOL ||
-                   current_token.type == TOKEN_KW_SINGLE ||
+        if (current_token.type == TOKEN_PRINT) stmt = parse_print(l);
+        else if (current_token.type == TOKEN_LOOP) stmt = parse_loop(l);
+        else if (current_token.type == TOKEN_IF) stmt = parse_if(l);
+        else if (current_token.type == TOKEN_KW_INT || current_token.type == TOKEN_KW_CHAR ||
+                   current_token.type == TOKEN_KW_BOOL || current_token.type == TOKEN_KW_SINGLE ||
                    current_token.type == TOKEN_KW_DOUBLE) {
             stmt = parse_var_decl(l, current_token.type);
         } else if (current_token.type == TOKEN_SEMICOLON) {
@@ -244,9 +272,6 @@ ASTNode* parse_program(Lexer *l) {
 
 void free_ast(ASTNode *node) {
     if (!node) return;
-    // Note: This needs a more comprehensive recursive free for the binary ops
-    // but for the sake of the snippet limit, we keep it simple.
-    // In production, ensure left/right/init are freed.
     if (node->next) free_ast(node->next);
     
     if (node->type == NODE_VAR_DECL) {
@@ -260,9 +285,12 @@ void free_ast(ASTNode *node) {
     } else if (node->type == NODE_LOOP) {
         free_ast(((LoopNode*)node)->iterations);
         free_ast(((LoopNode*)node)->body);
+    } else if (node->type == NODE_IF) {
+        free_ast(((IfNode*)node)->condition);
+        free_ast(((IfNode*)node)->then_body);
+        free_ast(((IfNode*)node)->else_body);
     } else if (node->type == NODE_PRINT) {
         free(((PrintNode*)node)->message);
     }
-    
     free(node);
 }

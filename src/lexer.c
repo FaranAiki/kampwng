@@ -25,8 +25,32 @@ Token lexer_next(Lexer *l) {
     return t;
   }
 
+  // Two-character operators
+  if (c == '=') { 
+    advance(l); 
+    if (peek(l) == '=') { advance(l); t.type = TOKEN_EQ; return t; }
+    t.type = TOKEN_ASSIGN; return t; 
+  }
+  if (c == '!') {
+    advance(l);
+    if (peek(l) == '=') { advance(l); t.type = TOKEN_NEQ; return t; }
+    // We don't have a standalone '!' operator yet, treat as unknown or add logical NOT later
+    t.type = TOKEN_UNKNOWN; return t;
+  }
+  if (c == '<') {
+    advance(l);
+    if (peek(l) == '<') { advance(l); t.type = TOKEN_LSHIFT; return t; }
+    if (peek(l) == '=') { advance(l); t.type = TOKEN_LTE; return t; }
+    t.type = TOKEN_LT; return t;
+  }
+  if (c == '>') {
+    advance(l);
+    if (peek(l) == '>') { advance(l); t.type = TOKEN_RSHIFT; return t; }
+    if (peek(l) == '=') { advance(l); t.type = TOKEN_GTE; return t; }
+    t.type = TOKEN_GT; return t;
+  }
+
   // Single Character Tokens
-  if (c == '=') { advance(l); t.type = TOKEN_ASSIGN; return t; }
   if (c == '[') { advance(l); t.type = TOKEN_LBRACKET; return t; }
   if (c == ']') { advance(l); t.type = TOKEN_RBRACKET; return t; }
   if (c == '{') { advance(l); t.type = TOKEN_LBRACE; return t; }
@@ -40,40 +64,15 @@ Token lexer_next(Lexer *l) {
   if (c == '/') { advance(l); t.type = TOKEN_SLASH; return t; }
   if (c == '^') { advance(l); t.type = TOKEN_XOR; return t; }
 
-  // Multi-character Operators (<<, >>)
-  if (c == '<') {
-    advance(l);
-    if (peek(l) == '<') {
-      advance(l);
-      t.type = TOKEN_LSHIFT;
-      return t;
-    }
-    // TODO less operator
-    t.type = TOKEN_UNKNOWN; 
-    return t;
-  }
-  if (c == '>') {
-    advance(l);
-    if (peek(l) == '>') {
-      advance(l);
-      t.type = TOKEN_RSHIFT;
-      return t;
-    }
-    // TODO handle greater operator
-    t.type = TOKEN_UNKNOWN; 
-    return t;
-  }
-
-  // Numbers (Integers and Floats)
+  // Numbers
   if (isdigit(c)) {
     long val = 0;
     while (isdigit(peek(l))) {
       val = val * 10 + (advance(l) - '0');
     }
 
-    // Check for decimal point for floating point numbers
     if (peek(l) == '.') {
-      advance(l); // consume dot
+      advance(l);
       double dval = (double)val;
       double fraction = 1.0;
       while (isdigit(peek(l))) {
@@ -92,7 +91,7 @@ Token lexer_next(Lexer *l) {
 
   // Strings
   if (c == '"') {
-    advance(l); // eat opening quote
+    advance(l); 
     int start = l->pos;
     while (peek(l) != '"' && peek(l) != '\0') {
       advance(l);
@@ -105,7 +104,7 @@ Token lexer_next(Lexer *l) {
       t.text[len] = '\0';
     }
     
-    if (peek(l) == '"') advance(l); // eat closing quote
+    if (peek(l) == '"') advance(l);
     
     t.type = TOKEN_STRING;
     return t;
@@ -114,16 +113,18 @@ Token lexer_next(Lexer *l) {
   // Keywords and Identifiers
   if (isalpha(c)) {
     int start = l->pos;
-    while (isalnum(peek(l)) || peek(l) == '_') advance(l); // Allow underscores in identifiers
+    while (isalnum(peek(l)) || peek(l) == '_') advance(l);
     int len = l->pos - start;
     char *word = malloc(len + 1);
     strncpy(word, l->src + start, len);
     word[len] = '\0';
 
     // Keywords
-    // TODO simplify this
     if (strcmp(word, "loop") == 0) t.type = TOKEN_LOOP;
     else if (strcmp(word, "print") == 0) t.type = TOKEN_PRINT;
+    else if (strcmp(word, "if") == 0) t.type = TOKEN_IF;
+    else if (strcmp(word, "elif") == 0) t.type = TOKEN_ELIF;
+    else if (strcmp(word, "else") == 0) t.type = TOKEN_ELSE;
     else if (strcmp(word, "int") == 0) t.type = TOKEN_KW_INT;
     else if (strcmp(word, "char") == 0) t.type = TOKEN_KW_CHAR;
     else if (strcmp(word, "bool") == 0) t.type = TOKEN_KW_BOOL;
@@ -132,13 +133,12 @@ Token lexer_next(Lexer *l) {
     else if (strcmp(word, "true") == 0) t.type = TOKEN_TRUE;
     else if (strcmp(word, "false") == 0) t.type = TOKEN_FALSE;
     else {
-      // It's a variable name / identifier
       t.type = TOKEN_IDENTIFIER;
-      t.text = word; // Transfer ownership to token
+      t.text = word;
       return t;
     }
     
-    free(word); // Free keyword string as it's not needed in token
+    free(word);
     return t;
   }
 

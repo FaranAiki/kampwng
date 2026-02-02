@@ -20,6 +20,11 @@ typedef enum {
     TOKEN_IDENTIFIER, // myVar, x, count
     TOKEN_ASSIGN,   // =
     
+    // Control Flow
+    TOKEN_IF,       // if
+    TOKEN_ELIF,     // elif
+    TOKEN_ELSE,     // else
+
     // Primitive Types
     TOKEN_KW_INT,    // int
     TOKEN_KW_CHAR,   // char
@@ -39,6 +44,14 @@ typedef enum {
     TOKEN_XOR,      // ^
     TOKEN_LSHIFT,   // <<
     TOKEN_RSHIFT,   // >>
+    
+    // Comparison Operators
+    TOKEN_EQ,       // ==
+    TOKEN_NEQ,      // !=
+    TOKEN_LT,       // <
+    TOKEN_GT,       // >
+    TOKEN_LTE,      // <=
+    TOKEN_GTE,      // >=
     
     TOKEN_UNKNOWN
 } TokenType;

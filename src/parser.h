@@ -3,40 +3,45 @@
 
 #include "lexer.h"
 
+// --- TYPES ---
+
 typedef enum {
   NODE_ROOT,
   NODE_LOOP,
+  NODE_IF,    // New: if/elif/else
   NODE_PRINT,
-  NODE_VAR_DECL,  // int x = 5;
-  NODE_VAR_REF,   // x
-  NODE_BINARY_OP, // x + 5
-  NODE_LITERAL  // 10, 3.14
+  NODE_VAR_DECL,
+  NODE_VAR_REF,
+  NODE_BINARY_OP,
+  NODE_LITERAL
 } NodeType;
 
 typedef enum {
   VAR_VOID,
-  VAR_INT,  // i32
-  VAR_CHAR,   // i8
-  VAR_BOOL,   // i1
-  VAR_FLOAT,  // float (single)
-  VAR_DOUBLE  // double
+  VAR_INT,
+  VAR_CHAR,
+  VAR_BOOL,
+  VAR_FLOAT,
+  VAR_DOUBLE
 } VarType;
 
-// Base struct for polymorphism
-// TODO implement this
 typedef struct ASTNode {
   NodeType type;
   struct ASTNode *next; 
 } ASTNode;
 
-// Expressions (Literals, Vars, Ops) do not have a 'next' usually, 
-// but we inherit from ASTNode for simplicity in function signatures.
+typedef struct {
+  ASTNode base;
+  ASTNode *iterations;
+  ASTNode *body;
+} LoopNode;
 
 typedef struct {
   ASTNode base;
-  ASTNode *iterations; // Now an expression, not just an int
-  ASTNode *body;
-} LoopNode;
+  ASTNode *condition;
+  ASTNode *then_body;
+  ASTNode *else_body; // Can be NULL, another IF node (for elif), or a statement list
+} IfNode;
 
 typedef struct {
   ASTNode base;
@@ -57,7 +62,7 @@ typedef struct {
 
 typedef struct {
   ASTNode base;
-  int op; // Token type (TOKEN_PLUS, etc)
+  int op; 
   ASTNode *left;
   ASTNode *right;
 } BinaryOpNode;
@@ -70,6 +75,8 @@ typedef struct {
     double double_val;
   } val;
 } LiteralNode;
+
+// --- PROTOTYPES ---
 
 ASTNode* parse_program(Lexer *l);
 void free_ast(ASTNode *node);

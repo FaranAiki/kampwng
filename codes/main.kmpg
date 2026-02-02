@@ -1,6 +1,7 @@
-int x = 5;
+int t = 1 == 0;
 
-loop [10 + x] {
-  print "Hello, World!";
+if t {
+  print "X itu 5!";
+} else {
+  print "X itu ngga lima";
 }
-
