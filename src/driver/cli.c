@@ -1,5 +1,5 @@
 #include "cli.h"
-#include "parser.h"
+#include "parser/parser.h"
 #include "codegen.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,10 +11,17 @@
 #include <llvm-c/Target.h>
 #include <llvm-c/Analysis.h>
 
-#if defined(HAVE_READLINE)
-  #include <readline/readline.h>
-  #include <readline/history.h>
-#endif
+// Include readline for arrow keys and history support
+#include <readline/readline.h>
+#include <readline/history.h>
+
+// ANSI Colors
+#define COL_RESET   "\033[0m"
+#define COL_GREEN   "\033[1;32m"
+#define COL_BLUE    "\033[1;34m"
+#define COL_RED     "\033[1;31m"
+#define COL_CYAN    "\033[1;36m"
+#define COL_YELLOW  "\033[1;33m"
 
 // Buffer for reading input
 #define INPUT_BUFFER_SIZE 4096
@@ -32,38 +39,33 @@ char* get_smart_input(const char* prompt) {
     int first_line = 1;
 
     while (1) {
-        #if defined(HAVE_READLINE)
-            line = readline(first_line ? prompt : "... ");
-            if (!line) { // EOF
-                free(input_buffer);
-                return NULL; 
-            }
-            if (first_line && strlen(line) > 0) add_history(line);
-        #else
-            printf("%s", first_line ? prompt : "... ");
-            char raw_buf[1024];
-            if (!fgets(raw_buf, sizeof(raw_buf), stdin)) {
-                free(input_buffer);
-                return NULL;
-            }
-            // Remove newline
-            raw_buf[strcspn(raw_buf, "\n")] = 0;
-            line = strdup(raw_buf);
-        #endif
+        // Use readline for input to enable arrow keys and history
+        line = readline(first_line ? prompt : "... ");
+        
+        if (!line) { // EOF
+            free(input_buffer);
+            return NULL; 
+        }
+        
+        // Add non-empty lines to history immediately
+        if (first_line && strlen(line) > 0) {
+            add_history(line);
+        }
         
         // Append line to buffer
         int line_len = strlen(line);
         if (total_len + line_len + 2 >= INPUT_BUFFER_SIZE) {
-            printf("Input too long!\n");
+            printf(COL_RED "Input too long!\n" COL_RESET);
             free(line);
             free(input_buffer);
             return NULL;
         }
         
         strcat(input_buffer, line);
-        strcat(input_buffer, " "); // Add space instead of newline for parser continuity? or \n?
-        // Parser ignores whitespace, so space is fine. Newline is better for line tracking.
-        // Actually, parser eats newlines as whitespace.
+        // Add space instead of newline for parser continuity.
+        // The lexer eats whitespace anyway.
+        strcat(input_buffer, " "); 
+        total_len += line_len + 1;
         
         // Count Braces
         int in_string = 0;
@@ -88,10 +90,10 @@ char* get_smart_input(const char* prompt) {
 }
 
 int run_repl(void) {
-    printf("==========================================\n");
+    printf(COL_CYAN "==========================================\n");
     printf("       Alkyl Command Line Interface       \n");
-    printf("==========================================\n");
-    printf("Type 'exit' or 'quit' to leave.\n\n");
+    printf("==========================================\n" COL_RESET);
+    printf("Type " COL_YELLOW "'exit'" COL_RESET " or " COL_YELLOW "'quit'" COL_RESET " to leave.\n\n");
 
     // 1. Initialize LLVM JIT
     LLVMInitializeNativeTarget();
@@ -105,7 +107,7 @@ int run_repl(void) {
     char *error = NULL;
 
     if (LLVMCreateExecutionEngineForModule(&engine, module, &error) != 0) {
-        fprintf(stderr, "Failed to create execution engine: %s\n", error);
+        fprintf(stderr, COL_RED "Failed to create execution engine: %s\n" COL_RESET, error);
         LLVMDisposeMessage(error);
         return 1;
     }
@@ -118,7 +120,10 @@ int run_repl(void) {
     jmp_buf recovery_env;
 
     while (1) {
-        char *buffer = get_smart_input("alkyl> ");
+        // Reset parser state globally to prevent stale tokens from causing segfaults
+        parser_reset();
+
+        char *buffer = get_smart_input(COL_GREEN "alkyl> " COL_RESET);
         if (!buffer) break; // EOF
 
         if (strcmp(buffer, "exit ") == 0 || strcmp(buffer, "quit ") == 0) { // Space added by loop
@@ -132,8 +137,11 @@ int run_repl(void) {
         while(len > 0 && buffer[len-1] == ' ') len--;
         buffer[len] = '\0';
         
+        // Ensure we don't overflow the buffer when adding semicolon
         if (len > 0 && buffer[len-1] != ';' && buffer[len-1] != '}') {
-            strcat(buffer, ";");
+            if (len + 1 < INPUT_BUFFER_SIZE) {
+                strcat(buffer, ";");
+            }
         }
 
         // --- PARSING WITH RECOVERY ---
@@ -150,7 +158,7 @@ int run_repl(void) {
             while (curr) {
                 if (curr->type == NODE_FUNC_DEF) {
                     codegen_func_def(&ctx, (FuncDefNode*)curr);
-                    printf("Function '%s' defined.\n", ((FuncDefNode*)curr)->name);
+                    printf(COL_BLUE "Function '%s' defined.\n" COL_RESET, ((FuncDefNode*)curr)->name);
                 } 
                 else if (curr->type == NODE_VAR_DECL) {
                     VarDeclNode *vd = (VarDeclNode*)curr;
@@ -177,7 +185,7 @@ int run_repl(void) {
                         LLVMDisposeGenericValue(exec_res);
                         LLVMDeleteFunction(init_func);
                     }
-                    printf("%s defined.\n", vd->name);
+                    printf(COL_BLUE "%s defined.\n" COL_RESET, vd->name);
                 }
                 else {
                     // Expression or Statement wrapper
@@ -200,7 +208,13 @@ int run_repl(void) {
                         else if (LLVMGetTypeKind(rtype) != LLVMIntegerTypeKind)
                             result = LLVMConstInt(LLVMInt32Type(), 0, 0); 
                     } else {
+                        // Isolate the current node so codegen_node doesn't traverse the rest of the list recursively
+                        ASTNode *next_temp = curr->next;
+                        curr->next = NULL; 
+                        
                         codegen_node(&ctx, curr);
+                        
+                        curr->next = next_temp; // Restore list for free_ast
                         result = LLVMConstInt(LLVMInt32Type(), 0, 0);
                     }
 
@@ -224,6 +238,7 @@ int run_repl(void) {
             // Error handling block (longjmp landed here)
             // Parser error message already printed by parser_fail
             parser_set_recovery(NULL); // Reset
+            // IMPORTANT: Parser reset is handled at start of loop
         }
         
         free(buffer);

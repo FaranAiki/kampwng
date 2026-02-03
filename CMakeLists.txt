@@ -61,6 +61,6 @@ if(READLINE_FOUND)
 endif()
 
 if(UNIX)
-    target_link_libraries(alkyl PRIVATE m pthread dl z ncurses)
-    target_link_libraries(alkyl-cli PRIVATE m pthread dl z ncurses)
+    target_link_libraries(alkyl PRIVATE m pthread dl z ncurses readline)
+    target_link_libraries(alkyl-cli PRIVATE m pthread dl z ncurses readline)
 endif()

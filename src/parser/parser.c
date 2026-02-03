@@ -27,6 +27,16 @@ void safe_free_current_token() {
   }
 }
 
+void parser_reset(void) {
+    safe_free_current_token();
+    current_token.type = TOKEN_UNKNOWN;
+    current_token.int_val = 0;
+    current_token.double_val = 0.0;
+    current_token.line = 0;
+    current_token.col = 0;
+    parser_env = NULL;
+}
+
 void eat(Lexer *l, TokenType type) {
   if (current_token.type == type) {
     safe_free_current_token();

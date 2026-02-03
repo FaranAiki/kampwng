@@ -156,6 +156,9 @@ ASTNode* parse_expression(Lexer *l);
 void free_ast(ASTNode *node);
 void safe_free_current_token(void);
 
+// Reset internal parser state (crucial for REPL)
+void parser_reset(void);
+
 // CLI Hooks
 void parser_set_recovery(jmp_buf *env);
 
