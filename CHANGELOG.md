@@ -20,3 +20,6 @@ Mutable and arrays
 * print is good but not advanced
 * string comparison
 * line character error
+
+## 0.0.4 
+* Shitty REPL

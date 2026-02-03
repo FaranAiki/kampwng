@@ -3,26 +3,37 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Symbol Table Entry
-typedef struct Symbol {
-  char *name;
-  LLVMValueRef value; // Pointer to memory (alloca)
-  LLVMTypeRef type;   // The LLVM Type
-  int is_array;
-  int is_mutable;
-  struct Symbol *next;
-} Symbol;
+// Structs are now in codegen.h
 
-// Context
-typedef struct {
-  LLVMModuleRef module;
-  LLVMBuilderRef builder;
-  LLVMValueRef printf_func;
-  LLVMTypeRef printf_type;
-  LLVMValueRef input_func; 
-  LLVMValueRef strcmp_func; // Add strcmp
-  Symbol *symbols; 
-} CodegenCtx;
+void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef builder) {
+    ctx->module = module;
+    ctx->builder = builder;
+    ctx->symbols = NULL;
+
+    // Setup Built-ins
+    // printf
+    LLVMTypeRef printf_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };
+    ctx->printf_type = LLVMFunctionType(LLVMInt32Type(), printf_args, 1, true);
+    ctx->printf_func = LLVMAddFunction(module, "printf", ctx->printf_type);
+    
+    // malloc (for input)
+    LLVMTypeRef malloc_args[] = { LLVMInt64Type() };
+    LLVMTypeRef malloc_type = LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), malloc_args, 1, false);
+    LLVMValueRef malloc_func = LLVMAddFunction(module, "malloc", malloc_type);
+    
+    // getchar (for input)
+    LLVMTypeRef getchar_type = LLVMFunctionType(LLVMInt32Type(), NULL, 0, false);
+    LLVMValueRef getchar_func = LLVMAddFunction(module, "getchar", getchar_type);
+    
+    // strcmp
+    LLVMTypeRef strcmp_args[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMPointerType(LLVMInt8Type(), 0) };
+    LLVMTypeRef strcmp_type = LLVMFunctionType(LLVMInt32Type(), strcmp_args, 2, false);
+    ctx->strcmp_func = LLVMAddFunction(module, "strcmp", strcmp_type);
+
+    // Helper to generate the input function body
+    LLVMValueRef generate_input_func(LLVMModuleRef module, LLVMBuilderRef builder, LLVMValueRef malloc_func, LLVMValueRef getchar_func);
+    ctx->input_func = generate_input_func(module, builder, malloc_func, getchar_func);
+}
 
 void add_symbol(CodegenCtx *ctx, const char *name, LLVMValueRef val, LLVMTypeRef type, int is_array, int is_mut) {
   Symbol *s = malloc(sizeof(Symbol));
@@ -88,7 +99,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
   else if (node->type == NODE_VAR_REF) {
     VarRefNode *r = (VarRefNode*)node;
     Symbol *sym = find_symbol(ctx, r->name);
-    if (!sym) { fprintf(stderr, "Error: Undefined variable %s\n", r->name); exit(1); }
+    if (!sym) { fprintf(stderr, "Error: Undefined variable %s\n", r->name); return LLVMConstInt(LLVMInt32Type(), 0, 0); }
     
     if (sym->is_array) {
         LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), LLVMConstInt(LLVMInt64Type(), 0, 0) };
@@ -146,7 +157,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
     }
 
     LLVMValueRef func = LLVMGetNamedFunction(ctx->module, c->name);
-    if (!func) { fprintf(stderr, "Error: Undefined function %s\n", c->name); exit(1); }
+    if (!func) { fprintf(stderr, "Error: Undefined function %s\n", c->name); return LLVMConstInt(LLVMInt32Type(), 0, 0); }
     
     int arg_count = 0;
     ASTNode *curr = c->args;
@@ -192,19 +203,10 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
     LLVMTypeRef l_type = LLVMTypeOf(l);
     LLVMTypeRef r_type = LLVMTypeOf(r);
 
-    // String Comparison (i8* and i8*)
-    // Robust detection: pointer to 8-bit int (often opaque in modern LLVM, but we rely on simple check for pointer type kind)
-    // If we are strictly using opaque pointers, this logic might need refinement, but given typical C bindings:
     int is_ptr_l = (LLVMGetTypeKind(l_type) == LLVMPointerTypeKind);
     int is_ptr_r = (LLVMGetTypeKind(r_type) == LLVMPointerTypeKind);
     
-    // Check if element type is i8 (if supported by LLVM version used)
-    // Or just assume if two pointers are compared with EQ/NEQ and they aren't explicitly null, treat as string?
-    // Safer: only if they are pointers.
-    
     if (is_ptr_l && is_ptr_r) {
-        // Assume strings for equality checks if both are pointers. 
-        // In this simple language, pointers are only used for strings/arrays.
         if (op->op == TOKEN_EQ || op->op == TOKEN_NEQ) {
             LLVMValueRef args[] = { l, r };
             LLVMValueRef diff = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->strcmp_func), ctx->strcmp_func, args, 2, "strcmp_res");
@@ -372,10 +374,15 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
   }
   
   LLVMTypeRef ret_type = get_llvm_type(node->ret_type);
-  LLVMTypeRef func_type = LLVMFunctionType(ret_type, param_types, param_count, 0);
+  LLVMTypeRef func_type = LLVMFunctionType(ret_type, param_types, param_count, node->is_varargs); // HANDLE VARARGS
   LLVMValueRef func = LLVMAddFunction(ctx->module, node->name, func_type);
   free(param_types);
   
+  // IF EXTERN (FFI), DO NOT GENERATE BODY
+  if (!node->body) {
+      return; 
+  }
+
   LLVMBasicBlockRef entry = LLVMAppendBasicBlock(func, "entry");
   LLVMBasicBlockRef prev_block = LLVMGetInsertBlock(ctx->builder); 
   LLVMPositionBuilderAtEnd(ctx->builder, entry);
@@ -549,31 +556,8 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name) {
   LLVMModuleRef module = LLVMModuleCreateWithName(module_name);
   LLVMBuilderRef builder = LLVMCreateBuilder();
 
-  // Setup Built-ins
-  // printf
-  LLVMTypeRef printf_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };
-  LLVMTypeRef printf_type = LLVMFunctionType(LLVMInt32Type(), printf_args, 1, true);
-  LLVMValueRef printf_func = LLVMAddFunction(module, "printf", printf_type);
-  
-  // External Declarations for input()
-  // malloc
-  LLVMTypeRef malloc_args[] = { LLVMInt64Type() };
-  LLVMTypeRef malloc_type = LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), malloc_args, 1, false);
-  LLVMValueRef malloc_func = LLVMAddFunction(module, "malloc", malloc_type);
-  
-  // getchar
-  LLVMTypeRef getchar_type = LLVMFunctionType(LLVMInt32Type(), NULL, 0, false);
-  LLVMValueRef getchar_func = LLVMAddFunction(module, "getchar", getchar_type);
-  
-  // input (Custom Generated)
-  LLVMValueRef input_func = generate_input_func(module, builder, malloc_func, getchar_func);
-  
-  // strcmp
-  LLVMTypeRef strcmp_args[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMPointerType(LLVMInt8Type(), 0) };
-  LLVMTypeRef strcmp_type = LLVMFunctionType(LLVMInt32Type(), strcmp_args, 2, false);
-  LLVMValueRef strcmp_func = LLVMAddFunction(module, "strcmp", strcmp_type);
-
-  CodegenCtx ctx = { module, builder, printf_func, printf_type, input_func, strcmp_func, NULL };
+  CodegenCtx ctx;
+  codegen_init_ctx(&ctx, module, builder);
 
   // 1. Generate Explicit Functions First
   ASTNode *curr = root;

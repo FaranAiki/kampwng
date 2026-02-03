@@ -3,8 +3,9 @@
 // ibarat kek ini langsung pake nextJS daripada pake 
 // murni rawr javascrihit
 
+extern double sin(double x);
+extern double cos(double x);
+
 int main() {
-  char mut c[] = "jatuh";
-  
-  print "%d", c == "jatuah";
+  print "%lf\n", sin(0.5);
 }

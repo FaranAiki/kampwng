@@ -2,6 +2,7 @@
 #define PARSER_H
 
 #include "lexer.h"
+#include <setjmp.h>
 
 // --- TYPES ---
 
@@ -49,7 +50,8 @@ typedef struct {
   char *name;
   VarType ret_type;
   Parameter *params;
-  ASTNode *body;
+  ASTNode *body; // NULL if extern (FFI)
+  int is_varargs; // 1 if ... matches at end of params
 } FuncDefNode;
 
 typedef struct {
@@ -138,5 +140,9 @@ typedef struct {
 ASTNode* parse_program(Lexer *l);
 ASTNode* parse_expression(Lexer *l);
 void free_ast(ASTNode *node);
+void safe_free_current_token(void);
+
+// CLI Hooks
+void parser_set_recovery(jmp_buf *env);
 
 #endif

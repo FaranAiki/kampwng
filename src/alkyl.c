@@ -7,6 +7,7 @@
 #include "alkyl.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <llvm-c/ExecutionEngine.h>
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
@@ -27,12 +28,35 @@ char* read_file(const char* filename) {
 
 int main(int argc, char *argv[]) {
   if (argc < 2) {
-    printf("Usage: %s <file.kmpg>\n", argv[0]);
+    printf("Usage: %s <file.kmpg> [-l<lib>]\n", argv[0]);
     return 1;
   }
 
-  char *code = read_file(argv[1]);
-  if (!code) { fprintf(stderr, "Could not read file\n"); return 1; }
+  char *filename = NULL;
+  char link_flags[1024] = {0};
+
+  for (int i = 1; i < argc; i++) {
+      if (strncmp(argv[i], "-l", 2) == 0) {
+          // It's a link flag
+          if (strlen(link_flags) + strlen(argv[i]) + 2 < sizeof(link_flags)) {
+              strcat(link_flags, " ");
+              strcat(link_flags, argv[i]);
+          } else {
+              fprintf(stderr, "Too many link flags\n");
+              return 1;
+          }
+      } else {
+          filename = argv[i];
+      }
+  }
+
+  if (!filename) {
+      fprintf(stderr, "No input file specified\n");
+      return 1;
+  }
+
+  char *code = read_file(filename);
+  if (!code) { fprintf(stderr, "Could not read file: %s\n", filename); return 1; }
 
   Lexer l;
   lexer_init(&l, code);
@@ -70,9 +94,17 @@ int main(int argc, char *argv[]) {
 
   printf("Compiled to out.o\n");
   
-  // TODO add more options
-  system("gcc out.o -o out -no-pie");
-  printf("Linked to ./out\n");
+  // Construct linker command
+  char cmd[2048];
+  snprintf(cmd, sizeof(cmd), "gcc out.o -o out -no-pie%s", link_flags);
+  
+  printf("Linking: %s\n", cmd);
+  int res = system(cmd);
+  if (res == 0) {
+    printf("Linked to ./out\n");
+  } else {
+    printf("Linking failed.\n");
+  }
 
   // Cleanup (Simplified for tutorial)
   LLVMDisposeModule(module);

@@ -60,6 +60,17 @@ Token lexer_next(Lexer *l) {
     return t;
   }
 
+  // Ellipsis ...
+  if (c == '.') {
+      if (l->src[l->pos+1] == '.' && l->src[l->pos+2] == '.') {
+          advance(l); advance(l); advance(l);
+          t.type = TOKEN_ELLIPSIS;
+          return t;
+      }
+      // Assuming no single dot tokens for now (like struct access)
+      // If added later, handle here.
+  }
+
   if (c == ',') { advance(l); t.type = TOKEN_COMMA; return t; }
 
   if (c == '=') { 
@@ -212,10 +223,8 @@ Token lexer_next(Lexer *l) {
 
   // Keywords and Identifiers
   if (isalpha(c)) {
-    int start = l->pos; // We don't use this for string cutting anymore but tracking
-    // But we are manually advancing, so tracking works
+    int start = l->pos; 
     
-    // We need to accumulate characters
     size_t capacity = 16;
     size_t length = 0;
     char *word = malloc(capacity);
@@ -247,6 +256,11 @@ Token lexer_next(Lexer *l) {
     else if (strcmp(word, "mutable") == 0) t.type = TOKEN_KW_MUT;
     else if (strcmp(word, "imut") == 0) t.type = TOKEN_KW_IMUT;
     else if (strcmp(word, "immutable") == 0) t.type = TOKEN_KW_IMUT;
+    
+    // Modules & FFI
+    else if (strcmp(word, "import") == 0) t.type = TOKEN_IMPORT;
+    else if (strcmp(word, "extern") == 0) t.type = TOKEN_EXTERN;
+
     else if (strcmp(word, "true") == 0) t.type = TOKEN_TRUE;
     else if (strcmp(word, "false") == 0) t.type = TOKEN_FALSE;
     else if (strcmp(word, "not") == 0) t.type = TOKEN_NOT;

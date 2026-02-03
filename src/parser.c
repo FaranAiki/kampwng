@@ -4,6 +4,21 @@
 #include <string.h>
 
 Token current_token = {TOKEN_UNKNOWN, NULL, 0, 0.0};
+jmp_buf *parser_env = NULL;
+
+void parser_set_recovery(jmp_buf *env) {
+    parser_env = env;
+}
+
+void parser_fail(const char *msg) {
+    fprintf(stderr, "%s\n", msg);
+    safe_free_current_token();
+    if (parser_env) {
+        longjmp(*parser_env, 1);
+    } else {
+        exit(1);
+    }
+}
 
 void safe_free_current_token() {
   if (current_token.text) {
@@ -17,11 +32,10 @@ void eat(Lexer *l, TokenType type) {
     safe_free_current_token();
     current_token = lexer_next(l);
   } else {
-    // UPDATED: Now prints line and column information
-    fprintf(stderr, "Parser Error: Unexpected token %d, expected %d at line %d:%d\n", 
+    char msg[100];
+    sprintf(msg, "Parser Error: Unexpected token %d, expected %d at line %d:%d", 
             current_token.type, type, current_token.line, current_token.col);
-    safe_free_current_token();
-    exit(1);
+    parser_fail(msg);
   }
 }
 
@@ -33,14 +47,28 @@ ASTNode* parse_var_decl_internal(Lexer *l);
 ASTNode* parse_return(Lexer *l);
 ASTNode* parse_statements(Lexer *l);
 ASTNode* parse_factor(Lexer *l);
+ASTNode* parse_single_statement_or_block(Lexer *l);
 
 VarType get_type_from_token(TokenType t);
+
+// --- HELPER FOR IMPORT ---
+char* read_import_file(const char* filename) {
+  FILE* f = fopen(filename, "rb");
+  if (!f) return NULL;
+  fseek(f, 0, SEEK_END);
+  long len = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  char* buf = malloc(len + 1);
+  fread(buf, 1, len, f);
+  buf[len] = '\0';
+  fclose(f);
+  return buf;
+}
 
 // --- EXPRESSION PARSER ---
 
 ASTNode* parse_expression(Lexer *l);
 
-// Helper for function calls inside expressions: identifier(arg1, arg2)
 ASTNode* parse_call(Lexer *l, char *name) {
   eat(l, TOKEN_LPAREN);
   
@@ -101,7 +129,6 @@ ASTNode* parse_factor(Lexer *l) {
     return (ASTNode*)node;
   }
   else if (current_token.type == TOKEN_CHAR_LIT) {
-    // Treat char literal as an 8-bit integer
     LiteralNode *node = calloc(1, sizeof(LiteralNode));
     node->base.type = NODE_LITERAL;
     node->var_type = VAR_CHAR;
@@ -139,12 +166,10 @@ ASTNode* parse_factor(Lexer *l) {
     current_token.text = NULL;
     eat(l, TOKEN_IDENTIFIER);
     
-    // Check if standard function call: name(...)
     if (current_token.type == TOKEN_LPAREN) {
       return parse_call(l, name);
     }
     
-    // Check for Array Access: name[...]
     if (current_token.type == TOKEN_LBRACKET) {
       eat(l, TOKEN_LBRACKET);
       ASTNode *index = parse_expression(l);
@@ -156,36 +181,28 @@ ASTNode* parse_factor(Lexer *l) {
       node->index = index;
       return (ASTNode*)node;
     }
+    
+    // Command Style Call Detection (Expression Level)
+    // Avoids operators to prevent ambiguous parsing like `x + y` -> `x(+y)`
+    TokenType t = current_token.type;
+    int is_arg_start = (t == TOKEN_NUMBER || t == TOKEN_FLOAT || t == TOKEN_STRING || 
+          t == TOKEN_CHAR_LIT || t == TOKEN_TRUE || t == TOKEN_FALSE || 
+          t == TOKEN_IDENTIFIER || t == TOKEN_LPAREN || t == TOKEN_LBRACKET || 
+          t == TOKEN_NOT);
 
-    // Bracketless Call Check
-    ASTNode *args_head = NULL;
-    ASTNode **curr_arg = &args_head;
-    int is_call = 0;
-
-    while (1) {
-      TokenType t = current_token.type;
-      int is_arg_start = 0;
-      
-      if (t == TOKEN_NUMBER || t == TOKEN_FLOAT || t == TOKEN_STRING || 
-          t == TOKEN_TRUE || t == TOKEN_FALSE || t == TOKEN_IDENTIFIER || 
-          t == TOKEN_LPAREN || t == TOKEN_LBRACKET || t == TOKEN_CHAR_LIT) {
-          is_arg_start = 1;
-      }
-      
-      if (t == TOKEN_SEMICOLON || t == TOKEN_COMMA || t == TOKEN_RPAREN || t == TOKEN_RBRACKET) {
-        is_arg_start = 0;
-      }
-
-      if (is_arg_start) {
-        is_call = 1;
-        *curr_arg = parse_factor(l); 
+    if (is_arg_start) {
+        ASTNode *args_head = NULL;
+        ASTNode **curr_arg = &args_head;
+        
+        *curr_arg = parse_expression(l);
         curr_arg = &(*curr_arg)->next;
-      } else {
-        break;
-      }
-    }
 
-    if (is_call) {
+        while (current_token.type == TOKEN_COMMA) {
+            eat(l, TOKEN_COMMA);
+            *curr_arg = parse_expression(l);
+            curr_arg = &(*curr_arg)->next;
+        }
+
         CallNode *node = calloc(1, sizeof(CallNode));
         node->base.type = NODE_CALL;
         node->name = name;
@@ -205,9 +222,11 @@ ASTNode* parse_factor(Lexer *l) {
     return expr;
   } 
   else {
-    fprintf(stderr, "Parser Error: Unexpected token in expression: %d at line %d:%d\n", 
+    char msg[100];
+    sprintf(msg, "Parser Error: Unexpected token in expression: %d at line %d:%d", 
             current_token.type, current_token.line, current_token.col);
-    exit(1);
+    parser_fail(msg);
+    return NULL; // Unreachable
   }
 }
 
@@ -305,14 +324,12 @@ ASTNode* parse_assignment_or_call(Lexer *l) {
   
   ASTNode *index_expr = NULL;
 
-  // Check for Array Index Assignment: name[i] = ...
   if (current_token.type == TOKEN_LBRACKET) {
     eat(l, TOKEN_LBRACKET);
     index_expr = parse_expression(l);
     eat(l, TOKEN_RBRACKET);
   }
 
-  // Case 2: Assignment: name = expr; or name[i] = expr;
   if (current_token.type == TOKEN_ASSIGN) {
     eat(l, TOKEN_ASSIGN);
     ASTNode *expr = parse_expression(l);
@@ -327,44 +344,58 @@ ASTNode* parse_assignment_or_call(Lexer *l) {
   }
   
   if (index_expr) {
-      fprintf(stderr, "Error: Expected assignment after array index at line %d:%d\n", 
-              current_token.line, current_token.col);
-      exit(1);
+      parser_fail("Expected assignment after array index");
   }
 
-  // Case 1: Standard Function Call: name(...)
   if (current_token.type == TOKEN_LPAREN) {
     ASTNode *call = parse_call(l, name);
     eat(l, TOKEN_SEMICOLON);
     return call;
   }
   
-  // Case 3: Command-style Function Call statement: name arg1, arg2;
-  CallNode *node = calloc(1, sizeof(CallNode));
-  node->base.type = NODE_CALL;
-  node->name = name;
-  node->args = NULL;
+  // Command Style Call (Statement Level)
+  // Check for safe argument starters to avoid confusion
+  TokenType t = current_token.type;
+  int is_arg_start = (t == TOKEN_NUMBER || t == TOKEN_FLOAT || t == TOKEN_STRING || 
+        t == TOKEN_CHAR_LIT || t == TOKEN_TRUE || t == TOKEN_FALSE || 
+        t == TOKEN_IDENTIFIER || t == TOKEN_LPAREN || t == TOKEN_LBRACKET || 
+        t == TOKEN_NOT);
 
-  if (current_token.type != TOKEN_SEMICOLON) {
-    ASTNode *args_head = NULL;
-    ASTNode **curr_arg = &args_head;
-
-    *curr_arg = parse_expression(l);
-    curr_arg = &(*curr_arg)->next;
-
-    while (current_token.type == TOKEN_COMMA) {
-      eat(l, TOKEN_COMMA);
+  if (is_arg_start) {
+      ASTNode *args_head = NULL;
+      ASTNode **curr_arg = &args_head;
+      
       *curr_arg = parse_expression(l);
       curr_arg = &(*curr_arg)->next;
-    }
-    node->args = args_head;
+
+      while (current_token.type == TOKEN_COMMA) {
+          eat(l, TOKEN_COMMA);
+          *curr_arg = parse_expression(l);
+          curr_arg = &(*curr_arg)->next;
+      }
+      eat(l, TOKEN_SEMICOLON);
+
+      CallNode *node = calloc(1, sizeof(CallNode));
+      node->base.type = NODE_CALL;
+      node->name = name;
+      node->args = args_head;
+      return (ASTNode*)node;
   }
 
-  eat(l, TOKEN_SEMICOLON);
-  return (ASTNode*)node;
+  // Implicit Variable Reference Statement "x;"
+  if (current_token.type == TOKEN_SEMICOLON) {
+      eat(l, TOKEN_SEMICOLON);
+      VarRefNode *node = calloc(1, sizeof(VarRefNode));
+      node->base.type = NODE_VAR_REF;
+      node->name = name;
+      return (ASTNode*)node;
+  }
+  
+  // Fallback (maybe parser error or just a ref?)
+  parser_fail("Expected assignment or function call");
+  return NULL;
 }
 
-// Parses: [mut|imut] type [mut|imut] name [ '[' size ']' ] = expr;
 ASTNode* parse_var_decl_internal(Lexer *l) {
   int is_mut = 0; 
   
@@ -374,8 +405,7 @@ ASTNode* parse_var_decl_internal(Lexer *l) {
   TokenType tt = current_token.type;
   VarType vtype = get_type_from_token(tt);
   if ((int)vtype == -1) { 
-      fprintf(stderr, "Expected type at line %d:%d\n", current_token.line, current_token.col); 
-      exit(1); 
+      parser_fail("Expected type"); 
   }
   eat(l, tt);
 
@@ -383,8 +413,7 @@ ASTNode* parse_var_decl_internal(Lexer *l) {
   else if (current_token.type == TOKEN_KW_IMUT) { is_mut = 0; eat(l, TOKEN_KW_IMUT); }
 
   if (current_token.type != TOKEN_IDENTIFIER) { 
-      fprintf(stderr, "Expected variable name at line %d:%d\n", current_token.line, current_token.col); 
-      exit(1); 
+      parser_fail("Expected variable name"); 
   }
   char *name = current_token.text;
   current_token.text = NULL;
@@ -408,9 +437,7 @@ ASTNode* parse_var_decl_internal(Lexer *l) {
     init = parse_expression(l);
   } else {
     if (vtype == VAR_AUTO || is_mut == 0) {
-        fprintf(stderr, "Error: Immutable or 'let' variables must be initialized at line %d:%d\n", 
-                current_token.line, current_token.col);
-        exit(1);
+        parser_fail("Error: Immutable or 'let' variables must be initialized");
     }
   }
 
@@ -449,9 +476,10 @@ ASTNode* parse_single_statement_or_block(Lexer *l) {
   if (current_token.type == TOKEN_IDENTIFIER) return parse_assignment_or_call(l);
   if (current_token.type == TOKEN_SEMICOLON) { eat(l, TOKEN_SEMICOLON); return NULL; }
   
-  fprintf(stderr, "Parser Error: Expected statement, found %d at line %d:%d\n", 
-          current_token.type, current_token.line, current_token.col);
-  exit(1);
+  // FALLBACK: Parse as expression (e.g. "1 + 1;")
+  ASTNode *expr = parse_expression(l);
+  if (current_token.type == TOKEN_SEMICOLON) eat(l, TOKEN_SEMICOLON);
+  return expr;
 }
 
 ASTNode* parse_loop(Lexer *l) {
@@ -498,22 +526,104 @@ VarType get_type_from_token(TokenType t) {
 }
 
 ASTNode* parse_top_level(Lexer *l) {
+    // 1. IMPORT
+    if (current_token.type == TOKEN_IMPORT) {
+        eat(l, TOKEN_IMPORT);
+        if (current_token.type != TOKEN_STRING) {
+            parser_fail("Expected string after import");
+        }
+        char* fname = current_token.text;
+        current_token.text = NULL;
+        eat(l, TOKEN_STRING);
+        eat(l, TOKEN_SEMICOLON);
+
+        // Recursive Parse
+        char* src = read_import_file(fname);
+        if (!src) {
+            fprintf(stderr, "Could not open import file: %s\n", fname);
+            free(fname);
+            parser_fail("Import error");
+        }
+        free(fname);
+
+        Lexer import_l;
+        lexer_init(&import_l, src);
+        ASTNode* imported_root = parse_program(&import_l);
+        return imported_root; 
+    }
+    
+    // 2. EXTERN (FFI)
+    if (current_token.type == TOKEN_EXTERN) {
+        eat(l, TOKEN_EXTERN);
+        
+        VarType ret_type = get_type_from_token(current_token.type);
+        if ((int)ret_type == -1) { parser_fail("Expected return type for extern"); }
+        eat(l, current_token.type);
+
+        if (current_token.type != TOKEN_IDENTIFIER) { parser_fail("Expected extern function name"); }
+        char *name = current_token.text;
+        current_token.text = NULL;
+        eat(l, TOKEN_IDENTIFIER);
+
+        eat(l, TOKEN_LPAREN);
+        Parameter *params_head = NULL;
+        Parameter **curr_param = &params_head;
+        int is_varargs = 0;
+
+        if (current_token.type != TOKEN_RPAREN) {
+            while (1) {
+                if (current_token.type == TOKEN_ELLIPSIS) {
+                    eat(l, TOKEN_ELLIPSIS);
+                    is_varargs = 1;
+                    break; 
+                }
+
+                VarType ptype = get_type_from_token(current_token.type);
+                if ((int)ptype == -1) { parser_fail("Expected param type"); }
+                eat(l, current_token.type);
+
+                char *pname = NULL;
+                if (current_token.type == TOKEN_IDENTIFIER) {
+                     pname = current_token.text;
+                     current_token.text = NULL;
+                     eat(l, TOKEN_IDENTIFIER);
+                } else {
+                     parser_fail("Expected param name in extern declaration");
+                }
+                
+                Parameter *p = calloc(1, sizeof(Parameter));
+                p->type = ptype; p->name = pname;
+                *curr_param = p; curr_param = &p->next;
+                
+                if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA); else break;
+            }
+        }
+        eat(l, TOKEN_RPAREN);
+        eat(l, TOKEN_SEMICOLON);
+
+        FuncDefNode *node = calloc(1, sizeof(FuncDefNode));
+        node->base.type = NODE_FUNC_DEF;
+        node->name = name; node->ret_type = ret_type;
+        node->params = params_head; node->body = NULL; 
+        node->is_varargs = is_varargs;
+        return (ASTNode*)node;
+    }
+
     if (current_token.type == TOKEN_KW_MUT || current_token.type == TOKEN_KW_IMUT) {
         return parse_var_decl_internal(l);
     }
 
     VarType vtype = get_type_from_token(current_token.type);
-    if ((int)vtype == -1) { 
-        fprintf(stderr, "Expected type or qualifier at top level at line %d:%d\n", 
-                current_token.line, current_token.col); 
-        exit(1); 
+    
+    // If it's NOT a type, it might be a statement/expression (REPL/Script mode)
+    if ((int)vtype == -1) {
+        return parse_single_statement_or_block(l);
     }
 
     eat(l, current_token.type); 
     
     if (current_token.type != TOKEN_IDENTIFIER) { 
-        fprintf(stderr, "Expected identifier at line %d:%d\n", current_token.line, current_token.col); 
-        exit(1); 
+        parser_fail("Expected identifier");
     }
     char *name = current_token.text;
     current_token.text = NULL;
@@ -550,10 +660,8 @@ ASTNode* parse_top_level(Lexer *l) {
         node->params = params_head; node->body = body;
         return (ASTNode*)node;
     } else {
-        // Fallback for VarDecl logic re-entry 
-        
+        // Var Decl Fallback
         char *name_val = name;
-        
         int is_array = 0;
         ASTNode *array_size = NULL;
         if (current_token.type == TOKEN_LBRACKET) {
@@ -562,23 +670,20 @@ ASTNode* parse_top_level(Lexer *l) {
             if (current_token.type != TOKEN_RBRACKET) array_size = parse_expression(l);
             eat(l, TOKEN_RBRACKET);
         }
-        
         ASTNode *init = NULL;
         if (current_token.type == TOKEN_ASSIGN) {
             eat(l, TOKEN_ASSIGN);
             init = parse_expression(l);
         } else {
              if (vtype == VAR_AUTO) { 
-                 fprintf(stderr, "Init required at line %d:%d\n", current_token.line, current_token.col); 
-                 exit(1); 
+                 parser_fail("Init required for 'let'");
              }
         }
         eat(l, TOKEN_SEMICOLON);
-        
         VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
         node->base.type = NODE_VAR_DECL;
         node->var_type = vtype; node->name = name_val;
-        node->initializer = init; node->is_mutable = 1; // Default mutable if plain type
+        node->initializer = init; node->is_mutable = 1; 
         node->is_array = is_array; node->array_size = array_size;
         return (ASTNode*)node;
     }
@@ -589,24 +694,7 @@ ASTNode* parse_statements(Lexer *l) {
   ASTNode **current = &head;
 
   while (current_token.type != TOKEN_EOF && current_token.type != TOKEN_RBRACE) {
-    ASTNode *stmt = NULL;
-    
-    if (get_type_from_token(current_token.type) != -1 || 
-        current_token.type == TOKEN_KW_MUT || 
-        current_token.type == TOKEN_KW_IMUT) {
-      stmt = parse_var_decl_internal(l);
-    }
-    else if (current_token.type == TOKEN_LOOP) stmt = parse_loop(l);
-    else if (current_token.type == TOKEN_IF) stmt = parse_if(l);
-    else if (current_token.type == TOKEN_RETURN) stmt = parse_return(l);
-    else if (current_token.type == TOKEN_IDENTIFIER) stmt = parse_assignment_or_call(l);
-    else if (current_token.type == TOKEN_SEMICOLON) { eat(l, TOKEN_SEMICOLON); continue; }
-    else {
-      fprintf(stderr, "Parser Error: Unknown statement token %d at line %d:%d\n", 
-              current_token.type, current_token.line, current_token.col);
-      exit(1);
-    }
-
+    ASTNode *stmt = parse_single_statement_or_block(l);
     if (stmt) {
       *current = stmt;
       current = &stmt->next;
@@ -626,7 +714,10 @@ ASTNode* parse_program(Lexer *l) {
     ASTNode *node = parse_top_level(l);
     if (node) {
       *current = node;
-      current = &node->next;
+      while ((*current)->next) {
+          current = &(*current)->next;
+      }
+      current = &(*current)->next;
     }
   }
   

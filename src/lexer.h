@@ -14,6 +14,7 @@ typedef enum {
   TOKEN_RPAREN,   // )
   TOKEN_SEMICOLON,// ;
   TOKEN_COMMA,  // ,
+  TOKEN_ELLIPSIS, // ... (for varargs)
   
   TOKEN_NUMBER,   // 10, 42
   TOKEN_FLOAT,  // 3.14, 0.5
@@ -40,6 +41,10 @@ typedef enum {
   // Mutability
   TOKEN_KW_MUT,    // mut, mutable
   TOKEN_KW_IMUT,   // imut, immutable
+
+  // Modules & FFI
+  TOKEN_IMPORT,    // import
+  TOKEN_EXTERN,    // extern
 
   // Boolean Literals
   TOKEN_TRUE,    // true
