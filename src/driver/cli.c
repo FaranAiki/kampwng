@@ -1,5 +1,5 @@
 #include "cli.h"
-#include "parser/parser.h"
+#include "parser.h"
 #include "codegen.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -112,9 +112,12 @@ int run_repl(void) {
         return 1;
     }
 
+    // Create an initial builder for context setup
     LLVMBuilderRef builder = LLVMCreateBuilder();
     CodegenCtx ctx;
     codegen_init_ctx(&ctx, module, builder);
+    // Dispose the initial builder, we will create fresh ones in the loop
+    LLVMDisposeBuilder(builder);
 
     int cmd_count = 0;
     jmp_buf recovery_env;
@@ -154,6 +157,21 @@ int run_repl(void) {
             ASTNode *root = parse_program(&l);
             if (!root) { free(buffer); continue; }
 
+            // --- JIT STABILITY FIX ---
+            // 1. Remove module from engine to allow modification
+            // MCJIT "locks" the module after execution. We must detach it to add new AST nodes safeley.
+            LLVMModuleRef out_mod;
+            char *remove_err = NULL;
+            if (LLVMRemoveModule(engine, module, &out_mod, &remove_err) != 0) {
+                fprintf(stderr, "Warning: Could not remove module from engine: %s\n", remove_err);
+                // If it fails (e.g. first run), it might be fine, but we print just in case.
+            }
+            
+            // 2. Create a fresh builder for this iteration
+            // This prevents holding onto stale BasicBlocks from previous runs
+            LLVMBuilderRef loop_builder = LLVMCreateBuilder();
+            ctx.builder = loop_builder;
+
             ASTNode *curr = root;
             while (curr) {
                 if (curr->type == NODE_FUNC_DEF) {
@@ -175,15 +193,22 @@ int run_repl(void) {
                         LLVMTypeRef void_type = LLVMFunctionType(LLVMVoidType(), NULL, 0, false);
                         LLVMValueRef init_func = LLVMAddFunction(module, temp_name, void_type);
                         LLVMBasicBlockRef entry = LLVMAppendBasicBlock(init_func, "entry");
-                        LLVMPositionBuilderAtEnd(builder, entry);
+                        LLVMPositionBuilderAtEnd(loop_builder, entry);
                         
                         LLVMValueRef init_val = codegen_expr(&ctx, vd->initializer);
-                        LLVMBuildStore(builder, init_val, gVar);
-                        LLVMBuildRetVoid(builder);
-
+                        LLVMBuildStore(loop_builder, init_val, gVar);
+                        LLVMBuildRetVoid(loop_builder);
+                        
+                        // We must add the module back before running!
+                        // But we have more nodes to process. 
+                        // To keep it simple, we add/run/remove inside the logic if needed?
+                        // No, better to finish modification first? 
+                        // Actually, for immediate execution (side effects), we need to run NOW.
+                        
+                        LLVMAddModule(engine, module);
                         LLVMGenericValueRef exec_res = LLVMRunFunction(engine, init_func, 0, NULL);
                         LLVMDisposeGenericValue(exec_res);
-                        LLVMDeleteFunction(init_func);
+                        LLVMRemoveModule(engine, module, &out_mod, &remove_err); // Remove again for next steps
                     }
                     printf(COL_BLUE "%s defined.\n" COL_RESET, vd->name);
                 }
@@ -195,7 +220,7 @@ int run_repl(void) {
                     LLVMTypeRef func_type = LLVMFunctionType(LLVMInt32Type(), NULL, 0, false);
                     LLVMValueRef func = LLVMAddFunction(module, temp_name, func_type);
                     LLVMBasicBlockRef entry = LLVMAppendBasicBlock(func, "entry");
-                    LLVMPositionBuilderAtEnd(builder, entry);
+                    LLVMPositionBuilderAtEnd(loop_builder, entry);
 
                     LLVMValueRef result = NULL;
                     
@@ -204,7 +229,7 @@ int run_repl(void) {
                         // Simple cast logic for printing
                         LLVMTypeRef rtype = LLVMTypeOf(result);
                         if (LLVMGetTypeKind(rtype) == LLVMDoubleTypeKind || LLVMGetTypeKind(rtype) == LLVMFloatTypeKind)
-                            result = LLVMBuildFPToUI(builder, result, LLVMInt32Type(), "cast");
+                            result = LLVMBuildFPToUI(loop_builder, result, LLVMInt32Type(), "cast");
                         else if (LLVMGetTypeKind(rtype) != LLVMIntegerTypeKind)
                             result = LLVMConstInt(LLVMInt32Type(), 0, 0); 
                     } else {
@@ -218,8 +243,11 @@ int run_repl(void) {
                         result = LLVMConstInt(LLVMInt32Type(), 0, 0);
                     }
 
-                    LLVMBuildRet(builder, result);
+                    LLVMBuildRet(loop_builder, result);
 
+                    // Add module back to engine to compile and run
+                    LLVMAddModule(engine, module);
+                    
                     LLVMGenericValueRef exec_res = LLVMRunFunction(engine, func, 0, NULL);
                     int int_res = (int)LLVMGenericValueToInt(exec_res, 0);
                     
@@ -228,10 +256,18 @@ int run_repl(void) {
                     }
                     
                     LLVMDisposeGenericValue(exec_res);
-                    LLVMDeleteFunction(func);
+                    
+                    // Remove module again so loop continues with a mutable module
+                    LLVMRemoveModule(engine, module, &out_mod, &remove_err);
                 }
                 curr = curr->next;
             }
+            
+            // 3. Final cleanup for this command iteration
+            // We removed the module in the loop logic. 
+            // We should add it back so the Engine owns it while waiting for input (clean state)
+            LLVMAddModule(engine, module);
+            LLVMDisposeBuilder(loop_builder);
             free_ast(root);
 
         } else {
@@ -244,7 +280,6 @@ int run_repl(void) {
         free(buffer);
     }
 
-    LLVMDisposeBuilder(builder);
     LLVMDisposeExecutionEngine(engine);
     return 0;
 }

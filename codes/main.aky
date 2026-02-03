@@ -1,12 +1,5 @@
-// pake llvm buat generate machine codenya
-// kenapa ga langsung assembly dkk. karena gw males co 
-// ibarat kek ini langsung pake nextJS daripada pake 
-// murni rawr javascrihit
-
-import "lib/cmath.aky";
-
 int main() {
-  char x[256] = input ();
+  let x = "Hello, World!";
   print "%s\n", x;
 }
 

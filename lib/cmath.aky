@@ -1,9 +1,11 @@
-// For mathematics
 // Using mathematics module
-
 // reference https://www.w3schools.com/c/c_ref_math.php
 
+// Link to the mathematics module
 link m;
+
+// TODO 
+// make so that long, long long, pointer works
 
 // Trigonometric Functions
 extern double acos(double);
@@ -11,31 +13,69 @@ extern double asin(double);
 extern double atan(double);
 extern double atan2(double, double);
 extern double cos(double);
-extern double cosh(double);
 extern double sin(double);
-extern double sinh(double);
 extern double tan(double);
+
+// Hyperbolic Functions
+extern double acosh(double);
+extern double asinh(double);
+extern double atanh(double);
+extern double cosh(double);
+extern double sinh(double);
 extern double tanh(double);
 
 // Exponential and Logarithmic Functions
 extern double exp(double);
+extern double exp2(double);
+extern double expm1(double);
+extern double frexp(double, int*);
+extern int ilogb(double);
+extern double ldexp(double, int);
 extern double log(double);
 extern double log10(double);
+extern double log1p(double);
+extern double log2(double);
+extern double logb(double);
+extern double modf(double, double*);
+extern double scalbn(double, int);
+extern double scalbln(double, long);
 
 // Power and Root Functions
-extern double pow(double, double);
-extern double sqrt(double);
 extern double cbrt(double);
 extern double hypot(double, double);
+extern double pow(double, double);
+extern double sqrt(double);
+
+// Error and Gamma Functions
+extern double erf(double);
+extern double erfc(double);
+extern double lgamma(double);
+extern double tgamma(double);
 
 // Rounding and Remainder Functions
 extern double ceil(double);
 extern double floor(double);
 extern double fmod(double, double);
+extern double nearbyint(double);
+extern double remainder(double, double);
+extern double remquo(double, double, int*);
 extern double round(double);
+extern double rint(double);
+extern long lrint(double);
+extern long long llrint(double);
+extern long lround(double);
+extern long long llround(double);
 extern double trunc(double);
 
-// Absolute Value and Min/Max
+// Absolute Value, Min/Max and Difference
 extern double fabs(double);
+extern double fdim(double, double);
 extern double fmax(double, double);
 extern double fmin(double, double);
+
+// Manipulation and Other Functions
+extern double copysign(double, double);
+extern double fma(double, double, double);
+extern double nan(const char*);
+extern double nextafter(double, double);
+extern double nexttoward(double, double);
