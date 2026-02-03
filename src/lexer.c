@@ -5,171 +5,267 @@
 #include <string.h>
 
 void lexer_init(Lexer *l, const char *src) {
-    l->src = src;
-    l->pos = 0;
+  l->src = src;
+  l->pos = 0;
+  l->line = 1;
+  l->col = 1;
 }
 
 char peek(Lexer *l) { return l->src[l->pos]; }
-char advance(Lexer *l) { return l->src[l->pos++]; }
+
+char advance(Lexer *l) {
+  char c = l->src[l->pos];
+  if (c == '\0') return c;
+  
+  l->pos++;
+  if (c == '\n') {
+    l->line++;
+    l->col = 1;
+  } else {
+    l->col++;
+  }
+  return c;
+}
 
 Token lexer_next(Lexer *l) {
-    Token t = {TOKEN_UNKNOWN, NULL, 0, 0.0};
-    
-    // Skip whitespace and comments
-    while (1) {
-        char c = peek(l);
-        if (c == '\0') break;
-
-        // Skip whitespace
-        if (isspace(c)) {
-            advance(l);
-            continue;
-        }
-
-        // Skip comments (// ...)
-        if (c == '/' && l->src[l->pos + 1] == '/') {
-            while (peek(l) != '\0' && peek(l) != '\n') {
-                advance(l);
-            }
-            continue; // Continue loop to skip trailing whitespace/newlines
-        }
-
-        break;
-    }
-
+  Token t = {TOKEN_UNKNOWN, NULL, 0, 0.0, l->line, l->col};
+  
+  while (1) {
     char c = peek(l);
+    if (c == '\0') break;
 
-    if (c == '\0') {
-        t.type = TOKEN_EOF;
-        return t;
+    if (isspace(c)) {
+      advance(l);
+      continue;
     }
 
-    if (c == ',') { advance(l); t.type = TOKEN_COMMA; return t; }
-
-    // Two-character operators
-    if (c == '=') { 
-        advance(l); 
-        if (peek(l) == '=') { advance(l); t.type = TOKEN_EQ; return t; }
-        t.type = TOKEN_ASSIGN; return t; 
-    }
-    if (c == '!') {
+    if (c == '/' && l->src[l->pos + 1] == '/') {
+      while (peek(l) != '\0' && peek(l) != '\n') {
         advance(l);
-        if (peek(l) == '=') { advance(l); t.type = TOKEN_NEQ; return t; }
-        t.type = TOKEN_NOT; return t;
-    }
-    if (c == '<') {
-        advance(l);
-        if (peek(l) == '<') { advance(l); t.type = TOKEN_LSHIFT; return t; }
-        if (peek(l) == '=') { advance(l); t.type = TOKEN_LTE; return t; }
-        t.type = TOKEN_LT; return t;
-    }
-    if (c == '>') {
-        advance(l);
-        if (peek(l) == '>') { advance(l); t.type = TOKEN_RSHIFT; return t; }
-        if (peek(l) == '=') { advance(l); t.type = TOKEN_GTE; return t; }
-        t.type = TOKEN_GT; return t;
+      }
+      continue; 
     }
 
-    // Single Character Tokens
-    if (c == '[') { advance(l); t.type = TOKEN_LBRACKET; return t; }
-    if (c == ']') { advance(l); t.type = TOKEN_RBRACKET; return t; }
-    if (c == '{') { advance(l); t.type = TOKEN_LBRACE; return t; }
-    if (c == '}') { advance(l); t.type = TOKEN_RBRACE; return t; }
-    if (c == '(') { advance(l); t.type = TOKEN_LPAREN; return t; }
-    if (c == ')') { advance(l); t.type = TOKEN_RPAREN; return t; }
-    if (c == ';') { advance(l); t.type = TOKEN_SEMICOLON; return t; }
-    if (c == '+') { advance(l); t.type = TOKEN_PLUS; return t; }
-    if (c == '-') { advance(l); t.type = TOKEN_MINUS; return t; }
-    if (c == '*') { advance(l); t.type = TOKEN_STAR; return t; }
-    if (c == '/') { advance(l); t.type = TOKEN_SLASH; return t; }
-    if (c == '^') { advance(l); t.type = TOKEN_XOR; return t; }
+    break;
+  }
 
-    // Numbers
-    if (isdigit(c)) {
-        long val = 0;
-        while (isdigit(peek(l))) {
-            val = val * 10 + (advance(l) - '0');
-        }
+  // Record start position of the token
+  t.line = l->line;
+  t.col = l->col;
 
-        if (peek(l) == '.') {
-            advance(l);
-            double dval = (double)val;
-            double fraction = 1.0;
-            while (isdigit(peek(l))) {
-                fraction /= 10.0;
-                dval += (advance(l) - '0') * fraction;
-            }
-            t.type = TOKEN_FLOAT;
-            t.double_val = dval;
-            return t;
-        }
+  char c = peek(l);
 
-        t.type = TOKEN_NUMBER;
-        t.int_val = (int)val;
-        return t;
-    }
-
-    // Strings
-    if (c == '"') {
-        advance(l); 
-        int start = l->pos;
-        while (peek(l) != '"' && peek(l) != '\0') {
-            advance(l);
-        }
-        
-        int len = l->pos - start;
-        t.text = malloc(len + 1);
-        if (t.text) {
-            strncpy(t.text, l->src + start, len);
-            t.text[len] = '\0';
-        }
-        
-        if (peek(l) == '"') advance(l);
-        
-        t.type = TOKEN_STRING;
-        return t;
-    }
-
-    // Keywords and Identifiers
-    if (isalpha(c)) {
-        int start = l->pos;
-        while (isalnum(peek(l)) || peek(l) == '_') advance(l);
-        int len = l->pos - start;
-        char *word = malloc(len + 1);
-        strncpy(word, l->src + start, len);
-        word[len] = '\0';
-
-        // Keywords
-        if (strcmp(word, "loop") == 0) t.type = TOKEN_LOOP;
-        else if (strcmp(word, "if") == 0) t.type = TOKEN_IF;
-        else if (strcmp(word, "elif") == 0) t.type = TOKEN_ELIF;
-        else if (strcmp(word, "else") == 0) t.type = TOKEN_ELSE;
-        else if (strcmp(word, "return") == 0) t.type = TOKEN_RETURN;
-        else if (strcmp(word, "void") == 0) t.type = TOKEN_KW_VOID;
-        else if (strcmp(word, "int") == 0) t.type = TOKEN_KW_INT;
-        else if (strcmp(word, "char") == 0) t.type = TOKEN_KW_CHAR;
-        else if (strcmp(word, "bool") == 0) t.type = TOKEN_KW_BOOL;
-        else if (strcmp(word, "single") == 0) t.type = TOKEN_KW_SINGLE;
-        else if (strcmp(word, "double") == 0) t.type = TOKEN_KW_DOUBLE;
-        else if (strcmp(word, "true") == 0) t.type = TOKEN_TRUE;
-        else if (strcmp(word, "false") == 0) t.type = TOKEN_FALSE;
-        else if (strcmp(word, "not") == 0) t.type = TOKEN_NOT;
-        else {
-            t.type = TOKEN_IDENTIFIER;
-            t.text = word;
-            return t;
-        }
-        
-        free(word);
-        return t;
-    }
-
-    advance(l);
+  if (c == '\0') {
+    t.type = TOKEN_EOF;
     return t;
+  }
+
+  if (c == ',') { advance(l); t.type = TOKEN_COMMA; return t; }
+
+  if (c == '=') { 
+    advance(l); 
+    if (peek(l) == '=') { advance(l); t.type = TOKEN_EQ; return t; }
+    t.type = TOKEN_ASSIGN; return t; 
+  }
+  if (c == '!') {
+    advance(l);
+    if (peek(l) == '=') { advance(l); t.type = TOKEN_NEQ; return t; }
+    t.type = TOKEN_NOT; return t;
+  }
+  if (c == '<') {
+    advance(l);
+    if (peek(l) == '<') { advance(l); t.type = TOKEN_LSHIFT; return t; }
+    if (peek(l) == '=') { advance(l); t.type = TOKEN_LTE; return t; }
+    t.type = TOKEN_LT; return t;
+  }
+  if (c == '>') {
+    advance(l);
+    if (peek(l) == '>') { advance(l); t.type = TOKEN_RSHIFT; return t; }
+    if (peek(l) == '=') { advance(l); t.type = TOKEN_GTE; return t; }
+    t.type = TOKEN_GT; return t;
+  }
+
+  // Single Character Tokens
+  if (c == '[') { advance(l); t.type = TOKEN_LBRACKET; return t; }
+  if (c == ']') { advance(l); t.type = TOKEN_RBRACKET; return t; }
+  if (c == '{') { advance(l); t.type = TOKEN_LBRACE; return t; }
+  if (c == '}') { advance(l); t.type = TOKEN_RBRACE; return t; }
+  if (c == '(') { advance(l); t.type = TOKEN_LPAREN; return t; }
+  if (c == ')') { advance(l); t.type = TOKEN_RPAREN; return t; }
+  if (c == ';') { advance(l); t.type = TOKEN_SEMICOLON; return t; }
+  if (c == '+') { advance(l); t.type = TOKEN_PLUS; return t; }
+  if (c == '-') { advance(l); t.type = TOKEN_MINUS; return t; }
+  if (c == '*') { advance(l); t.type = TOKEN_STAR; return t; }
+  if (c == '/') { advance(l); t.type = TOKEN_SLASH; return t; }
+  if (c == '^') { advance(l); t.type = TOKEN_XOR; return t; }
+
+  // Numbers
+  if (isdigit(c)) {
+    long val = 0;
+    while (isdigit(peek(l))) {
+      val = val * 10 + (advance(l) - '0');
+    }
+
+    if (peek(l) == '.') {
+      advance(l);
+      double dval = (double)val;
+      double fraction = 1.0;
+      while (isdigit(peek(l))) {
+        fraction /= 10.0;
+        dval += (advance(l) - '0') * fraction;
+      }
+      t.type = TOKEN_FLOAT;
+      t.double_val = dval;
+      return t;
+    }
+
+    t.type = TOKEN_NUMBER;
+    t.int_val = (int)val;
+    return t;
+  }
+
+  // Character Literals ('a')
+  if (c == '\'') {
+      advance(l); // Eat opening '
+      char val = advance(l);
+      
+      if (val == '\\') {
+          // Simple escape handling
+          char next = advance(l);
+          switch(next) {
+              case 'n': val = '\n'; break;
+              case 't': val = '\t'; break;
+              case 'r': val = '\r'; break;
+              case '0': val = '\0'; break;
+              case '\'': val = '\''; break;
+              case '\\': val = '\\'; break;
+              default: val = next; break; 
+          }
+      }
+      
+      if (peek(l) == '\'') advance(l); // Eat closing '
+      else {
+          fprintf(stderr, "Lexer Error: Unclosed character literal at %d:%d\n", l->line, l->col);
+          exit(1);
+      }
+      
+      t.type = TOKEN_CHAR_LIT;
+      t.int_val = (int)val;
+      return t;
+  }
+
+  // Strings with Escape Character Support
+  if (c == '"') {
+    advance(l); // eat opening quote
+    
+    size_t capacity = 32;
+    size_t length = 0;
+    char *buffer = malloc(capacity);
+    if (!buffer) {
+      fprintf(stderr, "Lexer Error: Out of memory\n");
+      exit(1);
+    }
+
+    while (peek(l) != '"' && peek(l) != '\0') {
+      char val = peek(l);
+      
+      if (val == '\\') {
+        advance(l); // consume backslash
+        if (peek(l) == '\0') break; // unexpected end
+
+        char escaped = peek(l);
+        switch (escaped) {
+          case 'n': val = '\n'; break;
+          case 'r': val = '\r'; break;
+          case 't': val = '\t'; break;
+          case '0': val = '\0'; break;
+          case '\\': val = '\\'; break;
+          case '"': val = '"'; break;
+          case '\'': val = '\''; break;
+          default: val = escaped; break; // Unknown escape, keep char
+        }
+        advance(l); // consume escaped char
+      } else {
+        advance(l); // consume normal char
+      }
+      
+      // Resize buffer if needed
+      if (length + 1 >= capacity) {
+        capacity *= 2;
+        buffer = realloc(buffer, capacity);
+        if (!buffer) {
+          fprintf(stderr, "Lexer Error: Out of memory\n");
+          exit(1);
+        }
+      }
+      buffer[length++] = val;
+    }
+    
+    buffer[length] = '\0';
+    
+    if (peek(l) == '"') advance(l);
+    
+    t.type = TOKEN_STRING;
+    t.text = buffer;
+    return t;
+  }
+
+  // Keywords and Identifiers
+  if (isalpha(c)) {
+    int start = l->pos; // We don't use this for string cutting anymore but tracking
+    // But we are manually advancing, so tracking works
+    
+    // We need to accumulate characters
+    size_t capacity = 16;
+    size_t length = 0;
+    char *word = malloc(capacity);
+    
+    while (isalnum(peek(l)) || peek(l) == '_') {
+        char wc = advance(l);
+        if (length + 1 >= capacity) {
+            capacity *= 2;
+            word = realloc(word, capacity);
+        }
+        word[length++] = wc;
+    }
+    word[length] = '\0';
+
+    // Keywords
+    if (strcmp(word, "loop") == 0) t.type = TOKEN_LOOP;
+    else if (strcmp(word, "if") == 0) t.type = TOKEN_IF;
+    else if (strcmp(word, "elif") == 0) t.type = TOKEN_ELIF;
+    else if (strcmp(word, "else") == 0) t.type = TOKEN_ELSE;
+    else if (strcmp(word, "return") == 0) t.type = TOKEN_RETURN;
+    else if (strcmp(word, "void") == 0) t.type = TOKEN_KW_VOID;
+    else if (strcmp(word, "int") == 0) t.type = TOKEN_KW_INT;
+    else if (strcmp(word, "char") == 0) t.type = TOKEN_KW_CHAR;
+    else if (strcmp(word, "bool") == 0) t.type = TOKEN_KW_BOOL;
+    else if (strcmp(word, "single") == 0) t.type = TOKEN_KW_SINGLE;
+    else if (strcmp(word, "double") == 0) t.type = TOKEN_KW_DOUBLE;
+    else if (strcmp(word, "let") == 0) t.type = TOKEN_KW_LET;
+    else if (strcmp(word, "mut") == 0) t.type = TOKEN_KW_MUT;
+    else if (strcmp(word, "mutable") == 0) t.type = TOKEN_KW_MUT;
+    else if (strcmp(word, "imut") == 0) t.type = TOKEN_KW_IMUT;
+    else if (strcmp(word, "immutable") == 0) t.type = TOKEN_KW_IMUT;
+    else if (strcmp(word, "true") == 0) t.type = TOKEN_TRUE;
+    else if (strcmp(word, "false") == 0) t.type = TOKEN_FALSE;
+    else if (strcmp(word, "not") == 0) t.type = TOKEN_NOT;
+    else {
+      t.type = TOKEN_IDENTIFIER;
+      t.text = word;
+      return t;
+    }
+    
+    free(word);
+    return t;
+  }
+
+  advance(l);
+  return t;
 }
 
 void free_token(Token t) {
-    if (t.text) {
-        free(t.text);
-    }
+  if (t.text) {
+    free(t.text);
+  }
 }

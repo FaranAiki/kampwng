@@ -1,7 +1,10 @@
-print "Select if x == 1 or x == 2!\n";
-int x = input();
-if x == 1 {
-  print "True!\n";
-} else {
-  print "What the hell!\n";
+// pake llvm buat generate machine codenya
+// kenapa ga langsung assembly dkk. karena gw males co 
+// ibarat kek ini langsung pake nextJS daripada pake 
+// murni rawr javascrihit
+
+int main() {
+  char mut c[] = "jatuh";
+  
+  print "%d", c == "jatuah";
 }
