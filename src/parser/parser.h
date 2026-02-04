@@ -11,6 +11,8 @@ typedef enum {
   NODE_FUNC_DEF,  // type name(args) { body }
   NODE_CALL,    // name(args)
   NODE_RETURN,  // return x;
+  NODE_BREAK,
+  NODE_CONTINUE,
   NODE_LOOP,    // loop N { ... }
   NODE_WHILE,   // while (once) cond { ... }
   NODE_IF,
@@ -22,6 +24,7 @@ typedef enum {
   NODE_LITERAL,
   NODE_ARRAY_LIT, // [1, 2, 3]
   NODE_ARRAY_ACCESS, // t[0]
+  NODE_INC_DEC, // ++x, x--
   NODE_LINK // link m
 } NodeType;
 
@@ -69,6 +72,14 @@ typedef struct {
 
 typedef struct {
   ASTNode base;
+} BreakNode;
+
+typedef struct {
+  ASTNode base;
+} ContinueNode;
+
+typedef struct {
+  ASTNode base;
   ASTNode *iterations;
   ASTNode *body;
 } LoopNode;
@@ -102,7 +113,16 @@ typedef struct {
   char *name;
   ASTNode *value;
   ASTNode *index; // NULL if normal assignment, not NULL if array[index] = value
+  int op; // TOKEN_ASSIGN, TOKEN_PLUS_ASSIGN, etc.
 } AssignNode; 
+
+typedef struct {
+  ASTNode base;
+  char *name;
+  ASTNode *index; // NULL if variable, else array index
+  int is_prefix; // 1 for ++x, 0 for x++
+  int op; // TOKEN_INCREMENT or TOKEN_DECREMENT
+} IncDecNode;
 
 typedef struct {
   ASTNode base;

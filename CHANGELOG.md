@@ -29,3 +29,10 @@ Mutable and arrays
 * Restructure the codegen so that it is easier to vibecode and program manually
 * Added while loop
 * Added link and import functionality is good
+
+## 0.0.6 
+* ++xx xx++ good
+* += bad -= bad (infinite loop)
+* structured the parser as it was too big 
+* added misc folder so that it supports for syntax highlighting
+* some hky (hacky) stuff unimplemented as there is no pointer here

@@ -8,6 +8,7 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
     ctx->module = module;
     ctx->builder = builder;
     ctx->symbols = NULL;
+    ctx->current_loop = NULL;
 
     // printf
     LLVMTypeRef printf_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };

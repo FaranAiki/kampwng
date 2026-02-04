@@ -30,7 +30,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
   else if (node->type == NODE_VAR_REF) {
     VarRefNode *r = (VarRefNode*)node;
     Symbol *sym = find_symbol(ctx, r->name);
-    if (!sym) { fprintf(stderr, "Error: Undefined variable %s\n", r->name); return LLVMConstInt(LLVMInt32Type(), 0, 0); }
+    if (!sym) { fprintf(stderr, "Error: Undefined variable %s\n", r->name); exit(1); }
     
     if (sym->is_array) {
         LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), LLVMConstInt(LLVMInt64Type(), 0, 0) };
@@ -38,6 +38,93 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
     }
     
     return LLVMBuildLoad2(ctx->builder, sym->type, sym->value, r->name);
+  }
+  else if (node->type == NODE_ASSIGN) {
+      AssignNode *an = (AssignNode*)node;
+      
+      // 1. Perform the assignment (side effect)
+      codegen_assign(ctx, an); 
+      
+      // 2. Reload and return the new value (result)
+      Symbol *sym = find_symbol(ctx, an->name);
+      
+      LLVMValueRef ptr;
+      LLVMTypeRef elem_type;
+
+      if (an->index) {
+          LLVMValueRef idx = codegen_expr(ctx, an->index);
+          if (LLVMGetTypeKind(LLVMTypeOf(idx)) != LLVMIntegerTypeKind) {
+             idx = LLVMBuildFPToUI(ctx->builder, idx, LLVMInt64Type(), "idx_cast");
+          } else {
+             idx = LLVMBuildIntCast(ctx->builder, idx, LLVMInt64Type(), "idx_cast");
+          }
+
+          if (sym->is_array) {
+              LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), idx };
+              ptr = LLVMBuildGEP2(ctx->builder, sym->type, sym->value, indices, 2, "elem_ptr");
+              elem_type = LLVMGetElementType(sym->type);
+          } else {
+              LLVMValueRef base = LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "ptr_base");
+              LLVMValueRef indices[] = { idx };
+              elem_type = LLVMGetElementType(sym->type);
+              ptr = LLVMBuildGEP2(ctx->builder, elem_type, base, indices, 1, "ptr_elem");
+          }
+      } else {
+          ptr = sym->value;
+          elem_type = sym->type;
+      }
+      
+      return LLVMBuildLoad2(ctx->builder, elem_type, ptr, "assign_res");
+  }
+  else if (node->type == NODE_INC_DEC) {
+    IncDecNode *id = (IncDecNode*)node;
+    Symbol *sym = find_symbol(ctx, id->name);
+    if (!sym) { fprintf(stderr, "Error: Undefined variable %s\n", id->name); exit(1); }
+    if (!sym->is_mutable) { fprintf(stderr, "Error: Cannot increment/decrement immutable variable %s\n", id->name); exit(1); }
+
+    LLVMValueRef ptr;
+    LLVMTypeRef elem_type;
+
+    if (id->index) {
+        LLVMValueRef idx = codegen_expr(ctx, id->index);
+        if (LLVMGetTypeKind(LLVMTypeOf(idx)) != LLVMIntegerTypeKind) {
+            idx = LLVMBuildFPToUI(ctx->builder, idx, LLVMInt64Type(), "idx_cast");
+        } else {
+            idx = LLVMBuildIntCast(ctx->builder, idx, LLVMInt64Type(), "idx_cast");
+        }
+
+        if (sym->is_array) {
+             LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), idx };
+             ptr = LLVMBuildGEP2(ctx->builder, sym->type, sym->value, indices, 2, "elem_ptr");
+             elem_type = LLVMGetElementType(sym->type);
+        } else {
+             LLVMValueRef base = LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "ptr_base");
+             LLVMValueRef indices[] = { idx };
+             elem_type = LLVMGetElementType(sym->type);
+             ptr = LLVMBuildGEP2(ctx->builder, elem_type, base, indices, 1, "ptr_elem");
+        }
+    } else {
+        ptr = sym->value;
+        elem_type = sym->type;
+    }
+
+    LLVMValueRef curr = LLVMBuildLoad2(ctx->builder, elem_type, ptr, "curr_val");
+    
+    LLVMValueRef one;
+    int is_float = (LLVMGetTypeKind(LLVMTypeOf(curr)) == LLVMDoubleTypeKind || LLVMGetTypeKind(LLVMTypeOf(curr)) == LLVMFloatTypeKind);
+    if (is_float) one = LLVMConstReal(LLVMTypeOf(curr), 1.0);
+    else one = LLVMConstInt(LLVMTypeOf(curr), 1, 0);
+
+    LLVMValueRef next;
+    if (id->op == TOKEN_INCREMENT) {
+        next = is_float ? LLVMBuildFAdd(ctx->builder, curr, one, "inc") : LLVMBuildAdd(ctx->builder, curr, one, "inc");
+    } else {
+        next = is_float ? LLVMBuildFSub(ctx->builder, curr, one, "dec") : LLVMBuildSub(ctx->builder, curr, one, "dec");
+    }
+
+    LLVMBuildStore(ctx->builder, next, ptr);
+
+    return id->is_prefix ? next : curr;
   }
   else if (node->type == NODE_ARRAY_ACCESS) {
     ArrayAccessNode *an = (ArrayAccessNode*)node;
@@ -128,6 +215,9 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
          return LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, operand, LLVMConstReal(LLVMTypeOf(operand), 0.0), "not");
       }
     }
+    else if (u->op == TOKEN_BIT_NOT) {
+        return LLVMBuildNot(ctx->builder, operand, "bit_not");
+    }
     else if (u->op == TOKEN_MINUS) {
        if (LLVMGetTypeKind(LLVMTypeOf(operand)) == LLVMDoubleTypeKind || LLVMGetTypeKind(LLVMTypeOf(operand)) == LLVMFloatTypeKind) {
         return LLVMBuildFNeg(ctx->builder, operand, "neg");
@@ -139,6 +229,58 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
   }
   else if (node->type == NODE_BINARY_OP) {
     BinaryOpNode *op = (BinaryOpNode*)node;
+    
+    // Short-circuit Logic
+    if (op->op == TOKEN_AND_AND || op->op == TOKEN_OR_OR) {
+        LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
+        LLVMBasicBlockRef rhs_bb = LLVMAppendBasicBlock(func, "sc_rhs");
+        LLVMBasicBlockRef merge_bb = LLVMAppendBasicBlock(func, "sc_merge");
+        
+        LLVMValueRef lhs = codegen_expr(ctx, op->left);
+        // Cast to bool
+        if (LLVMGetTypeKind(LLVMTypeOf(lhs)) != LLVMIntegerTypeKind || LLVMGetIntTypeWidth(LLVMTypeOf(lhs)) != 1) {
+             lhs = LLVMBuildICmp(ctx->builder, LLVMIntNE, lhs, LLVMConstInt(LLVMTypeOf(lhs), 0, 0), "to_bool");
+        }
+
+        LLVMBasicBlockRef lhs_bb = LLVMGetInsertBlock(ctx->builder);
+        
+        if (op->op == TOKEN_AND_AND) {
+             // If lhs is false, jump to merge (result false). Else check rhs.
+             LLVMBuildCondBr(ctx->builder, lhs, rhs_bb, merge_bb);
+        } else {
+             // If lhs is true, jump to merge (result true). Else check rhs.
+             LLVMBuildCondBr(ctx->builder, lhs, merge_bb, rhs_bb);
+        }
+        
+        LLVMPositionBuilderAtEnd(ctx->builder, rhs_bb);
+        LLVMValueRef rhs = codegen_expr(ctx, op->right);
+        // Cast to bool
+        if (LLVMGetTypeKind(LLVMTypeOf(rhs)) != LLVMIntegerTypeKind || LLVMGetIntTypeWidth(LLVMTypeOf(rhs)) != 1) {
+             rhs = LLVMBuildICmp(ctx->builder, LLVMIntNE, rhs, LLVMConstInt(LLVMTypeOf(rhs), 0, 0), "to_bool");
+        }
+        LLVMBuildBr(ctx->builder, merge_bb);
+        LLVMBasicBlockRef rhs_end_bb = LLVMGetInsertBlock(ctx->builder);
+
+        LLVMPositionBuilderAtEnd(ctx->builder, merge_bb);
+        LLVMValueRef phi = LLVMBuildPhi(ctx->builder, LLVMInt1Type(), "sc_res");
+        
+        LLVMValueRef incoming_vals[2];
+        LLVMBasicBlockRef incoming_blocks[2];
+        
+        incoming_vals[0] = rhs;
+        incoming_blocks[0] = rhs_end_bb;
+        
+        if (op->op == TOKEN_AND_AND) {
+            incoming_vals[1] = LLVMConstInt(LLVMInt1Type(), 0, 0); // False
+        } else {
+            incoming_vals[1] = LLVMConstInt(LLVMInt1Type(), 1, 0); // True
+        }
+        incoming_blocks[1] = lhs_bb;
+        
+        LLVMAddIncoming(phi, incoming_vals, incoming_blocks, 2);
+        return phi;
+    }
+
     LLVMValueRef l = codegen_expr(ctx, op->left);
     LLVMValueRef r = codegen_expr(ctx, op->right);
     
@@ -169,6 +311,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
         case TOKEN_MINUS: return LLVMBuildFSub(ctx->builder, l, r, "fsub");
         case TOKEN_STAR: return LLVMBuildFMul(ctx->builder, l, r, "fmul");
         case TOKEN_SLASH: return LLVMBuildFDiv(ctx->builder, l, r, "fdiv");
+        case TOKEN_MOD: return LLVMBuildFRem(ctx->builder, l, r, "frem");
         case TOKEN_EQ: return LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, l, r, "feq");
         case TOKEN_NEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealONE, l, r, "fneq");
         case TOKEN_LT: return LLVMBuildFCmp(ctx->builder, LLVMRealOLT, l, r, "flt");
@@ -188,7 +331,10 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
         case TOKEN_MINUS: return LLVMBuildSub(ctx->builder, l, r, "sub");
         case TOKEN_STAR: return LLVMBuildMul(ctx->builder, l, r, "mul");
         case TOKEN_SLASH: return LLVMBuildSDiv(ctx->builder, l, r, "div");
+        case TOKEN_MOD: return LLVMBuildSRem(ctx->builder, l, r, "mod");
         case TOKEN_XOR: return LLVMBuildXor(ctx->builder, l, r, "xor");
+        case TOKEN_AND: return LLVMBuildAnd(ctx->builder, l, r, "and");
+        case TOKEN_OR:  return LLVMBuildOr(ctx->builder, l, r, "or");
         case TOKEN_LSHIFT: return LLVMBuildShl(ctx->builder, l, r, "shl");
         case TOKEN_RSHIFT: return LLVMBuildAShr(ctx->builder, l, r, "shr");
         case TOKEN_EQ: return LLVMBuildICmp(ctx->builder, LLVMIntEQ, l, r, "eq");

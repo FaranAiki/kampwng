@@ -21,12 +21,26 @@ typedef enum {
   TOKEN_STRING,   
   TOKEN_CHAR_LIT, 
   TOKEN_IDENTIFIER, 
-  TOKEN_ASSIGN,   
+  
+  // Assignment
+  TOKEN_ASSIGN,       // =
+  TOKEN_PLUS_ASSIGN,  // +=
+  TOKEN_MINUS_ASSIGN, // -=
+  TOKEN_STAR_ASSIGN,  // *=
+  TOKEN_SLASH_ASSIGN, // /=
+  TOKEN_MOD_ASSIGN,   // %=
+  TOKEN_AND_ASSIGN,   // &=
+  TOKEN_OR_ASSIGN,    // |=
+  TOKEN_XOR_ASSIGN,   // ^=
+  TOKEN_LSHIFT_ASSIGN,// <<=
+  TOKEN_RSHIFT_ASSIGN,// >>=
   
   TOKEN_IF,     
   TOKEN_ELIF,   
   TOKEN_ELSE,   
-  TOKEN_RETURN,   
+  TOKEN_RETURN,
+  TOKEN_BREAK,
+  TOKEN_CONTINUE,
 
   TOKEN_KW_VOID,   
   TOKEN_KW_INT,  
@@ -46,15 +60,24 @@ typedef enum {
   TOKEN_TRUE,    
   TOKEN_FALSE,   
 
-  TOKEN_NOT,     
+  TOKEN_NOT,     // !
+  TOKEN_BIT_NOT, // ~
 
-  TOKEN_PLUS,   
-  TOKEN_MINUS,  
-  TOKEN_STAR,   
-  TOKEN_SLASH,  
-  TOKEN_XOR,    
-  TOKEN_LSHIFT,   
-  TOKEN_RSHIFT,   
+  TOKEN_PLUS,    // +
+  TOKEN_INCREMENT, // ++
+  TOKEN_MINUS,   // -
+  TOKEN_DECREMENT, // --
+  TOKEN_STAR,    // *
+  TOKEN_SLASH,   // /
+  TOKEN_MOD,     // %
+  TOKEN_AND,     // &
+  TOKEN_OR,      // |
+  TOKEN_XOR,     // ^
+  TOKEN_LSHIFT,  // <<
+  TOKEN_RSHIFT,  // >>
+  
+  TOKEN_AND_AND, // &&
+  TOKEN_OR_OR,   // ||
   
   TOKEN_EQ,     
   TOKEN_NEQ,    

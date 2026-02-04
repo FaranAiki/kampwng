@@ -31,7 +31,10 @@ include_directories(
 set(COMMON_SOURCES 
     src/lexer/lexer.c
     
-    src/parser/parser.c 
+    src/parser/core.c 
+    src/parser/expr.c 
+    src/parser/stmt.c 
+    src/parser/top.c 
 
     src/codegen/core.c
     src/codegen/expr.c

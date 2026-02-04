@@ -15,10 +15,17 @@ typedef struct Symbol {
   struct Symbol *next;
 } Symbol;
 
+typedef struct LoopContext {
+  LLVMBasicBlockRef continue_target;
+  LLVMBasicBlockRef break_target;
+  struct LoopContext *parent;
+} LoopContext;
+
 typedef struct {
   LLVMModuleRef module;
   LLVMBuilderRef builder;
   Symbol *symbols;
+  LoopContext *current_loop; // Stack for nested loops
   
   LLVMTypeRef printf_type;
   LLVMValueRef printf_func;
@@ -50,5 +57,7 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node);
 void codegen_loop(CodegenCtx *ctx, LoopNode *node);
 void codegen_while(CodegenCtx *ctx, WhileNode *node);
 void codegen_if(CodegenCtx *ctx, IfNode *node);
+void codegen_break(CodegenCtx *ctx);
+void codegen_continue(CodegenCtx *ctx);
 
 #endif
