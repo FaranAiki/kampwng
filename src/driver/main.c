@@ -65,14 +65,14 @@ int main(int argc, char *argv[]) {
   // Extract 'link' directives from AST
   ASTNode *curr = root;
   while(curr) {
-      if (curr->type == NODE_LINK) {
-          LinkNode *lnk = (LinkNode*)curr;
-          if (strlen(link_flags) + strlen(lnk->lib_name) + 4 < sizeof(link_flags)) {
-              strcat(link_flags, " -l");
-              strcat(link_flags, lnk->lib_name);
-          }
+    if (curr->type == NODE_LINK) {
+      LinkNode *lnk = (LinkNode*)curr;
+      if (strlen(link_flags) + strlen(lnk->lib_name) + 4 < sizeof(link_flags)) {
+        strcat(link_flags, " -l");
+        strcat(link_flags, lnk->lib_name);
       }
-      curr = curr->next;
+    }
+    curr = curr->next;
   }
 
   LLVMInitializeNativeTarget();

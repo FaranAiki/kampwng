@@ -48,13 +48,13 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
     LLVMTypeRef type = get_llvm_type(p->type);
     LLVMValueRef alloca = LLVMBuildAlloca(ctx->builder, type, p->name);
     LLVMBuildStore(ctx->builder, arg_val, alloca);
-    add_symbol(ctx, p->name, alloca, type, 0, 1); 
+    add_symbol(ctx, p->name, alloca, type, p->type, 0, 1); 
     p = p->next;
   }
   
   codegen_node(ctx, node->body);
   
-  if (node->ret_type == VAR_VOID) {
+  if (node->ret_type.base == TYPE_VOID) {
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
       LLVMBuildRetVoid(ctx->builder);
     }
@@ -75,15 +75,10 @@ void codegen_loop(CodegenCtx *ctx, LoopNode *node) {
   LLVMBasicBlockRef step_bb = LLVMAppendBasicBlock(func, "loop_step");
   LLVMBasicBlockRef end_bb = LLVMAppendBasicBlock(func, "loop_end");
 
-  // Loop: init -> cond -> body -> step -> cond
-  // Continue -> step
-  // Break -> end
-
   LLVMValueRef counter_ptr = LLVMBuildAlloca(ctx->builder, LLVMInt64Type(), "loop_i");
   LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt64Type(), 0, 0), counter_ptr);
   LLVMBuildBr(ctx->builder, cond_bb);
 
-  // Condition
   LLVMPositionBuilderAtEnd(ctx->builder, cond_bb);
   LLVMValueRef cur_i = LLVMBuildLoad2(ctx->builder, LLVMInt64Type(), counter_ptr, "i_val");
   LLVMValueRef limit = codegen_expr(ctx, node->iterations);
@@ -97,7 +92,6 @@ void codegen_loop(CodegenCtx *ctx, LoopNode *node) {
   LLVMValueRef cmp = LLVMBuildICmp(ctx->builder, LLVMIntULT, cur_i, limit, "cmp");
   LLVMBuildCondBr(ctx->builder, cmp, body_bb, end_bb);
 
-  // Body
   LLVMPositionBuilderAtEnd(ctx->builder, body_bb);
   push_loop_ctx(ctx, step_bb, end_bb);
   codegen_node(ctx, node->body);
@@ -107,7 +101,6 @@ void codegen_loop(CodegenCtx *ctx, LoopNode *node) {
       LLVMBuildBr(ctx->builder, step_bb);
   }
 
-  // Step (Increment)
   LLVMPositionBuilderAtEnd(ctx->builder, step_bb);
   LLVMValueRef cur_i_step = LLVMBuildLoad2(ctx->builder, LLVMInt64Type(), counter_ptr, "i_val_step");
   LLVMValueRef next_i = LLVMBuildAdd(ctx->builder, cur_i_step, LLVMConstInt(LLVMInt64Type(), 1, 0), "next_i");
@@ -124,13 +117,7 @@ void codegen_while(CodegenCtx *ctx, WhileNode *node) {
   LLVMBasicBlockRef end_bb = LLVMAppendBasicBlock(func, "while_end");
 
   if (node->is_do_while) {
-      // Do-While: Entry -> Body -> Cond -> (Body/End)
-      // Continue -> Cond
-      // Break -> End
-      
       LLVMBuildBr(ctx->builder, body_bb);
-
-      // Body
       LLVMPositionBuilderAtEnd(ctx->builder, body_bb);
       push_loop_ctx(ctx, cond_bb, end_bb);
       codegen_node(ctx, node->body);
@@ -139,8 +126,6 @@ void codegen_while(CodegenCtx *ctx, WhileNode *node) {
       if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
           LLVMBuildBr(ctx->builder, cond_bb);
       }
-
-      // Cond
       LLVMPositionBuilderAtEnd(ctx->builder, cond_bb);
       LLVMValueRef cond = codegen_expr(ctx, node->condition);
       if (LLVMGetTypeKind(LLVMTypeOf(cond)) != LLVMIntegerTypeKind || LLVMGetIntTypeWidth(LLVMTypeOf(cond)) != 1) {
@@ -149,13 +134,7 @@ void codegen_while(CodegenCtx *ctx, WhileNode *node) {
       LLVMBuildCondBr(ctx->builder, cond, body_bb, end_bb);
       
   } else {
-      // While: Entry -> Cond -> (Body/End), Body -> Cond
-      // Continue -> Cond
-      // Break -> End
-
       LLVMBuildBr(ctx->builder, cond_bb);
-
-      // Cond
       LLVMPositionBuilderAtEnd(ctx->builder, cond_bb);
       LLVMValueRef cond = codegen_expr(ctx, node->condition);
       if (LLVMGetTypeKind(LLVMTypeOf(cond)) != LLVMIntegerTypeKind || LLVMGetIntTypeWidth(LLVMTypeOf(cond)) != 1) {
@@ -163,7 +142,6 @@ void codegen_while(CodegenCtx *ctx, WhileNode *node) {
       }
       LLVMBuildCondBr(ctx->builder, cond, body_bb, end_bb);
 
-      // Body
       LLVMPositionBuilderAtEnd(ctx->builder, body_bb);
       push_loop_ctx(ctx, cond_bb, end_bb);
       codegen_node(ctx, node->body);

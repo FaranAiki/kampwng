@@ -7,18 +7,16 @@
 #include <setjmp.h>
 
 // --- SHARED GLOBALS ---
-// Defined in parser_core.c
 extern Token current_token;
 extern jmp_buf *parser_env;
 
 // --- CORE FUNCTIONS (parser_core.c) ---
 void parser_fail(const char *msg);
 void eat(Lexer *l, TokenType type);
-VarType get_type_from_token(TokenType t);
+VarType parse_type(Lexer *l); // Replaces get_type_from_token
 char* read_import_file(const char* filename);
 
 // --- EXPRESSION PARSERS (parser_expr.c) ---
-// parse_expression is already in parser.h
 ASTNode* parse_call(Lexer *l, char *name);
 
 // --- STATEMENT PARSERS (parser_stmt.c) ---

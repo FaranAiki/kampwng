@@ -2,8 +2,49 @@
 #include <string.h>
 #include <stdlib.h>
 
+// Helper to register aliases defined in 'define' statement
+// Exposed from core.c via prototype hack or just implementation here if static?
+// We put register_alias in core.c, need prototype
+void register_alias(const char *name, VarType type);
+
 ASTNode* parse_top_level(Lexer *l) {
-  // 0. LINK
+  // 0. DEFINE (Type Aliases)
+  if (current_token.type == TOKEN_DEFINE) {
+    eat(l, TOKEN_DEFINE);
+    
+    // Parse list of aliases: define i64, I0 as int
+    char **names = malloc(sizeof(char*) * 8); // simplified dynamic array
+    int count = 0;
+    int cap = 8;
+    
+    do {
+      if (current_token.type != TOKEN_IDENTIFIER) parser_fail("Expected identifier in define");
+      if (count >= cap) { cap *= 2; names = realloc(names, sizeof(char*)*cap); }
+      names[count++] = strdup(current_token.text);
+      eat(l, TOKEN_IDENTIFIER);
+      
+      if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA);
+      else break;
+    } while (1);
+    
+    eat(l, TOKEN_AS);
+    
+    VarType t = parse_type(l);
+    if (t.base == TYPE_UNKNOWN) parser_fail("Expected type in define");
+    
+    // Register all
+    for (int i=0; i<count; i++) {
+      register_alias(names[i], t);
+      free(names[i]);
+    }
+    free(names);
+    
+    // define is a directive, returns NULL (ignored in AST, processed immediately)
+    // But parse_program expects ASTNode*. Return NULL is handled by caller loop.
+    return NULL; 
+  }
+
+  // 1. LINK
   if (current_token.type == TOKEN_LINK) {
     eat(l, TOKEN_LINK);
     char *lib_name = NULL;
@@ -24,7 +65,7 @@ ASTNode* parse_top_level(Lexer *l) {
     return (ASTNode*)node;
   }
 
-  // 1. IMPORT
+  // 2. IMPORT
   if (current_token.type == TOKEN_IMPORT) {
     eat(l, TOKEN_IMPORT);
     if (current_token.type != TOKEN_STRING) {
@@ -43,10 +84,7 @@ ASTNode* parse_top_level(Lexer *l) {
     }
     free(fname);
 
-    // --- SAVE CONTEXT ---
-    // Save the current token (which is the token AFTER the semicolon in the main file)
     Token saved_token = current_token;
-    // Nullify text to prevent recursive parse_program from freeing it
     current_token.text = NULL;
     current_token.type = TOKEN_UNKNOWN; 
 
@@ -55,20 +93,17 @@ ASTNode* parse_top_level(Lexer *l) {
     ASTNode* imported_root = parse_program(&import_l);
     
     free(src);
-
-    // --- RESTORE CONTEXT ---
     current_token = saved_token;
 
     return imported_root; 
   }
   
-  // 2. EXTERN (FFI)
+  // 3. EXTERN (FFI)
   if (current_token.type == TOKEN_EXTERN) {
     eat(l, TOKEN_EXTERN);
     
-    VarType ret_type = get_type_from_token(current_token.type);
-    if ((int)ret_type == -1) { parser_fail("Expected return type for extern"); }
-    eat(l, current_token.type);
+    VarType ret_type = parse_type(l);
+    if (ret_type.base == TYPE_UNKNOWN) { parser_fail("Expected return type for extern"); }
 
     if (current_token.type != TOKEN_IDENTIFIER) { parser_fail("Expected extern function name"); }
     char *name = current_token.text;
@@ -88,9 +123,8 @@ ASTNode* parse_top_level(Lexer *l) {
           break; 
         }
 
-        VarType ptype = get_type_from_token(current_token.type);
-        if ((int)ptype == -1) { parser_fail("Expected param type"); }
-        eat(l, current_token.type);
+        VarType ptype = parse_type(l);
+        if (ptype.base == TYPE_UNKNOWN) { parser_fail("Expected param type"); }
 
         char *pname = NULL;
         if (current_token.type == TOKEN_IDENTIFIER) {
@@ -121,17 +155,21 @@ ASTNode* parse_top_level(Lexer *l) {
     return parse_var_decl_internal(l);
   }
 
-  VarType vtype = get_type_from_token(current_token.type);
+  // Attempt to parse type for Var Decl or Func Def
+  // We cannot easily peek ahead infinitely to distinguish "Type Name" vs "Expr".
+  // Hack: Check if current token LOOKS like a type start (keyword or known alias).
+  // But since we have aliases, we might confuse `MyVar = 10` with `MyType MyVar`.
+  // parse_type handles identifiers by checking alias table.
   
-  // If it's NOT a type, it might be a statement/expression (REPL/Script mode)
-  if ((int)vtype == -1) {
+  VarType vtype = parse_type(l);
+  
+  if (vtype.base == TYPE_UNKNOWN) {
+    // Not a type, assume statement
     return parse_single_statement_or_block(l);
   }
 
-  eat(l, current_token.type); 
-  
   if (current_token.type != TOKEN_IDENTIFIER) { 
-    parser_fail("Expected identifier");
+    parser_fail("Expected identifier after type");
   }
   char *name = current_token.text;
   current_token.text = NULL;
@@ -144,8 +182,9 @@ ASTNode* parse_top_level(Lexer *l) {
     Parameter **curr_param = &params_head;
     if (current_token.type != TOKEN_RPAREN) {
       while (1) {
-        VarType ptype = get_type_from_token(current_token.type);
-        eat(l, current_token.type);
+        VarType ptype = parse_type(l);
+        if (ptype.base == TYPE_UNKNOWN) parser_fail("Expected param type");
+        
         char *pname = current_token.text;
         current_token.text = NULL;
         eat(l, TOKEN_IDENTIFIER);
@@ -183,7 +222,7 @@ ASTNode* parse_top_level(Lexer *l) {
       eat(l, TOKEN_ASSIGN);
       init = parse_expression(l);
     } else {
-       if (vtype == VAR_AUTO) { 
+       if (vtype.base == TYPE_AUTO) { 
          parser_fail("Init required for 'let'");
        }
     }
@@ -205,14 +244,16 @@ ASTNode* parse_program(Lexer *l) {
   ASTNode **current = &head;
 
   while (current_token.type != TOKEN_EOF) {
-  ASTNode *node = parse_top_level(l);
-  if (node) {
-    *current = node;
-    while ((*current)->next) {
-      current = &(*current)->next;
+    ASTNode *node = parse_top_level(l);
+    if (node) {
+        // If head is NULL, set it. 
+        if (!*current) *current = node; 
+        
+        // Find end
+        ASTNode *iter = node;
+        while (iter->next) iter = iter->next;
+        current = &iter->next;
     }
-    current = &(*current)->next;
-  }
   }
   
   safe_free_current_token();

@@ -13,8 +13,9 @@ void codegen_assign(CodegenCtx *ctx, AssignNode *node) {
     exit(1);
   }
 
-  // 1. Determine the address to store to (ptr)
   LLVMValueRef ptr;
+  LLVMTypeRef elem_type;
+
   if (node->index) {
     // Array/Pointer Indexing
     if (!sym->is_array && LLVMGetTypeKind(sym->type) != LLVMPointerTypeKind) { 
@@ -30,35 +31,45 @@ void codegen_assign(CodegenCtx *ctx, AssignNode *node) {
 
     if (sym->is_array) {
       LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), idx };
+      // Sym->type is ArrayType. GEP2 works with it.
       ptr = LLVMBuildGEP2(ctx->builder, sym->type, sym->value, indices, 2, "elem_ptr");
+      elem_type = LLVMGetElementType(sym->type);
     } else {
+      // It is a pointer variable. sym->type is T*. sym->value is T** (alloca).
+      // Load the pointer T*
+      // sym->type is the LLVM type of the variable (T*).
+      // We need to load T* from T**.
       LLVMValueRef base = LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "ptr_base");
       LLVMValueRef indices[] = { idx };
-      ptr = LLVMBuildGEP2(ctx->builder, LLVMGetElementType(sym->type), base, indices, 1, "ptr_elem");
+      
+      // Calculate element type from vtype
+      VarType vt = sym->vtype;
+      if (vt.ptr_depth > 0) vt.ptr_depth--; // Dereference one level
+      elem_type = get_llvm_type(vt);
+
+      ptr = LLVMBuildGEP2(ctx->builder, elem_type, base, indices, 1, "ptr_elem");
     }
   } else {
     // Simple Variable
     ptr = sym->value;
+    elem_type = sym->type;
   }
 
-  // 2. Calculate Right-Hand Side
   LLVMValueRef rhs = codegen_expr(ctx, node->value);
   LLVMValueRef final_val = rhs;
 
-  // 3. Handle Compound Assignment (+=, -=, etc.)
   if (node->op != TOKEN_ASSIGN) {
-    LLVMValueRef lhs_val = LLVMBuildLoad2(ctx->builder, LLVMGetElementType(LLVMTypeOf(ptr)), ptr, "curr_val");
+    LLVMValueRef lhs_val = LLVMBuildLoad2(ctx->builder, elem_type, ptr, "curr_val");
     
     LLVMTypeRef l_type = LLVMTypeOf(lhs_val);
     LLVMTypeRef r_type = LLVMTypeOf(rhs);
     
-    // Auto-cast for float ops
     int is_float = (LLVMGetTypeKind(l_type) == LLVMDoubleTypeKind || LLVMGetTypeKind(r_type) == LLVMDoubleTypeKind ||
             LLVMGetTypeKind(l_type) == LLVMFloatTypeKind || LLVMGetTypeKind(r_type) == LLVMFloatTypeKind);
     
     if (is_float) {
-       if (LLVMGetTypeKind(l_type) != LLVMDoubleTypeKind) lhs_val = LLVMBuildUIToFP(ctx->builder, lhs_val, LLVMDoubleType(), "cast_l");
-       if (LLVMGetTypeKind(r_type) != LLVMDoubleTypeKind) rhs = LLVMBuildUIToFP(ctx->builder, rhs, LLVMDoubleType(), "cast_r");
+       if (LLVMGetTypeKind(l_type) != LLVMDoubleTypeKind) lhs_val = LLVMBuildSIToFP(ctx->builder, lhs_val, LLVMDoubleType(), "cast_l");
+       if (LLVMGetTypeKind(r_type) != LLVMDoubleTypeKind) rhs = LLVMBuildSIToFP(ctx->builder, rhs, LLVMDoubleType(), "cast_r");
     } else {
        if (LLVMGetTypeKind(l_type) != LLVMGetTypeKind(r_type)) {
          lhs_val = LLVMBuildIntCast(ctx->builder, lhs_val, LLVMInt32Type(), "cast_l");
@@ -97,17 +108,16 @@ void codegen_assign(CodegenCtx *ctx, AssignNode *node) {
       default: break;
     }
 
-    // Cast back to variable's storage type
-    LLVMTypeRef storage_type = LLVMGetElementType(LLVMTypeOf(ptr));
-    if (LLVMTypeOf(final_val) != storage_type) {
-       if (LLVMGetTypeKind(storage_type) == LLVMIntegerTypeKind) {
-         if (is_float) final_val = LLVMBuildFPToUI(ctx->builder, final_val, storage_type, "cast_back");
-         else final_val = LLVMBuildIntCast(ctx->builder, final_val, storage_type, "cast_back");
+    if (LLVMTypeOf(final_val) != elem_type) {
+       if (LLVMGetTypeKind(elem_type) == LLVMIntegerTypeKind) {
+         if (is_float) final_val = LLVMBuildFPToSI(ctx->builder, final_val, elem_type, "cast_back");
+         else final_val = LLVMBuildIntCast(ctx->builder, final_val, elem_type, "cast_back");
+       } else if (LLVMGetTypeKind(elem_type) == LLVMDoubleTypeKind || LLVMGetTypeKind(elem_type) == LLVMFloatTypeKind) {
+         final_val = LLVMBuildFPCast(ctx->builder, final_val, elem_type, "cast_back_float");
        }
     }
   }
 
-  // 4. Store the result
   LLVMBuildStore(ctx->builder, final_val, ptr);
 }
 
@@ -116,20 +126,18 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
   LLVMTypeRef type = NULL;
 
   if (node->is_array) {
-    LLVMTypeRef elem_type = (node->var_type == VAR_AUTO) ? LLVMInt32Type() : get_llvm_type(node->var_type);
+    LLVMTypeRef elem_type = (node->var_type.base == TYPE_AUTO) ? LLVMInt32Type() : get_llvm_type(node->var_type);
     
     int size = 0;
     if (node->array_size) {
       if (node->array_size->type == NODE_LITERAL) {
        size = ((LiteralNode*)node->array_size)->val.int_val;
-      } else {
-        size = 10; 
-      }
+      } else { size = 10; }
     } else {
       if (node->initializer && node->initializer->type == NODE_ARRAY_LIT) {
        ASTNode *el = ((ArrayLitNode*)node->initializer)->elements;
        while(el) { size++; el = el->next; }
-      } else if (node->initializer && node->initializer->type == NODE_LITERAL && ((LiteralNode*)node->initializer)->var_type == VAR_STRING) {
+      } else if (node->initializer && node->initializer->type == NODE_LITERAL && ((LiteralNode*)node->initializer)->var_type.base == TYPE_STRING) {
         size = strlen(((LiteralNode*)node->initializer)->val.str_val) + 1;
         elem_type = LLVMInt8Type();
       } else {
@@ -152,7 +160,7 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
          idx++;
          el = el->next;
        }
-      } else if (node->initializer->type == NODE_LITERAL && ((LiteralNode*)node->initializer)->var_type == VAR_STRING) {
+      } else if (node->initializer->type == NODE_LITERAL && ((LiteralNode*)node->initializer)->var_type.base == TYPE_STRING) {
        char *str = ((LiteralNode*)node->initializer)->val.str_val;
        for (int i = 0; i < size; i++) {
          LLVMValueRef val = LLVMConstInt(LLVMInt8Type(), str[i], 0); 
@@ -162,9 +170,7 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
        }
       } else {
        LLVMValueRef val = codegen_expr(ctx, node->initializer);
-       LLVMTypeRef val_type = LLVMTypeOf(val);
-       
-       if (LLVMGetTypeKind(val_type) == LLVMPointerTypeKind && 
+       if (LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind && 
          LLVMGetTypeKind(elem_type) == LLVMIntegerTypeKind && 
          LLVMGetIntTypeWidth(elem_type) == 8) {
          
@@ -174,10 +180,8 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
            LLVMTypeRef ftype = LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), args, 2, false);
            strcpy_func = LLVMAddFunction(ctx->module, "strcpy", ftype);
          }
-         
          LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), LLVMConstInt(LLVMInt64Type(), 0, 0) };
          LLVMValueRef dest = LLVMBuildGEP2(ctx->builder, type, alloca, indices, 2, "dest_ptr");
-         
          LLVMValueRef args[] = { dest, val };
          LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(strcpy_func), strcpy_func, args, 2, "");
        }
@@ -187,17 +191,24 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
   } else {
     LLVMValueRef init_val = codegen_expr(ctx, node->initializer);
     
-    if (node->var_type == VAR_AUTO) {
-    type = LLVMTypeOf(init_val);
+    if (node->var_type.base == TYPE_AUTO) {
+      type = LLVMTypeOf(init_val);
     } else {
-    type = get_llvm_type(node->var_type);
+      type = get_llvm_type(node->var_type);
     }
     
     alloca = LLVMBuildAlloca(ctx->builder, type, node->name);
+    
+    if (LLVMGetTypeKind(type) != LLVMGetTypeKind(LLVMTypeOf(init_val))) {
+         if (LLVMGetTypeKind(type) == LLVMIntegerTypeKind && LLVMGetTypeKind(LLVMTypeOf(init_val)) == LLVMIntegerTypeKind) {
+             init_val = LLVMBuildIntCast(ctx->builder, init_val, type, "init_cast");
+         }
+    }
+    
     LLVMBuildStore(ctx->builder, init_val, alloca);
   }
 
-  add_symbol(ctx, node->name, alloca, type, node->is_array, node->is_mutable);
+  add_symbol(ctx, node->name, alloca, type, node->var_type, node->is_array, node->is_mutable);
 }
 
 void codegen_return(CodegenCtx *ctx, ReturnNode *node) {
@@ -222,8 +233,8 @@ void codegen_node(CodegenCtx *ctx, ASTNode *node) {
   else if (node->type == NODE_ARRAY_ACCESS) codegen_expr(ctx, node); 
   else if (node->type == NODE_BREAK) codegen_break(ctx);
   else if (node->type == NODE_CONTINUE) codegen_continue(ctx);
-  else if (node->type == NODE_INC_DEC) codegen_expr(ctx, node); // Inc/Dec as statement
-  else if (node->type == NODE_LINK) { /* Ignore */ }
+  else if (node->type == NODE_INC_DEC) codegen_expr(ctx, node); 
+  else if (node->type == NODE_LINK) { }
   node = node->next;
   }
 }

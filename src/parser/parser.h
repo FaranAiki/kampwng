@@ -8,13 +8,13 @@
 
 typedef enum {
   NODE_ROOT,
-  NODE_FUNC_DEF,  // type name(args) { body }
-  NODE_CALL,    // name(args)
-  NODE_RETURN,  // return x;
+  NODE_FUNC_DEF,  
+  NODE_CALL,    
+  NODE_RETURN,  
   NODE_BREAK,
   NODE_CONTINUE,
-  NODE_LOOP,    // loop N { ... }
-  NODE_WHILE,   // while (once) cond { ... }
+  NODE_LOOP,    
+  NODE_WHILE,   
   NODE_IF,
   NODE_VAR_DECL,  
   NODE_ASSIGN,  
@@ -22,21 +22,27 @@ typedef enum {
   NODE_BINARY_OP,
   NODE_UNARY_OP, 
   NODE_LITERAL,
-  NODE_ARRAY_LIT, // [1, 2, 3]
-  NODE_ARRAY_ACCESS, // t[0]
-  NODE_INC_DEC, // ++x, x--
-  NODE_LINK // link m
+  NODE_ARRAY_LIT, 
+  NODE_ARRAY_ACCESS, 
+  NODE_INC_DEC, 
+  NODE_LINK 
 } NodeType;
 
 typedef enum {
-  VAR_VOID,
-  VAR_INT,
-  VAR_CHAR,
-  VAR_BOOL,
-  VAR_FLOAT,
-  VAR_DOUBLE,
-  VAR_STRING,
-  VAR_AUTO // For 'let' type inference
+  TYPE_VOID,
+  TYPE_INT,
+  TYPE_CHAR,
+  TYPE_BOOL,
+  TYPE_FLOAT,
+  TYPE_DOUBLE,
+  TYPE_STRING,
+  TYPE_AUTO,
+  TYPE_UNKNOWN
+} BaseType;
+
+typedef struct {
+  BaseType base;
+  int ptr_depth; // 0 = val, 1 = *val, 2 = **val
 } VarType;
 
 typedef struct ASTNode {
@@ -56,13 +62,13 @@ typedef struct {
   VarType ret_type;
   Parameter *params;
   ASTNode *body; // NULL if extern (FFI)
-  int is_varargs; // 1 if ... matches at end of params
+  int is_varargs; 
 } FuncDefNode;
 
 typedef struct {
   ASTNode base;
   char *name;
-  ASTNode *args; // Linked list of expression nodes
+  ASTNode *args; 
 } CallNode;
 
 typedef struct {
@@ -88,7 +94,7 @@ typedef struct {
   ASTNode base;
   ASTNode *condition;
   ASTNode *body;
-  int is_do_while; // 1 if "while once" (do-while), 0 if "while"
+  int is_do_while; 
 } WhileNode;
 
 typedef struct {
@@ -103,25 +109,25 @@ typedef struct {
   VarType var_type;
   char *name;
   ASTNode *initializer;
-  int is_mutable; // 1 = mut, 0 = imut
-  int is_array;   // 1 = yes
-  ASTNode *array_size; // Expression for size, or NULL if inferred or not array
+  int is_mutable; 
+  int is_array;   
+  ASTNode *array_size; 
 } VarDeclNode;
 
 typedef struct {
   ASTNode base;
   char *name;
   ASTNode *value;
-  ASTNode *index; // NULL if normal assignment, not NULL if array[index] = value
-  int op; // TOKEN_ASSIGN, TOKEN_PLUS_ASSIGN, etc.
+  ASTNode *index; 
+  int op; 
 } AssignNode; 
 
 typedef struct {
   ASTNode base;
   char *name;
-  ASTNode *index; // NULL if variable, else array index
-  int is_prefix; // 1 for ++x, 0 for x++
-  int op; // TOKEN_INCREMENT or TOKEN_DECREMENT
+  ASTNode *index; 
+  int is_prefix; 
+  int op; 
 } IncDecNode;
 
 typedef struct {
@@ -137,7 +143,7 @@ typedef struct {
 
 typedef struct {
   ASTNode base;
-  ASTNode *elements; // Linked list
+  ASTNode *elements; 
 } ArrayLitNode;
 
 typedef struct {
@@ -161,7 +167,6 @@ typedef struct {
 typedef struct {
   ASTNode base;
   VarType var_type;
-  // Union for value storage
   union {
     int int_val;
     double double_val;

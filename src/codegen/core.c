@@ -8,6 +8,7 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
     ctx->module = module;
     ctx->builder = builder;
     ctx->symbols = NULL;
+    ctx->functions = NULL;
     ctx->current_loop = NULL;
 
     // printf
@@ -34,11 +35,12 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
     ctx->input_func = generate_input_func(module, builder, malloc_func, getchar_func);
 }
 
-void add_symbol(CodegenCtx *ctx, const char *name, LLVMValueRef val, LLVMTypeRef type, int is_array, int is_mut) {
+void add_symbol(CodegenCtx *ctx, const char *name, LLVMValueRef val, LLVMTypeRef type, VarType vtype, int is_array, int is_mut) {
   Symbol *s = malloc(sizeof(Symbol));
   s->name = strdup(name);
   s->value = val;
   s->type = type;
+  s->vtype = vtype;
   s->is_array = is_array;
   s->is_mutable = is_mut;
   s->next = ctx->symbols;
@@ -54,17 +56,43 @@ Symbol* find_symbol(CodegenCtx *ctx, const char *name) {
   return NULL;
 }
 
+void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type) {
+    FuncSymbol *s = malloc(sizeof(FuncSymbol));
+    s->name = strdup(name);
+    s->ret_type = ret_type;
+    s->next = ctx->functions;
+    ctx->functions = s;
+}
+
+FuncSymbol* find_func_symbol(CodegenCtx *ctx, const char *name) {
+    FuncSymbol *curr = ctx->functions;
+    while(curr) {
+        if (strcmp(curr->name, name) == 0) return curr;
+        curr = curr->next;
+    }
+    return NULL;
+}
+
 LLVMTypeRef get_llvm_type(VarType t) {
-  switch (t) {
-    case VAR_INT: return LLVMInt32Type();
-    case VAR_CHAR: return LLVMInt8Type();
-    case VAR_BOOL: return LLVMInt1Type();
-    case VAR_FLOAT: return LLVMFloatType();
-    case VAR_DOUBLE: return LLVMDoubleType();
-    case VAR_VOID: return LLVMVoidType();
-    case VAR_STRING: return LLVMPointerType(LLVMInt8Type(), 0);
-    default: return LLVMInt32Type();
+  LLVMTypeRef base_type;
+  
+  switch (t.base) {
+    case TYPE_INT: base_type = LLVMInt32Type(); break;
+    case TYPE_CHAR: base_type = LLVMInt8Type(); break;
+    case TYPE_BOOL: base_type = LLVMInt1Type(); break;
+    case TYPE_FLOAT: base_type = LLVMFloatType(); break;
+    case TYPE_DOUBLE: base_type = LLVMDoubleType(); break;
+    case TYPE_VOID: base_type = LLVMVoidType(); break;
+    case TYPE_STRING: base_type = LLVMPointerType(LLVMInt8Type(), 0); break;
+    default: base_type = LLVMInt32Type(); break;
   }
+  
+  // Wrap in pointers
+  for (int i=0; i<t.ptr_depth; i++) {
+    base_type = LLVMPointerType(base_type, 0);
+  }
+  
+  return base_type;
 }
 
 // Helper to generate the input function body
@@ -130,6 +158,16 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name) {
 
   CodegenCtx ctx;
   codegen_init_ctx(&ctx, module, builder);
+  
+  // Pre-pass: Register functions
+  ASTNode *iter = root;
+  while(iter) {
+      if (iter->type == NODE_FUNC_DEF) {
+          FuncDefNode *fd = (FuncDefNode*)iter;
+          add_func_symbol(&ctx, fd->name, fd->ret_type);
+      }
+      iter = iter->next;
+  }
 
   // 1. Generate Explicit Functions First
   ASTNode *curr = root;
@@ -178,6 +216,9 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name) {
   
   Symbol *s = ctx.symbols;
   while(s) { Symbol *next = s->next; free(s->name); free(s); s = next; }
+  
+  FuncSymbol *f = ctx.functions;
+  while(f) { FuncSymbol *next = f->next; free(f->name); free(f); f = next; }
 
   return module;
 }

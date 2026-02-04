@@ -5,6 +5,33 @@
 Token current_token = {TOKEN_UNKNOWN, NULL, 0, 0.0};
 jmp_buf *parser_env = NULL;
 
+// Type Aliases Linked List
+typedef struct TypeAlias {
+  char *name;
+  VarType type;
+  struct TypeAlias *next;
+} TypeAlias;
+
+TypeAlias *alias_head = NULL;
+
+void register_alias(const char *name, VarType type) {
+  TypeAlias *a = malloc(sizeof(TypeAlias));
+  a->name = strdup(name);
+  a->type = type;
+  a->next = alias_head;
+  alias_head = a;
+}
+
+VarType find_alias(const char *name) {
+  TypeAlias *curr = alias_head;
+  while(curr) {
+    if (strcmp(curr->name, name) == 0) return curr->type;
+    curr = curr->next;
+  }
+  VarType t = {TYPE_UNKNOWN, 0};
+  return t;
+}
+
 void parser_set_recovery(jmp_buf *env) {
     parser_env = env;
 }
@@ -34,6 +61,7 @@ void parser_reset(void) {
     current_token.line = 0;
     current_token.col = 0;
     parser_env = NULL;
+    // Note: We do NOT clear aliases here to persist them in REPL
 }
 
 void eat(Lexer *l, TokenType type) {
@@ -48,17 +76,38 @@ void eat(Lexer *l, TokenType type) {
   }
 }
 
-VarType get_type_from_token(TokenType t) {
-  switch(t) {
-    case TOKEN_KW_INT: return VAR_INT;
-    case TOKEN_KW_CHAR: return VAR_CHAR;
-    case TOKEN_KW_BOOL: return VAR_BOOL;
-    case TOKEN_KW_SINGLE: return VAR_FLOAT;
-    case TOKEN_KW_DOUBLE: return VAR_DOUBLE;
-    case TOKEN_KW_VOID: return VAR_VOID;
-    case TOKEN_KW_LET: return VAR_AUTO;
-    default: return -1;
+// Parses type, including pointers (int*) and aliases
+VarType parse_type(Lexer *l) {
+  VarType t = {TYPE_UNKNOWN, 0};
+  
+  if (current_token.type == TOKEN_IDENTIFIER) {
+    t = find_alias(current_token.text);
+    if (t.base == TYPE_UNKNOWN) {
+      // Not an alias
+      return t;
+    }
+    eat(l, TOKEN_IDENTIFIER);
+  } else {
+    switch(current_token.type) {
+      case TOKEN_KW_INT: t.base = TYPE_INT; break;
+      case TOKEN_KW_CHAR: t.base = TYPE_CHAR; break;
+      case TOKEN_KW_BOOL: t.base = TYPE_BOOL; break;
+      case TOKEN_KW_SINGLE: t.base = TYPE_FLOAT; break;
+      case TOKEN_KW_DOUBLE: t.base = TYPE_DOUBLE; break;
+      case TOKEN_KW_VOID: t.base = TYPE_VOID; break;
+      case TOKEN_KW_LET: t.base = TYPE_AUTO; break;
+      default: return t; // Unknown
+    }
+    eat(l, current_token.type);
   }
+
+  // Handle Pointers (int*, int**)
+  while (current_token.type == TOKEN_STAR) {
+    t.ptr_depth++;
+    eat(l, TOKEN_STAR);
+  }
+  
+  return t;
 }
 
 char* read_import_file(const char* filename) {

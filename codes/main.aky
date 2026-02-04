@@ -1,10 +1,14 @@
 // TODO: raise error for undefined variable
 
-int main() {
-  let t = 1;
-  
-  t += 1;
+// import "lib/cstring.hky";
 
-  print "%d\n", t;
+define i64 as int;
+define pointer as k;
+define ref as *;
+
+int main() {
+  int ref x = 0;
+
+  print "%d\n", x;
 }
 

@@ -9,11 +9,19 @@
 typedef struct Symbol {
   char *name;
   LLVMValueRef value;
-  LLVMTypeRef type;
+  LLVMTypeRef type; // LLVM type
+  VarType vtype;    // AST type (for pointer arithmetic/deref)
   int is_array;
   int is_mutable;
   struct Symbol *next;
 } Symbol;
+
+// Registry for function return types
+typedef struct FuncSymbol {
+    char *name;
+    VarType ret_type;
+    struct FuncSymbol *next;
+} FuncSymbol;
 
 typedef struct LoopContext {
   LLVMBasicBlockRef continue_target;
@@ -25,7 +33,8 @@ typedef struct {
   LLVMModuleRef module;
   LLVMBuilderRef builder;
   Symbol *symbols;
-  LoopContext *current_loop; // Stack for nested loops
+  FuncSymbol *functions; // New
+  LoopContext *current_loop; 
   
   LLVMTypeRef printf_type;
   LLVMValueRef printf_func;
@@ -39,9 +48,13 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
 LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name);
 
 // --- Shared Internal ---
-void add_symbol(CodegenCtx *ctx, const char *name, LLVMValueRef val, LLVMTypeRef type, int is_array, int is_mut);
+void add_symbol(CodegenCtx *ctx, const char *name, LLVMValueRef val, LLVMTypeRef type, VarType vtype, int is_array, int is_mut);
 Symbol* find_symbol(CodegenCtx *ctx, const char *name);
+void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type);
+FuncSymbol* find_func_symbol(CodegenCtx *ctx, const char *name);
+
 LLVMTypeRef get_llvm_type(VarType t);
+VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node);
 
 // --- Dispatchers ---
 LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node);

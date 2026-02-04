@@ -308,6 +308,9 @@ Token lexer_next(Lexer *l) {
     else if (strcmp(word, "double") == 0) t.type = TOKEN_KW_DOUBLE;
     else if (strcmp(word, "let") == 0) t.type = TOKEN_KW_LET;
     
+    else if (strcmp(word, "define") == 0) t.type = TOKEN_DEFINE;
+    else if (strcmp(word, "as") == 0) t.type = TOKEN_AS;
+    
     else if (strcmp(word, "mut") == 0) t.type = TOKEN_KW_MUT;
     else if (strcmp(word, "mutable") == 0) t.type = TOKEN_KW_MUT;
     else if (strcmp(word, "imut") == 0) t.type = TOKEN_KW_IMUT;

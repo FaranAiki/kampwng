@@ -1,0 +1,46 @@
+# Node Dependencies
+node_modules/
+
+# Build artifacts (Node/C)
+build/
+Release/
+Debug/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.node
+
+target/
+
+__pycache__/
+*.egg-info/
+dist/
+
+# Mac OS Metadata
+.DS_Store
+
+# Text Editor / IDE folders (Optional)
+.idea/
+.vscode/
+*.swp
+
+src/
+go.mod
+
+# Package
+package-lock.json
+package.json
+
+# Swift (? what the)
+Package.swift 
+
+bindings/
+binding.gyp
+
+Cargo.toml
+CMakeLists.txt 
+pyproject.toml 
+setup.py
+.editorconfig

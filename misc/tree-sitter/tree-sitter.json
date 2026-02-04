@@ -1,0 +1,42 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "alkyl",
+      "camelcase": "Alkyl",
+      "title": "Alkyl",
+      "scope": "source.alkyl",
+      "file-types": [
+        "aky"
+      ],
+      "injection-regex": "^alkyl$",
+      "class-name": "TreeSitterAlkyl"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "A programming language using LLVM IR",
+    "authors": [
+      {
+        "name": "Muhammad Faran Aiki",
+        "email": "faran.aiki.business@gmail.com",
+        "url": "https://faranaiki.id"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/FaranAiki/alkyl",
+      "funding": ""
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "java": false,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true,
+    "zig": false
+  }
+}

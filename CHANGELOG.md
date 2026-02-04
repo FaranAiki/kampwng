@@ -36,3 +36,11 @@ Mutable and arrays
 * structured the parser as it was too big 
 * added misc folder so that it supports for syntax highlighting
 * some hky (hacky) stuff unimplemented as there is no pointer here
+* REPL not crashing
+
+## 0.0.7 
+* pointer * and &
+* += -= good 
+* primitive misc folder for tree-sitter
+* VarType opaque pointers
+* primitive define only with type (define name as type)

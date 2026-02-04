@@ -41,6 +41,8 @@ typedef enum {
   TOKEN_RETURN,
   TOKEN_BREAK,
   TOKEN_CONTINUE,
+  TOKEN_DEFINE, // New: define
+  TOKEN_AS,     // New: as
 
   TOKEN_KW_VOID,   
   TOKEN_KW_INT,  
