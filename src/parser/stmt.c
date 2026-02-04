@@ -33,18 +33,29 @@ ASTNode* parse_continue(Lexer *l) {
 }
 
 ASTNode* parse_assignment_or_call(Lexer *l) {
+  // 1. Parse Identifier
   char *name = current_token.text;
   current_token.text = NULL; 
   eat(l, TOKEN_IDENTIFIER);
   
-  ASTNode *index_expr = NULL;
+  // Base node is VarRef
+  ASTNode *node = calloc(1, sizeof(VarRefNode));
+  ((VarRefNode*)node)->base.type = NODE_VAR_REF;
+  ((VarRefNode*)node)->name = name;
 
-  if (current_token.type == TOKEN_LBRACKET) {
-    eat(l, TOKEN_LBRACKET);
-    index_expr = parse_expression(l);
-    eat(l, TOKEN_RBRACKET);
+  // 2. Check for Standard Call (start with parens)
+  if (current_token.type == TOKEN_LPAREN) {
+      char *fname = ((VarRefNode*)node)->name;
+      // node->name is now owned by fname. free container.
+      free(node); 
+      node = parse_call(l, fname);
   }
 
+  // 3. Apply Postfix Operations ( .member, [index], ++, -- )
+  // This handles chains like: x.y.z, x[i], x.method(), x++
+  node = parse_postfix(l, node);
+
+  // 4. Check for Assignment
   int is_assign = 0;
   switch (current_token.type) {
       case TOKEN_ASSIGN:
@@ -70,86 +81,60 @@ ASTNode* parse_assignment_or_call(Lexer *l) {
     ASTNode *expr = parse_expression(l);
     eat(l, TOKEN_SEMICOLON);
 
-    AssignNode *node = calloc(1, sizeof(AssignNode));
-    node->base.type = NODE_ASSIGN;
-    node->name = name;
-    node->value = expr;
-    node->index = index_expr;
-    node->op = op;
-    return (ASTNode*)node;
+    AssignNode *an = calloc(1, sizeof(AssignNode));
+    an->base.type = NODE_ASSIGN;
+    an->value = expr;
+    an->op = op;
+    
+    // Assign target
+    if (node->type == NODE_VAR_REF) {
+        an->name = ((VarRefNode*)node)->name;
+        ((VarRefNode*)node)->name = NULL; free(node);
+    } else {
+        // Generic l-value (MemberAccess, ArrayAccess)
+        an->target = node; 
+    }
+    return (ASTNode*)an;
   }
   
-  if (index_expr) {
-      if (current_token.type == TOKEN_INCREMENT || current_token.type == TOKEN_DECREMENT) {
-          int inc_op = current_token.type;
-          eat(l, inc_op);
-          eat(l, TOKEN_SEMICOLON);
+  // 5. Check for Paren-less Call (Only valid on simple identifiers for now)
+  // e.g. print "hello";
+  if (node->type == NODE_VAR_REF) {
+      TokenType t = current_token.type;
+      int is_arg_start = (t == TOKEN_NUMBER || t == TOKEN_FLOAT || t == TOKEN_STRING || 
+            t == TOKEN_CHAR_LIT || t == TOKEN_TRUE || t == TOKEN_FALSE || 
+            t == TOKEN_IDENTIFIER || t == TOKEN_LPAREN || t == TOKEN_LBRACKET || 
+            t == TOKEN_NOT || t == TOKEN_BIT_NOT || t == TOKEN_MINUS || t == TOKEN_PLUS || t == TOKEN_STAR || t == TOKEN_AND || t == TOKEN_TYPEOF);
+
+      if (is_arg_start) {
+          char *fname = ((VarRefNode*)node)->name;
+          free(node); // convert to call
           
-          IncDecNode *node = calloc(1, sizeof(IncDecNode));
-          node->base.type = NODE_INC_DEC;
-          node->name = name;
-          node->index = index_expr;
-          node->is_prefix = 0;
-          node->op = inc_op;
-          return (ASTNode*)node;
-      }
-      parser_fail("Expected assignment after array index");
-  }
-
-  if (current_token.type == TOKEN_LPAREN) {
-    ASTNode *call = parse_call(l, name);
-    eat(l, TOKEN_SEMICOLON);
-    return call;
-  }
-  
-  if (current_token.type == TOKEN_INCREMENT || current_token.type == TOKEN_DECREMENT) {
-      int inc_op = current_token.type;
-      eat(l, inc_op);
-      eat(l, TOKEN_SEMICOLON);
-      
-      IncDecNode *node = calloc(1, sizeof(IncDecNode));
-      node->base.type = NODE_INC_DEC;
-      node->name = name;
-      node->index = NULL;
-      node->is_prefix = 0;
-      node->op = inc_op;
-      return (ASTNode*)node;
-  }
-  
-  // PAREN-LESS CALL LOGIC (Restored)
-  TokenType t = current_token.type;
-  int is_arg_start = (t == TOKEN_NUMBER || t == TOKEN_FLOAT || t == TOKEN_STRING || 
-        t == TOKEN_CHAR_LIT || t == TOKEN_TRUE || t == TOKEN_FALSE || 
-        t == TOKEN_IDENTIFIER || t == TOKEN_LPAREN || t == TOKEN_LBRACKET || 
-        t == TOKEN_NOT || t == TOKEN_BIT_NOT || t == TOKEN_MINUS || t == TOKEN_PLUS || t == TOKEN_STAR || t == TOKEN_AND);
-
-  if (is_arg_start) {
-      ASTNode *args_head = NULL;
-      ASTNode **curr_arg = &args_head;
-      
-      *curr_arg = parse_expression(l);
-      curr_arg = &(*curr_arg)->next;
-
-      while (current_token.type == TOKEN_COMMA) {
-          eat(l, TOKEN_COMMA);
+          ASTNode *args_head = NULL;
+          ASTNode **curr_arg = &args_head;
+          
           *curr_arg = parse_expression(l);
           curr_arg = &(*curr_arg)->next;
-      }
-      eat(l, TOKEN_SEMICOLON);
 
-      CallNode *node = calloc(1, sizeof(CallNode));
-      node->base.type = NODE_CALL;
-      node->name = name;
-      node->args = args_head;
-      return (ASTNode*)node;
+          while (current_token.type == TOKEN_COMMA) {
+              eat(l, TOKEN_COMMA);
+              *curr_arg = parse_expression(l);
+              curr_arg = &(*curr_arg)->next;
+          }
+          eat(l, TOKEN_SEMICOLON);
+
+          CallNode *cn = calloc(1, sizeof(CallNode));
+          cn->base.type = NODE_CALL;
+          cn->name = fname;
+          cn->args = args_head;
+          return (ASTNode*)cn;
+      }
   }
 
+  // 6. Statement End
   if (current_token.type == TOKEN_SEMICOLON) {
       eat(l, TOKEN_SEMICOLON);
-      VarRefNode *node = calloc(1, sizeof(VarRefNode));
-      node->base.type = NODE_VAR_REF;
-      node->name = name;
-      return (ASTNode*)node;
+      return node; // Can be a Call, MethodCall, IncDec, or just VarRef expression statement
   }
   
   parser_fail("Expected assignment, function call, or increment/decrement");

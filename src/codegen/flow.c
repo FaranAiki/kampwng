@@ -1,6 +1,7 @@
 #include "codegen.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 void push_loop_ctx(CodegenCtx *ctx, LLVMBasicBlockRef cont, LLVMBasicBlockRef brk) {
   LoopContext *lc = malloc(sizeof(LoopContext));
@@ -22,15 +23,26 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
   Parameter *p = node->params;
   while(p) { param_count++; p = p->next; }
   
-  LLVMTypeRef *param_types = malloc(sizeof(LLVMTypeRef) * param_count);
+  // Method 'this' injection
+  int total_params = param_count;
+  if (node->class_name) total_params++;
+  
+  LLVMTypeRef *param_types = malloc(sizeof(LLVMTypeRef) * total_params);
+  int idx = 0;
+  
+  if (node->class_name) {
+      ClassInfo *ci = find_class(ctx, node->class_name);
+      param_types[idx++] = LLVMPointerType(ci->struct_type, 0);
+  }
+  
   p = node->params;
-  for(int i=0; i<param_count; i++) {
-    param_types[i] = get_llvm_type(ctx, p->type);
+  for(; idx<total_params; idx++) {
+    param_types[idx] = get_llvm_type(ctx, p->type);
     p = p->next;
   }
   
   LLVMTypeRef ret_type = get_llvm_type(ctx, node->ret_type);
-  LLVMTypeRef func_type = LLVMFunctionType(ret_type, param_types, param_count, node->is_varargs); 
+  LLVMTypeRef func_type = LLVMFunctionType(ret_type, param_types, total_params, node->is_varargs); 
   LLVMValueRef func = LLVMAddFunction(ctx->module, node->name, func_type);
   free(param_types);
   
@@ -42,9 +54,21 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
   
   Symbol *saved_scope = ctx->symbols;
   
+  idx = 0;
+  if (node->class_name) {
+      LLVMValueRef this_val = LLVMGetParam(func, idx);
+      LLVMTypeRef this_type = LLVMPointerType(find_class(ctx, node->class_name)->struct_type, 0);
+      LLVMValueRef alloca = LLVMBuildAlloca(ctx->builder, this_type, "this");
+      LLVMBuildStore(ctx->builder, this_val, alloca);
+      
+      VarType this_vt = {TYPE_CLASS, 1, strdup(node->class_name)}; // this is T*
+      add_symbol(ctx, "this", alloca, this_type, this_vt, 0, 0);
+      idx++;
+  }
+  
   p = node->params;
-  for(int i=0; i<param_count; i++) {
-    LLVMValueRef arg_val = LLVMGetParam(func, i);
+  for(; idx<total_params; idx++) {
+    LLVMValueRef arg_val = LLVMGetParam(func, idx);
     LLVMTypeRef type = get_llvm_type(ctx, p->type);
     LLVMValueRef alloca = LLVMBuildAlloca(ctx->builder, type, p->name);
     LLVMBuildStore(ctx->builder, arg_val, alloca);

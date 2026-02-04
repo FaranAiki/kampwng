@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 
+// Forward declarations
+int is_typename(const char *name); // from core.c
+
 ASTNode* parse_call(Lexer *l, char *name) {
   eat(l, TOKEN_LPAREN);
   ASTNode *args_head = NULL;
@@ -33,28 +36,74 @@ ASTNode* parse_postfix(Lexer *l, ASTNode *node) {
             current_token.text = NULL;
             eat(l, TOKEN_IDENTIFIER);
             
-            MemberAccessNode *ma = calloc(1, sizeof(MemberAccessNode));
-            ma->base.type = NODE_MEMBER_ACCESS;
-            ma->object = node;
-            ma->member_name = member;
-            node = (ASTNode*)ma;
+            // Check for method call immediately: .method(
+            if (current_token.type == TOKEN_LPAREN) {
+                eat(l, TOKEN_LPAREN);
+                ASTNode *args_head = NULL;
+                ASTNode **curr_arg = &args_head;
+                if (current_token.type != TOKEN_RPAREN) {
+                    *curr_arg = parse_expression(l);
+                    curr_arg = &(*curr_arg)->next;
+                    while (current_token.type == TOKEN_COMMA) {
+                        eat(l, TOKEN_COMMA);
+                        *curr_arg = parse_expression(l);
+                        curr_arg = &(*curr_arg)->next;
+                    }
+                }
+                eat(l, TOKEN_RPAREN);
+                
+                MethodCallNode *mc = calloc(1, sizeof(MethodCallNode));
+                mc->base.type = NODE_METHOD_CALL;
+                mc->object = node;
+                mc->method_name = member;
+                mc->args = args_head;
+                node = (ASTNode*)mc;
+            } else {
+                MemberAccessNode *ma = calloc(1, sizeof(MemberAccessNode));
+                ma->base.type = NODE_MEMBER_ACCESS;
+                ma->object = node;
+                ma->member_name = member;
+                node = (ASTNode*)ma;
+            }
         } 
         else if (current_token.type == TOKEN_LBRACKET) {
             eat(l, TOKEN_LBRACKET);
-            ASTNode *index = parse_expression(l);
-            eat(l, TOKEN_RBRACKET);
             
-            if (node->type == NODE_VAR_REF) {
-                ArrayAccessNode *aa = calloc(1, sizeof(ArrayAccessNode));
-                aa->base.type = NODE_ARRAY_ACCESS;
-                aa->name = ((VarRefNode*)node)->name;
-                ((VarRefNode*)node)->name = NULL; free(node);
-                aa->index = index;
-                node = (ASTNode*)aa;
-            } else if (node->type == NODE_MEMBER_ACCESS) {
-                parser_fail("Complex array indexing on members not yet supported");
+            // Check for Trait Access: [ClassName]
+            if (current_token.type == TOKEN_IDENTIFIER && is_typename(current_token.text)) {
+                // It is likely a trait access if we assume types are only used for this inside [] here
+                // Note: This prevents using variables with same name as classes as indices.
+                // Assuming Type names are distinct enough or context implies it.
+                char *trait_name = strdup(current_token.text);
+                eat(l, TOKEN_IDENTIFIER);
+                eat(l, TOKEN_RBRACKET);
+                
+                TraitAccessNode *ta = calloc(1, sizeof(TraitAccessNode));
+                ta->base.type = NODE_TRAIT_ACCESS;
+                ta->object = node;
+                ta->trait_name = trait_name;
+                node = (ASTNode*)ta;
             } else {
-                parser_fail("Expected variable for array index");
+                // Array Access
+                ASTNode *index = parse_expression(l);
+                eat(l, TOKEN_RBRACKET);
+                
+                if (node->type == NODE_VAR_REF) {
+                    ArrayAccessNode *aa = calloc(1, sizeof(ArrayAccessNode));
+                    aa->base.type = NODE_ARRAY_ACCESS;
+                    aa->name = ((VarRefNode*)node)->name;
+                    ((VarRefNode*)node)->name = NULL; free(node);
+                    aa->index = index;
+                    node = (ASTNode*)aa;
+                } else {
+                    // Generic array access support is limited in current AST
+                    // Fallback: Parser Error or hack
+                    // For now, allow it but warn, or strictly require var ref
+                    // Current codegen only supports NODE_ARRAY_ACCESS with name.
+                    // To support expr[index], we need generic node.
+                    // Keeping constraint for now as per previous iterations.
+                    parser_fail("Expected variable for array index (generic indexing pending)");
+                }
             }
         }
         else if (current_token.type == TOKEN_INCREMENT || current_token.type == TOKEN_DECREMENT) {
@@ -82,7 +131,6 @@ ASTNode* parse_factor(Lexer *l) {
       eat(l, TOKEN_LPAREN);
       ASTNode *expr = parse_expression(l);
       eat(l, TOKEN_RPAREN);
-      
       UnaryOpNode *u = calloc(1, sizeof(UnaryOpNode));
       u->base.type = NODE_TYPEOF;
       u->operand = expr;
@@ -184,7 +232,6 @@ ASTNode* parse_unary(Lexer *l) {
       int op = current_token.type;
       eat(l, op);
       ASTNode *operand = parse_unary(l);
-      
       IncDecNode *node = calloc(1, sizeof(IncDecNode));
       node->base.type = NODE_INC_DEC;
       node->target = operand;

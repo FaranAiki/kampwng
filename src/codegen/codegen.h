@@ -27,12 +27,13 @@ typedef struct ClassMember {
     LLVMTypeRef type;
     int index;
     VarType vtype;
-    ASTNode *init_expr; // For default values
+    ASTNode *init_expr; 
     struct ClassMember *next;
 } ClassMember;
 
 typedef struct ClassInfo {
     char *name;
+    char *parent_name; // Inheritance
     LLVMTypeRef struct_type;
     ClassMember *members;
     struct ClassInfo *next;
@@ -49,7 +50,7 @@ typedef struct {
   LLVMBuilderRef builder;
   Symbol *symbols;
   FuncSymbol *functions;
-  ClassInfo *classes; // New: Class Registry
+  ClassInfo *classes; 
   LoopContext *current_loop; 
   
   LLVMTypeRef printf_type;
@@ -74,7 +75,7 @@ void add_class_info(CodegenCtx *ctx, ClassInfo *ci);
 ClassInfo* find_class(CodegenCtx *ctx, const char *name);
 int get_member_index(ClassInfo *ci, const char *member, LLVMTypeRef *out_type, VarType *out_vtype);
 
-LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t); // Updated signature to look up classes
+LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t); 
 VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node);
 LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node);
 

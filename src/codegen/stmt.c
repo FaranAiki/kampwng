@@ -5,8 +5,8 @@
 #include <stdbool.h>
 
 void codegen_assign(CodegenCtx *ctx, AssignNode *node) {
-  LLVMValueRef ptr;
-  LLVMTypeRef elem_type;
+  LLVMValueRef ptr = NULL;
+  LLVMTypeRef elem_type = NULL;
 
   if (node->target) {
       ptr = codegen_addr(ctx, node->target);
@@ -14,33 +14,74 @@ void codegen_assign(CodegenCtx *ctx, AssignNode *node) {
       elem_type = get_llvm_type(ctx, vt);
   } else {
       Symbol *sym = find_symbol(ctx, node->name);
-      if (!sym) { fprintf(stderr, "Error: Assignment to undefined variable %s\n", node->name); exit(1); }
       
-      if (node->index) {
-        LLVMValueRef idx = codegen_expr(ctx, node->index);
-        if (LLVMGetTypeKind(LLVMTypeOf(idx)) != LLVMIntegerTypeKind) {
-         idx = LLVMBuildFPToUI(ctx->builder, idx, LLVMInt64Type(), "idx_cast");
-        } else {
-         idx = LLVMBuildIntCast(ctx->builder, idx, LLVMInt64Type(), "idx_cast");
-        }
+      // If local/global var found
+      if (sym) {
+          if (node->index) {
+            LLVMValueRef idx = codegen_expr(ctx, node->index);
+            if (LLVMGetTypeKind(LLVMTypeOf(idx)) != LLVMIntegerTypeKind) {
+             idx = LLVMBuildFPToUI(ctx->builder, idx, LLVMInt64Type(), "idx_cast");
+            } else {
+             idx = LLVMBuildIntCast(ctx->builder, idx, LLVMInt64Type(), "idx_cast");
+            }
 
-        if (sym->is_array) {
-          LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), idx };
-          ptr = LLVMBuildGEP2(ctx->builder, sym->type, sym->value, indices, 2, "elem_ptr");
-          elem_type = LLVMGetElementType(sym->type);
-        } else {
-          LLVMValueRef base = LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "ptr_base");
-          LLVMValueRef indices[] = { idx };
+            if (sym->is_array) {
+              LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), idx };
+              ptr = LLVMBuildGEP2(ctx->builder, sym->type, sym->value, indices, 2, "elem_ptr");
+              elem_type = LLVMGetElementType(sym->type);
+            } else {
+              LLVMValueRef base = LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "ptr_base");
+              LLVMValueRef indices[] = { idx };
+              
+              VarType vt = sym->vtype;
+              if (vt.ptr_depth == 0) {
+                  fprintf(stderr, "Error: Cannot index non-pointer variable %s\n", node->name);
+                  exit(1);
+              }
+              vt.ptr_depth--;
+              elem_type = get_llvm_type(ctx, vt);
+              
+              ptr = LLVMBuildGEP2(ctx->builder, elem_type, base, indices, 1, "ptr_elem");
+            }
+          } else {
+            ptr = sym->value;
+            elem_type = sym->type;
+          }
+      } 
+      // If not found, check implicit 'this' member
+      else {
+          Symbol *this_sym = find_symbol(ctx, "this");
+          if (this_sym && this_sym->vtype.class_name) {
+              ClassInfo *ci = find_class(ctx, this_sym->vtype.class_name);
+              LLVMTypeRef mem_type; VarType mvt;
+              int idx = get_member_index(ci, node->name, &mem_type, &mvt);
+              
+              if (idx != -1) {
+                  LLVMValueRef this_val = LLVMBuildLoad2(ctx->builder, this_sym->type, this_sym->value, "this_ptr");
+                  LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), idx, 0) };
+                  ptr = LLVMBuildGEP2(ctx->builder, ci->struct_type, this_val, indices, 2, "implicit_mem_ptr");
+                  elem_type = mem_type;
+                  
+                  if (node->index) {
+                      LLVMValueRef idx_val = codegen_expr(ctx, node->index);
+                      if (LLVMGetTypeKind(elem_type) == LLVMArrayTypeKind) {
+                          LLVMValueRef arr_indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), idx_val };
+                          ptr = LLVMBuildGEP2(ctx->builder, elem_type, ptr, arr_indices, 2, "elem_ptr");
+                          elem_type = LLVMGetElementType(elem_type);
+                      } else {
+                          // Pointer field
+                          LLVMValueRef base = LLVMBuildLoad2(ctx->builder, elem_type, ptr, "ptr_base");
+                          ptr = LLVMBuildGEP2(ctx->builder, LLVMGetElementType(elem_type), base, &idx_val, 1, "ptr_elem");
+                          elem_type = LLVMGetElementType(elem_type);
+                      }
+                  }
+              }
+          }
           
-          VarType vt = sym->vtype;
-          if (vt.ptr_depth > 0) vt.ptr_depth--;
-          elem_type = get_llvm_type(ctx, vt);
-          
-          ptr = LLVMBuildGEP2(ctx->builder, elem_type, base, indices, 1, "ptr_elem");
-        }
-      } else {
-        ptr = sym->value;
-        elem_type = sym->type;
+          if (!ptr) {
+              fprintf(stderr, "Error: Assignment to undefined variable %s\n", node->name); 
+              exit(1); 
+          }
       }
   }
 
@@ -66,7 +107,6 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
   } else {
     LLVMValueRef init_val = codegen_expr(ctx, node->initializer);
     
-    // FIX FOR LET: Use codegen_calc_type to preserve class name info
     if (node->var_type.base == TYPE_AUTO) {
       node->var_type = codegen_calc_type(ctx, node->initializer);
       type = get_llvm_type(ctx, node->var_type);
@@ -105,6 +145,7 @@ void codegen_node(CodegenCtx *ctx, ASTNode *node) {
   else if (node->type == NODE_CONTINUE) codegen_continue(ctx);
   else if (node->type == NODE_INC_DEC) codegen_expr(ctx, node); 
   else if (node->type == NODE_MEMBER_ACCESS) codegen_expr(ctx, node);
+  else if (node->type == NODE_METHOD_CALL) codegen_expr(ctx, node); 
   else if (node->type == NODE_LINK) { }
   node = node->next;
   }

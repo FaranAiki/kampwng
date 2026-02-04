@@ -28,7 +28,9 @@ typedef enum {
   NODE_LINK,
   NODE_CLASS,
   NODE_MEMBER_ACCESS,
-  NODE_TYPEOF // New
+  NODE_METHOD_CALL, // New: x.f()
+  NODE_TRAIT_ACCESS, // New: x[Trait]
+  NODE_TYPEOF
 } NodeType;
 
 typedef enum {
@@ -69,16 +71,17 @@ typedef struct {
   ASTNode *body; 
   int is_varargs; 
   int is_open; 
+  char *class_name; // If method, belongs to this class
 } FuncDefNode;
 
 typedef struct {
   ASTNode base;
   char *name;
-  char *parent_name; 
+  char *parent_name; // Inheritance
   struct {
       char **names;
       int count;
-  } traits; 
+  } traits; // Composition
   ASTNode *members; 
   int is_open; 
 } ClassNode;
@@ -88,6 +91,19 @@ typedef struct {
   ASTNode *object; 
   char *member_name; 
 } MemberAccessNode;
+
+typedef struct {
+  ASTNode base;
+  ASTNode *object;
+  char *method_name;
+  ASTNode *args;
+} MethodCallNode;
+
+typedef struct {
+  ASTNode base;
+  ASTNode *object;
+  char *trait_name;
+} TraitAccessNode;
 
 typedef struct {
   ASTNode base;

@@ -2,22 +2,38 @@
 
 // import "lib/cstring.hky";
 
-open class Person {
+open class Hand {
+  void wave() {
+    printf "I am waving\n";
+  }
+}
+
+open class Person has Hand {
   char name[256] = "unnamed";
   int age = 0;
+  void introduce() {
+    printf "My name is %s\n", typeof(name);
+  }
 }
 
 open class Mahasiswa is Person {
   int nim = 0;
+  void introduce() {
+    printf "My name is %s with nim %d", name, nim;
+  }
 }
 
 int main() {
-  let Faran = Person ("Namaku Faran Aiki", 10);
+  let Faran = Person ("", 10);
+  Faran.name = "nama";
   let Faran_Mahasiswa = Mahasiswa (
     Faran.name,
     Faran.age,
     18225122
   );
-  print "%d\n", Faran_Mahasiswa.age;
+  Faran.introduce();
+  Faran[Hand].wave();
+  Faran_Mahasiswa[Hand].wave();
+  // Faran_Mahasiswa.introduce();
+  printf "%d\n", Faran.age;
 }
-

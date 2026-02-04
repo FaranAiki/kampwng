@@ -1,0 +1,19 @@
+// aliases 
+
+// define [common term] as [preferred in alkyl]
+
+define public as open; 
+define private as closed;
+define virtual as loose;
+
+define final as locked;
+define abstract as hollow;
+define static as shared;
+// define interface as contract;
+define protected as family;
+
+define ref, pointer as *;
+
+define typedef as define;
+
+define hydrogen as int main();

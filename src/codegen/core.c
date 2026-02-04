@@ -98,7 +98,6 @@ int get_member_index(ClassInfo *ci, const char *member, LLVMTypeRef *out_type, V
 
 LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t) {
   LLVMTypeRef base_type;
-  
   switch (t.base) {
     case TYPE_INT: base_type = LLVMInt32Type(); break;
     case TYPE_CHAR: base_type = LLVMInt8Type(); break;
@@ -108,20 +107,29 @@ LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t) {
     case TYPE_VOID: base_type = LLVMVoidType(); break;
     case TYPE_STRING: base_type = LLVMPointerType(LLVMInt8Type(), 0); break;
     case TYPE_CLASS: {
-        if (!t.class_name) return LLVMInt32Type(); // Error fallback
+        if (!t.class_name) return LLVMInt32Type(); 
         ClassInfo *ci = find_class(ctx, t.class_name);
         if (ci) base_type = ci->struct_type;
-        else base_type = LLVMStructCreateNamed(LLVMGetGlobalContext(), t.class_name); // Placeholder
+        else base_type = LLVMStructCreateNamed(LLVMGetGlobalContext(), t.class_name);
         break;
     }
     default: base_type = LLVMInt32Type(); break;
   }
-  
-  for (int i=0; i<t.ptr_depth; i++) {
-    base_type = LLVMPointerType(base_type, 0);
-  }
-  
+  for (int i=0; i<t.ptr_depth; i++) base_type = LLVMPointerType(base_type, 0);
   return base_type;
+}
+
+// Helpers for class member building
+ClassMember** append_member(CodegenCtx *ctx, ClassInfo *ci, ClassMember **tail, int *idx, const char *name, VarType vt, LLVMTypeRef lt, ASTNode *init) {
+    ClassMember *cm = malloc(sizeof(ClassMember));
+    cm->name = strdup(name);
+    cm->vtype = vt;
+    cm->type = lt;
+    cm->index = (*idx)++;
+    cm->init_expr = init; 
+    cm->next = NULL;
+    *tail = cm;
+    return &cm->next; // Return updated tail pointer address
 }
 
 LLVMValueRef generate_input_func(LLVMModuleRef module, LLVMBuilderRef builder, LLVMValueRef malloc_func, LLVMValueRef getchar_func) {
@@ -173,13 +181,14 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name) {
   CodegenCtx ctx;
   codegen_init_ctx(&ctx, module, builder);
   
-  // Pass 1: Register Class Types (Opaque first, then bodies)
+  // Pass 1: Register Class Types
   ASTNode *iter = root;
   while(iter) {
       if (iter->type == NODE_CLASS) {
           ClassNode *cn = (ClassNode*)iter;
           ClassInfo *ci = malloc(sizeof(ClassInfo));
           ci->name = strdup(cn->name);
+          ci->parent_name = cn->parent_name ? strdup(cn->parent_name) : NULL;
           ci->struct_type = LLVMStructCreateNamed(LLVMGetGlobalContext(), cn->name);
           ci->members = NULL;
           add_class_info(&ctx, ci);
@@ -187,60 +196,90 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name) {
       iter = iter->next;
   }
   
-  // Pass 1.5: Fill Class Bodies
+  // Pass 1.5: Fill Class Bodies (Inheritance + Composition)
   iter = root;
   while(iter) {
       if (iter->type == NODE_CLASS) {
           ClassNode *cn = (ClassNode*)iter;
           ClassInfo *ci = find_class(&ctx, cn->name);
           
-          ASTNode *m = cn->members;
-          int member_count = 0;
-          ASTNode *temp = m;
-          while(temp) { 
-              if (temp->type == NODE_VAR_DECL) member_count++; 
-              temp = temp->next; 
-          }
-          
-          LLVMTypeRef *elem_types = malloc(sizeof(LLVMTypeRef) * member_count);
-          int idx = 0;
-          
-          // Clear linked list first to rebuild in correct order
           ci->members = NULL;
           ClassMember **tail = &ci->members;
-          m = cn->members;
+          int idx = 0;
+          int member_count = 0;
+
+          // A. Inheritance: Copy Parent Members First
+          if (ci->parent_name) {
+              ClassInfo *parent = find_class(&ctx, ci->parent_name);
+              if (parent) {
+                  ClassMember *pm = parent->members;
+                  while(pm) {
+                      tail = append_member(&ctx, ci, tail, &idx, pm->name, pm->vtype, pm->type, pm->init_expr);
+                      member_count++;
+                      pm = pm->next;
+                  }
+              }
+          }
           
+          // B. Own Members
+          ASTNode *m = cn->members;
           while(m) {
               if (m->type == NODE_VAR_DECL) {
                   VarDeclNode *vd = (VarDeclNode*)m;
-                  ClassMember *cm = malloc(sizeof(ClassMember));
-                  cm->name = strdup(vd->name);
-                  cm->vtype = vd->var_type;
-                  cm->type = get_llvm_type(&ctx, vd->var_type);
-                  cm->index = idx;
-                  cm->init_expr = vd->initializer; // COPY POINTER (AST persists)
-                  cm->next = NULL;
-                  *tail = cm;
-                  tail = &cm->next;
-                  
-                  elem_types[idx] = cm->type;
-                  idx++;
+                  tail = append_member(&ctx, ci, tail, &idx, vd->name, vd->var_type, get_llvm_type(&ctx, vd->var_type), vd->initializer);
+                  member_count++;
               }
               m = m->next;
           }
           
+          // C. Traits (Composition)
+          if (cn->traits.names) {
+              for(int i=0; i<cn->traits.count; i++) {
+                  char *tname = cn->traits.names[i];
+                  ClassInfo *ti = find_class(&ctx, tname);
+                  if (ti) {
+                      char member_name[128];
+                      sprintf(member_name, "__trait_%s", tname);
+                      
+                      VarType vt = {TYPE_CLASS, 0, strdup(tname)};
+                      tail = append_member(&ctx, ci, tail, &idx, member_name, vt, ti->struct_type, NULL);
+                      member_count++;
+                  }
+              }
+          }
+          
+          // Set Body
+          LLVMTypeRef *elem_types = malloc(sizeof(LLVMTypeRef) * member_count);
+          ClassMember *cur = ci->members;
+          for(int i=0; i<member_count; i++) {
+              elem_types[i] = cur->type;
+              cur = cur->next;
+          }
           LLVMStructSetBody(ci->struct_type, elem_types, member_count, false);
           free(elem_types);
       }
       iter = iter->next;
   }
 
-  // Pass 2: Register functions
+  // Pass 2: Register Global Functions & Class Methods
   iter = root;
   while(iter) {
       if (iter->type == NODE_FUNC_DEF) {
           FuncDefNode *fd = (FuncDefNode*)iter;
           add_func_symbol(&ctx, fd->name, fd->ret_type);
+      }
+      if (iter->type == NODE_CLASS) {
+          ClassNode *cn = (ClassNode*)iter;
+          ASTNode *m = cn->members;
+          while(m) {
+              if (m->type == NODE_FUNC_DEF) {
+                  FuncDefNode *fd = (FuncDefNode*)m;
+                  char mangled[256];
+                  sprintf(mangled, "%s_%s", cn->name, fd->name);
+                  add_func_symbol(&ctx, mangled, fd->ret_type);
+              }
+              m = m->next;
+          }
       }
       iter = iter->next;
   }
@@ -251,7 +290,24 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name) {
     if (curr->type == NODE_FUNC_DEF) {
       codegen_func_def(&ctx, (FuncDefNode*)curr);
     }
-    // Classes already handled
+    if (curr->type == NODE_CLASS) {
+        // Generate Methods
+        ClassNode *cn = (ClassNode*)curr;
+        ASTNode *m = cn->members;
+        while(m) {
+            if (m->type == NODE_FUNC_DEF) {
+                FuncDefNode *fd = (FuncDefNode*)m;
+                char *original_name = fd->name;
+                char mangled[256];
+                sprintf(mangled, "%s_%s", cn->name, fd->name);
+                fd->name = mangled;
+                fd->class_name = cn->name;
+                codegen_func_def(&ctx, fd);
+                fd->name = original_name; 
+            }
+            m = m->next;
+        }
+    }
     curr = curr->next;
   }
 
@@ -296,13 +352,12 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name) {
   while(s) { Symbol *next = s->next; free(s->name); free(s); s = next; }
   FuncSymbol *f = ctx.functions;
   while(f) { FuncSymbol *next = f->next; free(f->name); free(f); f = next; }
-  // Classes
   ClassInfo *c = ctx.classes;
   while(c) {
       ClassMember *cm = c->members;
       while(cm) { ClassMember *nxt = cm->next; free(cm->name); free(cm); cm = nxt; }
       ClassInfo *nxt = c->next;
-      free(c->name); free(c);
+      free(c->name); if(c->parent_name) free(c->parent_name); free(c);
       c = nxt;
   }
 

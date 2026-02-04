@@ -50,3 +50,7 @@ Mutable and arrays
 * classes but still suck anyway because is/has is not that defined
 * proper let 
 * typeof
+
+## 0.1.0
+* classes but semisuck (because of constructor and .etc), need to revamp this
+* idk i am satisfied
