@@ -99,16 +99,98 @@ void codegen_assign(CodegenCtx *ctx, AssignNode *node) {
 void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
   LLVMValueRef alloca = NULL;
   LLVMTypeRef type = NULL;
+  VarType symbol_vtype = node->var_type; // Copy to allow modification for symbol table
 
   if (node->is_array) {
       LLVMTypeRef elem_type = (node->var_type.base == TYPE_AUTO) ? LLVMInt32Type() : get_llvm_type(ctx, node->var_type);
-      type = LLVMArrayType(elem_type, 10); 
+      
+      unsigned int size = 10; // Default size
+      int explicit_size = 0;
+      
+      // Try to determine size from literal declaration
+      if (node->array_size && node->array_size->type == NODE_LITERAL) {
+           size = ((LiteralNode*)node->array_size)->val.int_val;
+           explicit_size = 1;
+      } 
+      
+      // Calculate size from initializer if not explicit
+      if (!explicit_size && node->initializer) {
+           if (node->initializer->type == NODE_LITERAL) {
+               LiteralNode *lit = (LiteralNode*)node->initializer;
+               if (lit->var_type.base == TYPE_STRING) {
+                    size = strlen(lit->val.str_val) + 1;
+               }
+           } else if (node->initializer->type == NODE_ARRAY_LIT) {
+               ArrayLitNode *lit = (ArrayLitNode*)node->initializer;
+               ASTNode *curr = lit->elements;
+               int count = 0;
+               while (curr) { count++; curr = curr->next; }
+               if (count > 0) size = count;
+           }
+      }
+      
+      // Fix: Update type info to reflect array size so lookups know it's an array
+      symbol_vtype.array_size = size;
+
+      type = LLVMArrayType(elem_type, size); 
       alloca = LLVMBuildAlloca(ctx->builder, type, node->name);
+
+      // Handle Initialization
+      if (node->initializer) {
+          if (node->initializer->type == NODE_LITERAL) {
+               LiteralNode *lit = (LiteralNode*)node->initializer;
+               // Handle char a[] = "string"
+               if (lit->var_type.base == TYPE_STRING && node->var_type.base == TYPE_CHAR) {
+                    LLVMValueRef str_val = codegen_expr(ctx, node->initializer);
+                    
+                    // BitCast [N x i8]* to i8* for strcpy
+                    LLVMValueRef dest = LLVMBuildBitCast(ctx->builder, alloca, LLVMPointerType(LLVMInt8Type(), 0), "dest_cast");
+                    
+                    LLVMValueRef args[] = { dest, str_val };
+                    LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->strcpy_func), ctx->strcpy_func, args, 2, "");
+                    
+                    // Promote symbol type to STRING so typeof(a) returns "string"
+                    symbol_vtype.base = TYPE_STRING;
+                    symbol_vtype.ptr_depth = 0; 
+               }
+          } else if (node->initializer->type == NODE_ARRAY_LIT) {
+               ArrayLitNode *lit = (ArrayLitNode*)node->initializer;
+               ASTNode *curr = lit->elements;
+               int idx = 0;
+               while (curr) {
+                   if (idx >= size) break; // Safety
+                   LLVMValueRef val = codegen_expr(ctx, curr);
+                   
+                   // Cast if necessary (e.g. float -> int, int -> float)
+                   // Basic casting logic
+                   if (LLVMGetTypeKind(elem_type) == LLVMIntegerTypeKind && LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMDoubleTypeKind) {
+                       val = LLVMBuildFPToUI(ctx->builder, val, elem_type, "cast");
+                   } else if (LLVMGetTypeKind(elem_type) == LLVMDoubleTypeKind && LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMIntegerTypeKind) {
+                       val = LLVMBuildUIToFP(ctx->builder, val, elem_type, "cast");
+                   }
+
+                   LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), LLVMConstInt(LLVMInt64Type(), idx, 0) };
+                   LLVMValueRef ptr = LLVMBuildGEP2(ctx->builder, type, alloca, indices, 2, "elem_init");
+                   LLVMBuildStore(ctx->builder, val, ptr);
+                   
+                   curr = curr->next;
+                   idx++;
+               }
+          }
+      } else {
+          // If no initializer but it is a char array, arguably it is a string buffer
+          if (node->var_type.base == TYPE_CHAR) {
+              symbol_vtype.base = TYPE_STRING;
+              symbol_vtype.ptr_depth = 0;
+          }
+      }
+
   } else {
     LLVMValueRef init_val = codegen_expr(ctx, node->initializer);
     
     if (node->var_type.base == TYPE_AUTO) {
       node->var_type = codegen_calc_type(ctx, node->initializer);
+      symbol_vtype = node->var_type;
       type = get_llvm_type(ctx, node->var_type);
     } else {
       type = get_llvm_type(ctx, node->var_type);
@@ -118,7 +200,7 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
     LLVMBuildStore(ctx->builder, init_val, alloca);
   }
 
-  add_symbol(ctx, node->name, alloca, type, node->var_type, node->is_array, node->is_mutable);
+  add_symbol(ctx, node->name, alloca, type, symbol_vtype, node->is_array, node->is_mutable);
 }
 
 void codegen_return(CodegenCtx *ctx, ReturnNode *node) {

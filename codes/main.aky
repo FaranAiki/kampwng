@@ -2,6 +2,8 @@
 
 // import "lib/cstring.hky";
 
+// Mana SYNTAX HIGHTLIGHTING ANJENGGGGGGGGGGGGG
+
 open class Hand {
   void wave() {
     printf "I am waving\n";
@@ -12,28 +14,30 @@ open class Person has Hand {
   char name[256] = "unnamed";
   int age = 0;
   void introduce() {
-    printf "My name is %s\n", typeof(name);
+    printf "My name is %s\n and I am %d years old\n", name, age;
   }
 }
 
 open class Mahasiswa is Person {
   int nim = 0;
   void introduce() {
-    printf "My name is %s with nim %d", name, nim;
+    printf "My name is %s with nim %d\n", name, nim;
   }
 }
 
 int main() {
-  let Faran = Person ("", 10);
-  Faran.name = "nama";
+  let Faran = Person ("Muhammad Faran Aiki", 18);
+  printf("%s\n", Faran.name);
   let Faran_Mahasiswa = Mahasiswa (
     Faran.name,
     Faran.age,
     18225122
   );
+  int a[12] = [1,2,3];
+  print "%u!\n", *a;
   Faran.introduce();
   Faran[Hand].wave();
   Faran_Mahasiswa[Hand].wave();
-  // Faran_Mahasiswa.introduce();
+  Faran_Mahasiswa.introduce();
   printf "%d\n", Faran.age;
 }

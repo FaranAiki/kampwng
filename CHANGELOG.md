@@ -1,6 +1,7 @@
 ## 0.0.1 
 Initial commit
-* loop 
+* ### why the fuck did I named it kampwng awako
+* loop
 * print as printf only-string
 * C-like assignments
 
@@ -51,6 +52,9 @@ Mutable and arrays
 * proper let 
 * typeof
 
-## 0.1.0
+## 0.1.0 
 * classes but semisuck (because of constructor and .etc), need to revamp this
-* idk i am satisfied
+* todo fix array a[0] shitt 
+* todo fix inheritance shit (constructor)
+* just code manually at this point (?) but I am too lazy bruhh
+* idk i am partially satisfied

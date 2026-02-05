@@ -2,11 +2,13 @@
 
 // define [common term] as [preferred in alkyl]
 
+// INERT IS FUCKING CHEMICAL LES GOOO
+
 define public as open; 
 define private as closed;
-define virtual as loose;
-
 define final as locked;
+
+define virtual as loose;
 define abstract as hollow;
 define static as shared;
 // define interface as contract;
@@ -17,3 +19,8 @@ define ref, pointer as *;
 define typedef as define;
 
 define hydrogen as int main();
+
+// TODO decide whether we should separate entity to interface or not 
+
+define entity, interface as class;
+define struct as open class;

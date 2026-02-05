@@ -33,7 +33,7 @@ typedef struct ClassMember {
 
 typedef struct ClassInfo {
     char *name;
-    char *parent_name; // Inheritance
+    char *parent_name; 
     LLVMTypeRef struct_type;
     ClassMember *members;
     struct ClassInfo *next;
@@ -58,6 +58,12 @@ typedef struct {
   
   LLVMValueRef input_func;
   LLVMValueRef strcmp_func;
+  
+  // String Helpers
+  LLVMValueRef malloc_func;
+  LLVMValueRef strlen_func;
+  LLVMValueRef strcpy_func;
+  LLVMValueRef strdup_func;
 } CodegenCtx;
 
 // --- Core API ---

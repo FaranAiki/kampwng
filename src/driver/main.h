@@ -1,5 +1,5 @@
-#ifndef KAMPWNG_H
-#define KAMPWNG_H
+#ifndef MAIN_H
+#define MAIN_H
 
 #include <llvm-c/Core.h>
 #include <stdbool.h>

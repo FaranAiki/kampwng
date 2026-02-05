@@ -28,8 +28,8 @@ typedef enum {
   NODE_LINK,
   NODE_CLASS,
   NODE_MEMBER_ACCESS,
-  NODE_METHOD_CALL, // New: x.f()
-  NODE_TRAIT_ACCESS, // New: x[Trait]
+  NODE_METHOD_CALL, 
+  NODE_TRAIT_ACCESS, 
   NODE_TYPEOF
 } NodeType;
 
@@ -49,7 +49,8 @@ typedef enum {
 typedef struct {
   BaseType base;
   int ptr_depth; 
-  char *class_name; 
+  char *class_name;
+  int array_size; // Added: Support for fixed-size arrays in type system
 } VarType;
 
 typedef struct ASTNode {
@@ -71,17 +72,17 @@ typedef struct {
   ASTNode *body; 
   int is_varargs; 
   int is_open; 
-  char *class_name; // If method, belongs to this class
+  char *class_name; 
 } FuncDefNode;
 
 typedef struct {
   ASTNode base;
   char *name;
-  char *parent_name; // Inheritance
+  char *parent_name; 
   struct {
       char **names;
       int count;
-  } traits; // Composition
+  } traits; 
   ASTNode *members; 
   int is_open; 
 } ClassNode;
