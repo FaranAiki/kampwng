@@ -1,0 +1,83 @@
+// --- Alkyl Language Example ---
+
+// 1. External Definitions (FFI)
+// 'print' is intrinsic, but we can define others
+extern int system(string cmd);
+
+// 2. Namespaces
+namespace Math {
+    int add(int a, int b) {
+        return a + b;
+    }
+    
+    int square(int x) {
+        return x * x;
+    }
+}
+
+// 3. Classes
+class Logger {
+    string prefix;
+
+    // Method with array parameter (testing the parser fix)
+    // This previously caused an LLVM type mismatch error.
+    void log(char msg[100]) {
+        print("[%s]: %s\n", this.prefix, msg);
+    }
+}
+
+class Counter {
+    int value;
+
+    void increment() {
+        this.value++;
+    }
+}
+
+// 4. Global Functions
+void greet(string name) {
+    print("Hello, %s!\n", name);
+}
+
+// 5. Main Entry Point
+int main() {
+    print("--- Starting Program ---\n");
+
+    // Variable Declaration & Type Inference
+    let app_name = "AlkylDemo"; 
+    mut int status = 1;
+
+    // Control Flow: 'if'
+    if (status > 0) {
+        print("%s is running...\n", app_name);
+    }
+
+    // Object Instantiation
+    mut Logger my_logger;
+    my_logger.prefix = "INFO";
+    
+    // Call method with string literal (decays to char*)
+    my_logger.log("System initialized.");
+
+    // Namespace usage
+    int result = Math.square(4);
+    print("Square of 4 is: %d\n", result);
+
+    // Control Flow: 'loop' (Repeat N times)
+    print("Counting down:\n");
+    mut int i = 3;
+    loop 3 {
+        print("%d...\n", i);
+        i--;
+    }
+
+    // Control Flow: 'while'
+    mut Counter c;
+    c.value = 0;
+    while (c.value < 3) {
+        print("Counter: %d\n", c.value);
+        c.increment();
+    }
+
+    return 0;
+}

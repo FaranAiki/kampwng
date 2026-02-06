@@ -67,6 +67,7 @@ int main(int argc, char *argv[]) {
   
   // --- SEMANTIC ANALYSIS PHASE ---
   if (semantic_analysis(root, code) != 0) {
+      // TODO move this to diagnostic to make it standardized
       fprintf(stderr, "Semantic analysis failed. Compilation stopped.\n");
       free(code);
       free_ast(root);
@@ -75,6 +76,7 @@ int main(int argc, char *argv[]) {
   // -------------------------------
   
   // Extract 'link' directives from AST
+  // TODO should be great right idk
   ASTNode *curr = root;
   while(curr) {
     if (curr->type == NODE_LINK) {

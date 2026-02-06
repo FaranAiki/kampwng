@@ -35,6 +35,7 @@ int main() {
     Faran.age,
     18225122
   );
+  // suggest: let Faran_Mahasiswa be Mahasiswa[Faran](18225122)
   int a[12] = [1,2,3];
   print "%d!\n", a[2];
   Faran.introduce();
