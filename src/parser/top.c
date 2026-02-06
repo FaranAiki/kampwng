@@ -148,6 +148,19 @@ ASTNode* parse_top_level(Lexer *l) {
                               if(pt.base == TYPE_UNKNOWN) parser_fail(l, "Expected parameter type in method declaration");
                               char *pname = strdup(current_token.text);
                               eat(l, TOKEN_IDENTIFIER);
+                              
+                              if (current_token.type == TOKEN_LBRACKET) {
+                                  eat(l, TOKEN_LBRACKET);
+                                  if (current_token.type != TOKEN_RBRACKET) {
+                                      ASTNode *sz = parse_expression(l);
+                                      // Ignore size for parameter types (decay to pointer)
+                                      // if (sz && sz->type == NODE_LITERAL) pt.array_size = ((LiteralNode*)sz)->val.int_val;
+                                      free_ast(sz);
+                                  }
+                                  eat(l, TOKEN_RBRACKET);
+                                  pt.ptr_depth++;
+                              }
+                              
                               Parameter *p = calloc(1, sizeof(Parameter));
                               p->type = pt; p->name = pname;
                               *curr_p = p; curr_p = &p->next;
@@ -282,6 +295,19 @@ ASTNode* parse_top_level(Lexer *l) {
         if (ptype.base == TYPE_UNKNOWN) { parser_fail(l, "Expected parameter type"); }
         char *pname = NULL;
         if (current_token.type == TOKEN_IDENTIFIER) { pname = current_token.text; current_token.text = NULL; eat(l, TOKEN_IDENTIFIER); }
+        
+        if (current_token.type == TOKEN_LBRACKET) {
+            eat(l, TOKEN_LBRACKET);
+            if (current_token.type != TOKEN_RBRACKET) {
+                ASTNode *sz = parse_expression(l);
+                // Ignore size for parameter types (decay to pointer)
+                // if (sz && sz->type == NODE_LITERAL) ptype.array_size = ((LiteralNode*)sz)->val.int_val;
+                free_ast(sz);
+            }
+            eat(l, TOKEN_RBRACKET);
+            ptype.ptr_depth++;
+        }
+        
         Parameter *p = calloc(1, sizeof(Parameter)); p->type = ptype; p->name = pname; *curr_param = p; curr_param = &p->next;
         if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA); else break;
       }
@@ -313,6 +339,19 @@ ASTNode* parse_top_level(Lexer *l) {
         VarType ptype = parse_type(l);
         if (ptype.base == TYPE_UNKNOWN) parser_fail(l, "Expected parameter type in function definition");
         char *pname = current_token.text; current_token.text = NULL; eat(l, TOKEN_IDENTIFIER);
+        
+        if (current_token.type == TOKEN_LBRACKET) {
+            eat(l, TOKEN_LBRACKET);
+            if (current_token.type != TOKEN_RBRACKET) {
+                ASTNode *sz = parse_expression(l);
+                // Ignore size for parameter types (decay to pointer)
+                // if (sz && sz->type == NODE_LITERAL) ptype.array_size = ((LiteralNode*)sz)->val.int_val;
+                free_ast(sz);
+            }
+            eat(l, TOKEN_RBRACKET);
+            ptype.ptr_depth++;
+        }
+        
         Parameter *p = calloc(1, sizeof(Parameter)); p->type = ptype; p->name = pname; *curr_param = p; curr_param = &p->next;
         if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA); else break;
       }

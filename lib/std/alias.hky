@@ -8,6 +8,7 @@ define public as open;
 define private as closed;
 define final as locked;
 
+// TODO loose, hollow, shared, contract, family
 define virtual as loose;
 define abstract as hollow;
 define static as shared;

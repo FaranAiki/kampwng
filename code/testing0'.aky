@@ -1,0 +1,86 @@
+// Space Station Module System Simulation
+
+open class Logger {
+  void log(char msg[100]) {
+    printf "[SYSTEM LOG]: %s\n", msg;
+  }
+}
+
+// 'Module' has the 'Logger' trait and a status field
+open class Module has Logger {
+  char name[64] = "Generic Module";
+  char status[20] = "offline";
+  
+  void report_status() {
+    printf "Module '%s' is currently: %s\n", name, status;
+  }
+}
+
+// 'Engine' inherits from 'Module'
+// Constructor arguments will likely be: (name, status, fuel, thrust)
+open class Engine is Module {
+  int fuel = 1000;
+  int thrust = 500;
+  
+  void burn(int amount) {
+    if (fuel >= amount) {
+      fuel = fuel - amount;
+      printf ">> Engine burned %d fuel units. Fuel remaining: %d\n", amount, fuel;
+    } else {
+      printf ">> WARNING: Insufficient fuel to burn %d units!\n", amount;
+    }
+  }
+}
+
+open class LifeSupport is Module {
+  int oxygen_level = 100;
+  int crew_count = 5;
+
+  void daily_cycle() {
+    oxygen_level = oxygen_level - crew_count;
+    printf ">> Daily cycle complete. Oxygen levels at %d%%\n", oxygen_level;
+  }
+}
+
+int main() {
+  // Instantiate an Engine
+  // Fields: Module.name, Module.status, Engine.fuel, Engine.thrust
+  let main_thruster = Engine("Thruster Alpha", "standby", 5000, 2000);
+  
+  // Instantiate Life Support
+  // Fields: Module.name, Module.status, LifeSupport.oxygen_level, LifeSupport.crew_count
+  let living_quarters = LifeSupport("Habitation Module", "active", 98, 4);
+
+  // Use Trait methods
+  main_thruster[Logger].log("Initiating pre-flight checks...");
+
+  // Use Class methods
+  main_thruster.report_status();
+  living_quarters.report_status();
+
+  printf "\n--- Ignition Sequence ---\n";
+
+  // Array usage
+  int countdown[5] = [5, 4, 3, 2, 1];
+  int i = 0;
+  
+  while (i < 5) {
+    printf "T-Minus %d...\n", countdown[i];
+    i = i + 1;
+  }
+
+  printf "LIFTOFF!\n";
+  main_thruster.burn(250);
+  main_thruster[Logger].log("Orbit achieved.");
+
+  printf "\n--- Simulation Day 1 ---\n";
+  living_quarters.daily_cycle();
+  
+  if (living_quarters.oxygen_level < 20) {
+    living_quarters[Logger].log("CRITICAL ALERT: Low Oxygen");
+  } else {
+    living_quarters[Logger].log("Systems Nominal");
+  }
+
+  return 0;
+}

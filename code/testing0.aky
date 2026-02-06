@@ -4,9 +4,11 @@
 
 // Mana SYNTAX HIGHTLIGHTING ANJENGGGGGGGGGGGGG
 
+import "std"; 
+
 open class Hand {
-  void wave() {
-    printf "I am waving\n";
+  void wave(int n) {
+    printf "I am waving %d times\n", n;
   }
 }
 
@@ -36,8 +38,8 @@ int main() {
   int a[12] = [1,2,3];
   print "%d!\n", a[2];
   Faran.introduce();
-  Faran[Hand].wave();
-  Faran_Mahasiswa[Hand].wave();
+  Faran[Hand].wave(5);
+  Faran_Mahasiswa[Hand].wave(5);
   Faran_Mahasiswa.introduce();
   print "%d\n", Faran_Mahasiswa.age;
 }
