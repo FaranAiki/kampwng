@@ -97,6 +97,10 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
   LLVMValueRef alloca = NULL;
   LLVMTypeRef type = NULL;
   VarType symbol_vtype = node->var_type; 
+  
+  // Namespace mangling logic for global vars could go here, 
+  // but global vars in LLVM are usually handled in top-level scan.
+  // For local vars, no mangling is needed.
 
   if (node->is_array) {
       LLVMTypeRef elem_type = (node->var_type.base == TYPE_AUTO) ? LLVMInt32Type() : get_llvm_type(ctx, node->var_type);
@@ -206,6 +210,17 @@ void codegen_node(CodegenCtx *ctx, ASTNode *node) {
   else if (node->type == NODE_MEMBER_ACCESS) codegen_expr(ctx, node);
   else if (node->type == NODE_METHOD_CALL) codegen_expr(ctx, node); 
   else if (node->type == NODE_LINK) { }
+  else if (node->type == NODE_NAMESPACE) {
+      NamespaceNode *ns = (NamespaceNode*)node;
+      char *old_prefix = ctx->current_prefix;
+      char new_prefix[256];
+      if (old_prefix && strlen(old_prefix) > 0) sprintf(new_prefix, "%s_%s", old_prefix, ns->name);
+      else strcpy(new_prefix, ns->name);
+      
+      ctx->current_prefix = new_prefix;
+      codegen_node(ctx, ns->body);
+      ctx->current_prefix = old_prefix;
+  }
   node = node->next;
   }
 }

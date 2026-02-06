@@ -27,6 +27,7 @@ typedef enum {
   NODE_INC_DEC, 
   NODE_LINK,
   NODE_CLASS,
+  NODE_NAMESPACE, // Added
   NODE_MEMBER_ACCESS,
   NODE_METHOD_CALL, 
   NODE_TRAIT_ACCESS, 
@@ -89,6 +90,12 @@ typedef struct {
   ASTNode *members; 
   int is_open; 
 } ClassNode;
+
+typedef struct {
+  ASTNode base;
+  char *name;
+  ASTNode *body; // List of statements/declarations inside the namespace
+} NamespaceNode;
 
 typedef struct {
   ASTNode base;

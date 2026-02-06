@@ -38,6 +38,27 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
     }
     else if (node->type == NODE_MEMBER_ACCESS) {
         MemberAccessNode *ma = (MemberAccessNode*)node;
+        
+        // Check for Namespace Access
+        if (ma->object->type == NODE_VAR_REF) {
+            char *ns_name = ((VarRefNode*)ma->object)->name;
+            if (is_namespace(ctx, ns_name)) {
+                // Resolution: This is a namespace access
+                // We assume user is accessing a function call, handled in NODE_CALL/NODE_EXPR
+                // But if they are accessing a variable inside namespace, handle here?
+                // Standard approach: Return unknown here, let codegen_expr resolve if value needed.
+                // However, calc_type needs to know return type.
+                // We'd need to look up function symbol with mangled name.
+                char mangled[256];
+                sprintf(mangled, "%s_%s", ns_name, ma->member_name);
+                FuncSymbol *fs = find_func_symbol(ctx, mangled);
+                if (fs) return fs->ret_type;
+                // Variable?
+                Symbol *s = find_symbol(ctx, mangled);
+                if (s) return s->vtype;
+            }
+        }
+
         VarType obj_type = codegen_calc_type(ctx, ma->object);
         while (obj_type.ptr_depth > 0) obj_type.ptr_depth--;
         if (obj_type.base == TYPE_CLASS && obj_type.class_name) {
@@ -76,6 +97,17 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
     }
     else if (node->type == NODE_METHOD_CALL) {
         MethodCallNode *mc = (MethodCallNode*)node;
+        // Check for Namespace Method Call (namespace.func())
+        if (mc->object->type == NODE_VAR_REF) {
+            char *ns_name = ((VarRefNode*)mc->object)->name;
+            if (is_namespace(ctx, ns_name)) {
+                char mangled[256];
+                sprintf(mangled, "%s_%s", ns_name, mc->method_name);
+                FuncSymbol *fs = find_func_symbol(ctx, mangled);
+                if (fs) return fs->ret_type;
+            }
+        }
+        
         VarType obj_type = codegen_calc_type(ctx, mc->object);
         while (obj_type.ptr_depth > 0) obj_type.ptr_depth--;
         char mangled[256];
@@ -122,6 +154,18 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
     } 
     else if (node->type == NODE_MEMBER_ACCESS) {
         MemberAccessNode *ma = (MemberAccessNode*)node;
+        
+        // Namespace Variable Access
+        if (ma->object->type == NODE_VAR_REF) {
+            char *ns_name = ((VarRefNode*)ma->object)->name;
+            if (is_namespace(ctx, ns_name)) {
+                char mangled[256];
+                sprintf(mangled, "%s_%s", ns_name, ma->member_name);
+                Symbol *s = find_symbol(ctx, mangled);
+                if (s) return s->value;
+            }
+        }
+
         LLVMValueRef obj_addr = NULL;
         VarType obj_type = codegen_calc_type(ctx, ma->object);
         if (ma->object->type == NODE_VAR_REF || ma->object->type == NODE_MEMBER_ACCESS || ma->object->type == NODE_ARRAY_ACCESS) {
@@ -341,6 +385,29 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
   }
   else if (node->type == NODE_METHOD_CALL) {
       MethodCallNode *mc = (MethodCallNode*)node;
+      
+      // Namespace Method Call
+      if (mc->object->type == NODE_VAR_REF) {
+          char *ns_name = ((VarRefNode*)mc->object)->name;
+          if (is_namespace(ctx, ns_name)) {
+             char mangled[256];
+             sprintf(mangled, "%s_%s", ns_name, mc->method_name);
+             LLVMValueRef func = LLVMGetNamedFunction(ctx->module, mangled);
+             if (!func) {
+                 char msg[128];
+                 snprintf(msg, sizeof(msg), "Namespace method '%s' not found", mangled);
+                 codegen_error(ctx, node, msg);
+             }
+             int arg_count = 0; ASTNode *arg = mc->args; while(arg) { arg_count++; arg = arg->next; }
+             LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * arg_count);
+             arg = mc->args; int i = 0;
+             while(arg) { args[i++] = codegen_expr(ctx, arg); arg = arg->next; }
+             LLVMTypeRef ftype = LLVMGlobalGetValueType(func);
+             LLVMValueRef ret = LLVMBuildCall2(ctx->builder, ftype, func, args, arg_count, "");
+             free(args); return ret;
+          }
+      }
+
       LLVMValueRef obj_ptr = codegen_addr(ctx, mc->object);
       VarType obj_type = codegen_calc_type(ctx, mc->object);
       if (obj_type.ptr_depth > 0) {

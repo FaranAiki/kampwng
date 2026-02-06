@@ -53,6 +53,11 @@ typedef struct {
   ClassInfo *classes; 
   LoopContext *current_loop; 
   
+  // Namespacing
+  char *current_prefix;
+  char **known_namespaces;
+  int known_namespace_count;
+  
   // For error reporting
   const char *source_code;
 
@@ -78,6 +83,10 @@ void add_symbol(CodegenCtx *ctx, const char *name, LLVMValueRef val, LLVMTypeRef
 Symbol* find_symbol(CodegenCtx *ctx, const char *name);
 void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type);
 FuncSymbol* find_func_symbol(CodegenCtx *ctx, const char *name);
+
+// Namespace Helpers
+void add_namespace_name(CodegenCtx *ctx, const char *name);
+int is_namespace(CodegenCtx *ctx, const char *name);
 
 // Class Helpers
 void add_class_info(CodegenCtx *ctx, ClassInfo *ci);

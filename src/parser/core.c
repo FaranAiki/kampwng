@@ -1,11 +1,14 @@
 #include "parser_internal.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // Global State
 Token current_token = {TOKEN_UNKNOWN, NULL, 0, 0.0};
 jmp_buf *parser_env = NULL;         // REPL
 jmp_buf *parser_recover_buf = NULL; // Compilation
 int parser_error_count = 0;
+char parser_current_namespace[512] = "";
 
 // --- MACRO SYSTEM DEFINITIONS ---
 
@@ -124,12 +127,6 @@ void safe_free_current_token() {
 void parser_fail_at(Lexer *l, Token t, const char *msg) {
     report_error(l, t, msg);
     parser_error_count++;
-    
-    // Recovery Strategy:
-    // 1. If in REPL (parser_env set), jump immediately (one error per line usually).
-    // 2. If in FILE (parser_recover_buf set), jump to sync point.
-    // 3. Else exit (fatal).
-    
     safe_free_current_token();
     
     if (parser_recover_buf) {
@@ -155,23 +152,19 @@ void parser_reset(void) {
     parser_error_count = 0;
 }
 
-// Panic Mode Synchronization
-// Skips tokens until we find a statement boundary or safe point
 void parser_sync(Lexer *l) {
     while (current_token.type != TOKEN_EOF) {
-        // Safe boundaries
         if (current_token.type == TOKEN_SEMICOLON) {
-            eat(l, TOKEN_SEMICOLON); // Consume the ; and return to start fresh
+            eat(l, TOKEN_SEMICOLON);
             return;
         }
         if (current_token.type == TOKEN_RBRACE) {
-            eat(l, TOKEN_RBRACE); // Consume } and return
+            eat(l, TOKEN_RBRACE);
             return;
         }
-        
-        // Start of new constructs
         switch (current_token.type) {
             case TOKEN_CLASS:
+            case TOKEN_NAMESPACE:
             case TOKEN_KW_INT:
             case TOKEN_KW_VOID:
             case TOKEN_KW_CHAR:
@@ -182,9 +175,8 @@ void parser_sync(Lexer *l) {
             case TOKEN_RETURN:
             case TOKEN_KW_LET:
             case TOKEN_DEFINE:
-                return; // Don't consume, just restart parsing here
+                return;
             default:
-                // Skip erroneous token
                 eat(l, current_token.type); 
         }
     }
@@ -195,7 +187,6 @@ void eat(Lexer *l, TokenType type) {
     safe_free_current_token();
     Token t = fetch_safe(l);
     
-    // Macro expansion logic (same as before)
     while (t.type == TOKEN_IDENTIFIER) {
         Macro *m = find_macro(t.text);
         if (!m) break; 
@@ -349,29 +340,48 @@ VarType parse_type(Lexer *l) {
   return t;
 }
 
+// Helper to read file content
+char* read_file_content(const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char* buf = malloc(len + 1);
+    if(buf) { fread(buf, 1, len, f); buf[len] = 0; }
+    fclose(f);
+    return buf;
+}
+
 char* read_import_file(const char* filename) {
-  FILE* f = fopen(filename, "rb");
-  if (!f) return NULL;
-  fseek(f, 0, SEEK_END);
-  long len = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  char* buf = malloc(len + 1);
-  fread(buf, 1, len, f);
-  buf[len] = '\0';
-  fclose(f);
-  return buf;
+  // Smart Import Logic
+  // Search Paths: current directory "", "lib/"
+  // Extensions: ".hky", ".aky", "" (no extension)
+  
+  const char* paths[] = { "", "lib/" };
+  const char* exts[] = { ".hky", ".aky", "" };
+  
+  char path[1024];
+  
+  for (int i = 0; i < 2; i++) {
+      for (int j = 0; j < 3; j++) {
+          snprintf(path, sizeof(path), "%s%s%s", paths[i], filename, exts[j]);
+          char *content = read_file_content(path);
+          if (content) return content;
+      }
+  }
+  
+  return NULL;
 }
 
 void free_ast(ASTNode *node) {
-  // ... (Identical to previous AST free logic) ...
-  // To save space in this response, assuming standard AST freeing logic here
-  // The important part is parser_fail and eat logic above.
   if (!node) return;
   if (node->next) free_ast(node->next);
   switch (node->type) {
     case NODE_TYPEOF: { UnaryOpNode *u = (UnaryOpNode*)node; free_ast(u->operand); break; }
     case NODE_MEMBER_ACCESS: { MemberAccessNode *m = (MemberAccessNode*)node; free_ast(m->object); if (m->member_name) free(m->member_name); break; }
     case NODE_CLASS: { ClassNode *c = (ClassNode*)node; free(c->name); if (c->parent_name) free(c->parent_name); if (c->traits.names) { for(int i=0; i<c->traits.count; i++) free(c->traits.names[i]); free(c->traits.names); } free_ast(c->members); break; }
+    case NODE_NAMESPACE: { NamespaceNode *n = (NamespaceNode*)node; free(n->name); free_ast(n->body); break; }
     case NODE_FUNC_DEF: { FuncDefNode *f = (FuncDefNode*)node; if (f->name) free(f->name); Parameter *p = f->params; while (p) { Parameter *next = p->next; if (p->name) free(p->name); free(p); p = next; } free_ast(f->body); break; }
     case NODE_VAR_DECL: { VarDeclNode *v = (VarDeclNode*)node; if (v->name) free(v->name); if (v->var_type.class_name) free(v->var_type.class_name); free_ast(v->initializer); free_ast(v->array_size); break; }
     case NODE_ASSIGN: { AssignNode *a = (AssignNode*)node; if (a->name) free(a->name); free_ast(a->value); free_ast(a->index); free_ast(a->target); break; }

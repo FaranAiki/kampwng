@@ -7,11 +7,37 @@ void parser_advance(Lexer *l);
 void register_typename(const char *name); // from core.c
 
 ASTNode* parse_top_level(Lexer *l) {
-  // ... (Same logic for DEFINE, CLASS, LINK, IMPORT, EXTERN, VAR_DECL) ...
-  // Keeping brevity for existing logic, but ensuring parser_fail calls propagate
-  // through the exception mechanism in core.c
   
-  // 0. DEFINE
+  // 0. NAMESPACE
+  if (current_token.type == TOKEN_NAMESPACE) {
+      eat(l, TOKEN_NAMESPACE);
+      if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected namespace name");
+      char *ns_name = strdup(current_token.text);
+      eat(l, TOKEN_IDENTIFIER);
+      
+      eat(l, TOKEN_LBRACE);
+      
+      ASTNode *body_head = NULL;
+      ASTNode **body_curr = &body_head;
+      
+      while(current_token.type != TOKEN_RBRACE && current_token.type != TOKEN_EOF) {
+          ASTNode *n = parse_top_level(l);
+          if (n) {
+              *body_curr = n;
+              // Advance pointer to the end of the newly added chain
+              while (*body_curr) body_curr = &(*body_curr)->next;
+          }
+      }
+      eat(l, TOKEN_RBRACE);
+      
+      NamespaceNode *ns = calloc(1, sizeof(NamespaceNode));
+      ns->base.type = NODE_NAMESPACE;
+      ns->name = ns_name;
+      ns->body = body_head;
+      return (ASTNode*)ns;
+  }
+
+  // 0.1 DEFINE
   if (current_token.type == TOKEN_DEFINE) {
     eat(l, TOKEN_DEFINE);
     if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected macro name after 'define'");
@@ -220,6 +246,7 @@ ASTNode* parse_top_level(Lexer *l) {
     current_token.text = NULL;
     eat(l, TOKEN_STRING);
     eat(l, TOKEN_SEMICOLON);
+    
     char* src = read_import_file(fname);
     if (!src) { 
         char msg[256];
@@ -228,6 +255,7 @@ ASTNode* parse_top_level(Lexer *l) {
         parser_fail(l, msg); 
     }
     free(fname);
+    
     Token saved_token = current_token;
     current_token.text = NULL; current_token.type = TOKEN_UNKNOWN; 
     Lexer import_l; lexer_init(&import_l, src);
@@ -336,6 +364,8 @@ ASTNode* parse_program(Lexer *l) {
     ASTNode *node = parse_top_level(l);
     if (node) {
         if (!*current) *current = node; 
+        
+        // Link potential list of nodes (e.g. from import)
         ASTNode *iter = node;
         while (iter->next) iter = iter->next;
         current = &iter->next;
