@@ -135,6 +135,10 @@ void report_error(Lexer *l, Token t, const char *msg) {
     report_generic(l, t, "error", DIAG_RED, msg);
 }
 
+void report_warning(Lexer *l, Token t, const char *msg) {
+    report_generic(l, t, "warning", DIAG_PURPLE, msg);
+}
+
 void report_hint(Lexer *l, Token t, const char *msg) {
     // Hints follow an error and don't repeat the snippet usually, 
     // but if passed specific location different from error, maybe useful.

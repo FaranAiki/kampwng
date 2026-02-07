@@ -21,6 +21,9 @@ const char* diag_get_namespace(void);
 // Report a detailed error with source snippet
 void report_error(Lexer *l, Token t, const char *msg);
 
+// Report a warning (Purple/Magenta)
+void report_warning(Lexer *l, Token t, const char *msg);
+
 // Report a hint (Yellow)
 // Standardized "Did you mean 'X'?" or general hints
 void report_hint(Lexer *l, Token t, const char *msg);

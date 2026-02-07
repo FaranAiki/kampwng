@@ -25,4 +25,6 @@ int main() {
   let nama = input("Nama: ");
   print "%s\n", nama;
   free nama;
+  loop 10 { free nama; } // owh C ngaceng jir krn auto set null
+  print "anjay aman bosku!\n";
 }

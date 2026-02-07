@@ -157,7 +157,7 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
              vt.base = TYPE_STRING;
              return vt;
         }
-        if (strcmp(c->name, "malloc") == 0 || strcmp(c->name, "alloc") == 0) {
+        if (strcmp(c->name, "malloc") == 0 || strcmp(c->name, "alloc") == 0 || strcmp(c->name, "calloc") == 0) {
              vt.base = TYPE_VOID;
              vt.ptr_depth = 1; 
              return vt;
@@ -443,8 +443,54 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
         LLVMValueRef args[] = { size_val };
         return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->malloc_func), ctx->malloc_func, args, 1, "malloc_res");
     }
+    if (strcmp(c->name, "calloc") == 0) {
+        int arg_count = 0; ASTNode *cur = c->args; while(cur){arg_count++; cur=cur->next;}
+        if (arg_count != 2) {
+             // Basic error handling for arg count if strict mode
+        }
+        
+        LLVMValueRef num = codegen_expr(ctx, c->args);
+        LLVMValueRef sz = codegen_expr(ctx, c->args->next);
+        
+        num = LLVMBuildIntCast(ctx->builder, num, LLVMInt64Type(), "num_cast");
+        sz = LLVMBuildIntCast(ctx->builder, sz, LLVMInt64Type(), "sz_cast");
+        
+        LLVMValueRef args[] = { num, sz };
+        return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->calloc_func), ctx->calloc_func, args, 2, "calloc_res");
+    }
     if (strcmp(c->name, "free") == 0) {
-        LLVMValueRef ptr_val = codegen_expr(ctx, c->args);
+        // --- SMART FREE ---
+        // 1. Stack Allocation Warning
+        ASTNode *arg = c->args;
+        int is_stack = 0;
+
+        if (arg->type == NODE_UNARY_OP) {
+            UnaryOpNode *u = (UnaryOpNode*)arg;
+            if (u->op == TOKEN_AND) {
+                 // Taking address of a variable implies it's a pointer to stack slot
+                 // e.g. free(&x)
+                 is_stack = 1;
+            }
+        } else if (arg->type == NODE_VAR_REF) {
+            VarRefNode *vn = (VarRefNode*)arg;
+            Symbol *sym = find_symbol(ctx, vn->name);
+            if (sym && sym->is_array) {
+                // In this codegen model, arrays declared via var_decl are stack allocas
+                is_stack = 1;
+            }
+        }
+
+        if (is_stack) {
+            Lexer l; lexer_init(&l, ctx->source_code);
+            Token t; t.line = node->line; t.col = node->col; t.text = NULL;
+            report_warning(&l, t, "\"free\" tries to free stack");
+            
+            // "Smart" safety: If it's stack, don't actually generate the free call to prevent crash
+            return LLVMConstInt(LLVMInt32Type(), 0, 0);
+        }
+
+        // 2. Normal Free Generation
+        LLVMValueRef ptr_val = codegen_expr(ctx, arg);
         // Cast to i8* safely
         if (LLVMGetTypeKind(LLVMTypeOf(ptr_val)) == LLVMIntegerTypeKind) {
              ptr_val = LLVMBuildIntToPtr(ctx->builder, ptr_val, LLVMPointerType(LLVMInt8Type(), 0), "free_cast");
@@ -452,7 +498,24 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
              ptr_val = LLVMBuildBitCast(ctx->builder, ptr_val, LLVMPointerType(LLVMInt8Type(), 0), "free_cast");
         }
         LLVMValueRef args[] = { ptr_val };
-        return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->free_func), ctx->free_func, args, 1, "");
+        LLVMValueRef free_call = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->free_func), ctx->free_func, args, 1, "");
+        
+        // 3. Double Free Prevention (Nullify Pointer)
+        // Check if argument is an L-value we can modify
+        if (arg->type == NODE_VAR_REF || arg->type == NODE_MEMBER_ACCESS || arg->type == NODE_ARRAY_ACCESS) {
+             LLVMValueRef addr = codegen_addr(ctx, arg);
+             // Determine pointer type to create null
+             VarType vt = codegen_calc_type(ctx, arg);
+             LLVMTypeRef ptr_type = get_llvm_type(ctx, vt);
+             
+             // Check if it's actually a pointer type before nulling (should be if passed to free)
+             if (LLVMGetTypeKind(ptr_type) == LLVMPointerTypeKind) {
+                  LLVMValueRef null_val = LLVMConstNull(ptr_type);
+                  LLVMBuildStore(ctx->builder, null_val, addr);
+             }
+        }
+        
+        return free_call;
     }
     LLVMValueRef func = LLVMGetNamedFunction(ctx->module, c->name);
     if (!func) {

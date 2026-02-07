@@ -81,6 +81,7 @@ typedef struct {
   LLVMValueRef input_func;
   LLVMValueRef strcmp_func;
   LLVMValueRef malloc_func;
+  LLVMValueRef calloc_func; // Added
   LLVMValueRef free_func;
   LLVMValueRef strlen_func;
   LLVMValueRef strcpy_func;
