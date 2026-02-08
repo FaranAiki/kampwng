@@ -1,0 +1,139 @@
+Here is the architectural documentation for the **Alkyl** compiler project.
+
+---
+
+# Alkyl Compiler Architecture Documentation
+
+## 1. High-Level Overview
+
+**Alkyl** is a statically typed, compiled programming language implemented in **C**. It utilizes the **LLVM Compiler Infrastructure** (via the LLVM C API) for backend code generation and optimization.
+
+The project is architected as a modular pipeline. It transforms source code through distinct stages: lexical analysis, parsing (AST construction), semantic analysis (type checking and symbol resolution), and finally code generation into LLVM IR. The system supports two modes of operation:
+
+1. **AOT (Ahead-of-Time) Compilation:** Compiling source files to native object code and linking them into executables.
+2. **JIT (Just-In-Time) Execution:** An interactive REPL (Read-Eval-Print Loop) for immediate code evaluation.
+
+## 2. Directory Breakdown (`src/`)
+
+### `src/diagnostic/`
+
+**Responsibility:** User Experience & Error Reporting.
+This module abstracts the complexity of formatting error messages and provides "fuzzy" logic to help users correct mistakes.
+
+* **`diagnostic.c` / `diagnostic.h**`:
+* **Context Tracking:** Uses `diag_set_namespace` to track where errors occur (e.g., inside specific functions or classes).
+* **Visuals:** Defines ANSI color codes (`DIAG_RED`, `DIAG_BOLD`) for terminal output.
+* **Fuzzy Matching:** Implements the **Levenshtein Distance** algorithm (`levenshtein_dist`). When a user types an unknown identifier, the compiler scans valid keywords/variables and uses `find_closest_keyword` to offer "Did you mean...?" suggestions.
+
+
+
+### `src/lexer/`
+
+**Responsibility:** Tokenization.
+Converts raw source code strings into a stream of atomic units called Tokens.
+
+* **`lexer.c`**: Implements a pull-based lexer. It handles white-space skipping, comment removal, and character lookahead. It creates specific tokens for complex operators (e.g., `+=`, `<<=`) and literals (strings, chars, floats).
+* **`lexer.h`**: Defines the `TokenType` enum (containing keywords like `TOKEN_KW_MUT`, `TOKEN_CLASS`, operators, and literals) and the `Token` struct which holds the text, line number, and column number.
+
+### `src/parser/`
+
+**Responsibility:** Abstract Syntax Tree (AST) Construction.
+This directory implements a **Recursive Descent Parser**. The logic is split into multiple files to maintain maintainability as the grammar grows.
+
+* **`parser.h`**: The public interface. It defines the AST structs (`ASTNode`, `FuncDefNode`, `IfNode`, etc.) used by the rest of the compiler.
+* **`parser_internal.h`**: A private header used *only* within `src/parser/` to share internal helper functions (`eat`, `parse_expression`) without exposing them globally.
+* **`core.c`**: Handles infrastructure. It manages the token stream, implements synchronization logic (`parser_sync`) to recover from errors, and handles macro registration/expansion.
+* **`top.c`**: Parses top-level constructs: namespaces, class definitions, global variables, function definitions, and imports (`import`, `link`).
+* **`stmt.c`**: Parses imperative statements: `return`, `if`, `while`, `switch`, and variable declarations.
+* **`expr.c`**: Parses expressions using precedence climbing. It handles binary operations, unary operators, function calls, and array access.
+
+### `src/semantic/`
+
+**Responsibility:** Validation & Type Checking.
+This is the "gatekeeper" module. It ensures the AST is valid before the backend touches it.
+
+* **`semantic.c`**:
+* **Symbol Table:** Manages scopes (`Scope` struct) to track variable definitions, shadowing, and visibility.
+* **Type Checking:** The `check_expr` function calculates result types and ensures compatibility (e.g., preventing the addition of a string to a boolean).
+* **Overload Resolution:** It performs name mangling (`mangle_function`) and determines which function variant to call based on argument types.
+* **Access Control:** Verifies that `this` is used only within methods and checks for access to undefined members.
+
+
+
+### `src/codegen/`
+
+**Responsibility:** IR Generation.
+Translates the Semantic-validated AST into LLVM Intermediate Representation (IR).
+
+* **`core.c`**: Sets up the LLVM module and builder. It defines mapping from Alkyl types (`VarType`) to LLVM types (`LLVMTypeRef`) and registers built-in C functions (malloc, free, printf).
+* **`flow.c`**: Generates IR for control flow structures (`if`, `while`, `switch`) and function definitions. It manages basic blocks (entry, body, end).
+* **`expr.c`**: Generates IR for expressions. It handles math instructions (`LLVMBuildAdd`), pointer arithmetic (`LLVMBuildGEP2`), and function calls.
+* **`stmt.c`**: Handles memory allocation for variables (`LLVMBuildAlloca`) and store instructions.
+
+### `src/driver/`
+
+**Responsibility:** Application Entry Points.
+This directory connects the library modules into executable tools.
+
+* **`main.c` (The Compiler)**:
+* Reads a source file.
+* Runs Lexer  Parser  Semantic Analysis  Codegen.
+* Emits an object file (`out.o`).
+* Invokes the system linker (`gcc`) to produce a final executable.
+
+
+* **`cli.c` (The REPL)**:
+* Implements an interactive shell using `readline`.
+* Uses **LLVM JIT** (`LLVMCreateExecutionEngineForModule`) to compile and execute AST nodes in memory immediately, allowing line-by-line interaction.
+
+
+
+---
+
+## 3. Compilation Pipeline Trace
+
+Tracing the input: `let x = 10;`
+
+1. **Lexer (`src/lexer/`)**: Reads the string. Generates tokens:
+* `TOKEN_KW_LET`
+* `TOKEN_IDENTIFIER ("x")`
+* `TOKEN_ASSIGN`
+* `TOKEN_NUMBER (10)`
+* `TOKEN_SEMICOLON`
+
+
+2. **Parser (`src/parser/top.c`)**: Detects `let`. Calls `parse_var_decl_internal`. Creates a `VarDeclNode` where `name="x"`, `type=TYPE_AUTO`, and `initializer` is a `LiteralNode(10)`.
+3. **Semantic (`src/semantic/`)**: `check_stmt` sees the `VarDeclNode`. It infers the type of `x` is `int` based on the initializer `10`. It adds `x` (type `int`) to the current scope's symbol table.
+4. **Codegen (`src/codegen/stmt.c`)**: `codegen_var_decl` is called.
+* It creates an `alloca` instruction (stack memory) for `x`.
+* It generates code for the literal `10` (`LLVMConstInt`).
+* It generates a `store` instruction to put `10` into the memory of `x`.
+* It registers `x` in the codegen symbol table mapping the name to the LLVM value.
+
+
+
+---
+
+## 4. Key Technical Decisions
+
+### Error Recovery with `setjmp` / `longjmp`
+
+In `src/parser/core.c` and `src/driver/cli.c`, the project uses C's `setjmp` and `longjmp` for error handling.
+
+* **Why:** In a recursive descent parser, an error might occur deep within a call stack (Expression  Term  Factor). Returning error codes up every level is messy.
+* **Implementation:** When `parser_fail` is called, it performs a `longjmp` back to a safe state (the main loop). This allows the REPL to print the error and immediately prompt for new input without crashing the process.
+
+### Internal vs. Public Headers
+
+The parser uses a strict separation of interfaces:
+
+* **`parser.h`**: Contains the AST definitions (`ASTNode`, `VarDeclNode`). This is included by Semantic and Codegen modules.
+* **`parser_internal.h`**: Contains function prototypes like `eat()`, `parse_expression()`, and access to the global `current_token`.
+* **Why:** This encapsulates the parsing logic. The Semantic analysis module doesn't need to know *how* to parse an expression, it only needs to know what the resulting AST looks like.
+
+### Raw LLVM C API
+
+The project uses the pure C API (`llvm-c/Core.h`) rather than the C++ object-oriented API.
+
+* **Effect:** This requires manual management of strings and builders (`LLVMBuildAdd`, `LLVMBuildRet`).
+* **Architecture:** It allows the entire compiler to remain pure C, ensuring high portability and a smaller runtime footprint compared to linking against the C++ LLVM libraries. It requires explicit type creation (e.g., `LLVMInt32Type()`) at every step.

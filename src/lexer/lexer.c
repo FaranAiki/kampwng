@@ -225,6 +225,50 @@ Token lexer_next(Lexer *l) {
       return t;
   }
 
+  // C-String check: c"..."
+  if (c == 'c' && l->src[l->pos + 1] == '"') {
+    advance(l); // consume 'c'
+    advance(l); // consume '"'
+    
+    size_t capacity = 32;
+    size_t length = 0;
+    char *buffer = malloc(capacity);
+    if (!buffer) { fprintf(stderr, "Lexer Error: Out of memory\n"); exit(1); }
+
+    while (peek(l) != '"' && peek(l) != '\0') {
+      char val = peek(l);
+      if (val == '\\') {
+        advance(l); 
+        if (peek(l) == '\0') break; 
+        char escaped = peek(l);
+        switch (escaped) {
+          case 'n': val = '\n'; break;
+          case 'r': val = '\r'; break;
+          case 't': val = '\t'; break;
+          case '0': val = '\0'; break;
+          case '\\': val = '\\'; break;
+          case '"': val = '"'; break;
+          case '\'': val = '\''; break;
+          default: val = escaped; break; 
+        }
+        advance(l); 
+      } else {
+        advance(l); 
+      }
+      if (length + 1 >= capacity) {
+        capacity *= 2;
+        buffer = realloc(buffer, capacity);
+      }
+      buffer[length++] = val;
+    }
+    buffer[length] = '\0';
+    if (peek(l) == '"') advance(l);
+    
+    t.type = TOKEN_C_STRING;
+    t.text = buffer;
+    return t;
+  }
+
   if (c == '"') {
     advance(l); 
     

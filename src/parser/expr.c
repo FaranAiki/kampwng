@@ -199,6 +199,17 @@ ASTNode* parse_factor(Lexer *l) {
     node = (ASTNode*)ln;
     set_loc(node, line, col);
   }
+  else if (current_token.type == TOKEN_C_STRING) {
+    LiteralNode *ln = calloc(1, sizeof(LiteralNode));
+    ln->base.type = NODE_LITERAL;
+    ln->var_type.base = TYPE_CHAR;
+    ln->var_type.ptr_depth = 1; // char*
+    ln->val.str_val = current_token.text;
+    current_token.text = NULL; 
+    eat(l, TOKEN_C_STRING);
+    node = (ASTNode*)ln;
+    set_loc(node, line, col);
+  }
   else if (current_token.type == TOKEN_TRUE || current_token.type == TOKEN_FALSE) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;

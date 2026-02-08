@@ -7,37 +7,131 @@
 // Forward decl
 LLVMValueRef generate_enum_to_string_func(CodegenCtx *ctx, EnumInfo *ei);
 
-// ... format_string, find_closest_match, codegen_calc_type, codegen_addr unchanged ...
-
 char* format_string(const char* input) {
   if (!input) return NULL;
   size_t len = strlen(input);
-  char *new_str = malloc(len + 2);
+  char *new_str = malloc(len + 1);
   strcpy(new_str, input);
   return new_str;
 }
 
-// ... codegen_calc_type ... (unchanged)
+// Calculate the Alkyl VarType of an expression (for type checking/inference in codegen)
 VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
     VarType vt = {TYPE_UNKNOWN, 0, NULL};
     if (!node) return vt;
+    
     if (node->type == NODE_LITERAL) return ((LiteralNode*)node)->var_type;
+    
     if (node->type == NODE_VAR_REF) {
         Symbol *s = find_symbol(ctx, ((VarRefNode*)node)->name);
         if (s) return s->vtype;
     }
-    // ... complete implementation assumed from existing file ...
+    
+    if (node->type == NODE_ARRAY_ACCESS) {
+        ArrayAccessNode *aa = (ArrayAccessNode*)node;
+        VarType t = codegen_calc_type(ctx, aa->target);
+        if (t.ptr_depth > 0) t.ptr_depth--;
+        else if (t.array_size > 0) { t.array_size = 0; } // Decay array to element
+        return t;
+    }
+
+    if (node->type == NODE_MEMBER_ACCESS) {
+        MemberAccessNode *ma = (MemberAccessNode*)node;
+        VarType obj_t = codegen_calc_type(ctx, ma->object);
+        if (obj_t.base == TYPE_CLASS && obj_t.class_name) {
+            ClassInfo *ci = find_class(ctx, obj_t.class_name);
+            if (ci) {
+                 VarType mvt;
+                 if (get_member_index(ci, ma->member_name, NULL, &mvt) != -1) {
+                     return mvt;
+                 }
+            }
+        }
+    }
+    
+    if (node->type == NODE_CALL) {
+        CallNode *call = (CallNode*)node;
+        const char *name = call->mangled_name ? call->mangled_name : call->name;
+        FuncSymbol *fs = find_func_symbol(ctx, name);
+        if (fs) return fs->ret_type;
+        // Check builtin return types
+        if (strcmp(name, "input") == 0) { vt.base = TYPE_STRING; return vt; }
+    }
+    
     return vt;
 }
 
-// ... codegen_addr ... (unchanged)
+// Generate the memory address (l-value) of an expression
 LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
      if (node->type == NODE_VAR_REF) {
         VarRefNode *r = (VarRefNode*)node;
         Symbol *sym = find_symbol(ctx, r->name);
         if (sym) return sym->value;
+        
+        // Check for implicit 'this' member access
+        Symbol *this_sym = find_symbol(ctx, "this");
+        if (this_sym && this_sym->vtype.class_name) {
+             ClassInfo *ci = find_class(ctx, this_sym->vtype.class_name);
+             if (ci) {
+                 LLVMTypeRef mem_type;
+                 int idx = get_member_index(ci, r->name, &mem_type, NULL);
+                 if (idx != -1) {
+                     LLVMValueRef this_val = LLVMBuildLoad2(ctx->builder, this_sym->type, this_sym->value, "this_ptr");
+                     LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), idx, 0) };
+                     return LLVMBuildGEP2(ctx->builder, ci->struct_type, this_val, indices, 2, "implicit_mem_ptr");
+                 }
+             }
+        }
      }
-     // ... complete implementation assumed ...
+     
+     if (node->type == NODE_ARRAY_ACCESS) {
+         ArrayAccessNode *aa = (ArrayAccessNode*)node;
+         LLVMValueRef target = codegen_addr(ctx, aa->target);
+         if (!target) target = codegen_expr(ctx, aa->target); // Might be a pointer r-value
+         
+         LLVMValueRef index = codegen_expr(ctx, aa->index);
+         VarType t = codegen_calc_type(ctx, aa->target);
+         LLVMTypeRef el_type = get_llvm_type(ctx, t);
+         
+         if (t.ptr_depth > 0) {
+             // Pointer indexing
+             LLVMValueRef base = LLVMBuildLoad2(ctx->builder, el_type, target, "ptr_base");
+             // Decrease depth for element type
+             t.ptr_depth--;
+             LLVMTypeRef inner_type = get_llvm_type(ctx, t);
+             return LLVMBuildGEP2(ctx->builder, inner_type, base, &index, 1, "ptr_idx");
+         } else if (t.array_size > 0) {
+             // Array indexing
+             LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), index };
+             return LLVMBuildGEP2(ctx->builder, el_type, target, indices, 2, "arr_idx");
+         }
+     }
+
+     if (node->type == NODE_MEMBER_ACCESS) {
+         MemberAccessNode *ma = (MemberAccessNode*)node;
+         LLVMValueRef obj = codegen_addr(ctx, ma->object);
+         
+         VarType obj_t = codegen_calc_type(ctx, ma->object);
+         if (obj_t.base == TYPE_CLASS && obj_t.class_name) {
+             ClassInfo *ci = find_class(ctx, obj_t.class_name);
+             if (ci) {
+                 int idx = get_member_index(ci, ma->member_name, NULL, NULL);
+                 if (idx != -1) {
+                     if (obj_t.ptr_depth > 0) {
+                        // Obj is a pointer (e.g., 'this', or Class* ptr)
+                        LLVMValueRef base = LLVMBuildLoad2(ctx->builder, LLVMPointerType(ci->struct_type, 0), obj, "obj_ptr");
+                        LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), idx, 0) };
+                        return LLVMBuildGEP2(ctx->builder, ci->struct_type, base, indices, 2, "mem_ptr");
+                     } else {
+                        // Obj is a struct value on stack
+                        LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), idx, 0) };
+                        return LLVMBuildGEP2(ctx->builder, ci->struct_type, obj, indices, 2, "mem_ptr");
+                     }
+                 }
+             }
+         }
+     }
+
      return NULL;
 }
 
@@ -48,30 +142,52 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
     CallNode *c = (CallNode*)node;
     ClassInfo *ci = find_class(ctx, c->name);
     if (ci) {
-        // ... Constructor logic unchanged ...
+        // Constructor: Allocate struct size
+        LLVMValueRef size = LLVMSizeOf(ci->struct_type);
+        LLVMValueRef mem = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->malloc_func), ctx->malloc_func, &size, 1, "new_obj");
+        return LLVMBuildBitCast(ctx->builder, mem, LLVMPointerType(ci->struct_type, 0), "obj_cast");
     }
     
     // Builtins
-    if (strcmp(c->name, "print") == 0) {
+    if (strcmp(c->name, "print") == 0 || strcmp(c->name, "printf") == 0) {
       int arg_count = 0; ASTNode *curr = c->args; while(curr) { arg_count++; curr = curr->next; }
       LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * arg_count);
       curr = c->args; for(int i=0; i<arg_count; i++) { args[i] = codegen_expr(ctx, curr); curr = curr->next; }
       LLVMValueRef ret = LLVMBuildCall2(ctx->builder, ctx->printf_type, ctx->printf_func, args, arg_count, "");
       free(args); return ret;
     }
-    // ... input, malloc, free, setjmp, longjmp logic unchanged ...
     
+    if (strcmp(c->name, "input") == 0) {
+        return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->input_func), ctx->input_func, NULL, 0, "user_input");
+    }
+    
+    if (strcmp(c->name, "malloc") == 0 || strcmp(c->name, "alloc") == 0) {
+        LLVMValueRef size = codegen_expr(ctx, c->args);
+        return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->malloc_func), ctx->malloc_func, &size, 1, "malloc_res");
+    }
+    
+    if (strcmp(c->name, "free") == 0) {
+        LLVMValueRef ptr = codegen_expr(ctx, c->args);
+        LLVMValueRef args[] = { LLVMBuildBitCast(ctx->builder, ptr, LLVMPointerType(LLVMInt8Type(), 0), "free_cast") };
+        return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->free_func), ctx->free_func, args, 1, "");
+    }
+
     // Function Call with Overload Support
     const char *target_name = c->mangled_name ? c->mangled_name : c->name;
     LLVMValueRef func = LLVMGetNamedFunction(ctx->module, target_name);
     
     if (!func) {
-        char msg[128];
-        snprintf(msg, sizeof(msg), "Undefined function '%s'.", target_name);
-        exit(1);
+        // If not found by mangled name, try raw name (for externs)
+        func = LLVMGetNamedFunction(ctx->module, c->name);
+        if (!func) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "Undefined function '%s'.", c->name);
+            codegen_error(ctx, node, msg);
+        }
     }
     
     FuncSymbol *fsym = find_func_symbol(ctx, target_name);
+    if (!fsym) fsym = find_func_symbol(ctx, c->name);
     
     int arg_count = 0; ASTNode *curr = c->args; while(curr) { arg_count++; curr = curr->next; }
     LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * arg_count);
@@ -108,16 +224,27 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
   }
   else if (node->type == NODE_LITERAL) {
     LiteralNode *l = (LiteralNode*)node;
+    
+    // FIX: Only treat as string if the type says so.
+    // Accessing .str_val on a numeric literal (union) causes Segfault in strlen()
+    int is_string = (l->var_type.base == TYPE_STRING) || 
+                    (l->var_type.base == TYPE_CHAR && l->var_type.ptr_depth > 0);
+
+    if (is_string) {
+        if (l->val.str_val) {
+          char *fmt = format_string(l->val.str_val);
+          LLVMValueRef gstr = LLVMBuildGlobalStringPtr(ctx->builder, fmt, "str_lit");
+          free(fmt);
+          return gstr;
+        } else {
+            return LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0));
+        }
+    }
+
     if (l->var_type.base == TYPE_DOUBLE) return LLVMConstReal(LLVMDoubleType(), l->val.double_val);
     if (l->var_type.base == TYPE_BOOL) return LLVMConstInt(LLVMInt1Type(), l->val.int_val, 0);
     if (l->var_type.base == TYPE_CHAR) return LLVMConstInt(LLVMInt8Type(), l->val.int_val, 0); 
-    if (l->var_type.base == TYPE_STRING) {
-      // Both Alkyl String and C-Strings are effectively i8* here
-      char *fmt = format_string(l->val.str_val);
-      LLVMValueRef gstr = LLVMBuildGlobalStringPtr(ctx->builder, fmt, "str_lit");
-      free(fmt);
-      return gstr;
-    }
+    
     return LLVMConstInt(get_llvm_type(ctx, l->var_type), l->val.int_val, 0);
   }
   else if (node->type == NODE_BINARY_OP) {
@@ -166,6 +293,14 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       if (op->op == TOKEN_MINUS) return LLVMBuildSub(ctx->builder, l, r, "sub");
       if (op->op == TOKEN_STAR) return LLVMBuildMul(ctx->builder, l, r, "mul");
       if (op->op == TOKEN_SLASH) return LLVMBuildSDiv(ctx->builder, l, r, "div");
+      // Relational Ops
+      if (op->op == TOKEN_LT) return LLVMBuildICmp(ctx->builder, LLVMIntSLT, l, r, "lt");
+      if (op->op == TOKEN_GT) return LLVMBuildICmp(ctx->builder, LLVMIntSGT, l, r, "gt");
+      if (op->op == TOKEN_LTE) return LLVMBuildICmp(ctx->builder, LLVMIntSLE, l, r, "lte");
+      if (op->op == TOKEN_GTE) return LLVMBuildICmp(ctx->builder, LLVMIntSGE, l, r, "gte");
+      if (op->op == TOKEN_EQ) return LLVMBuildICmp(ctx->builder, LLVMIntEQ, l, r, "eq");
+      if (op->op == TOKEN_NEQ) return LLVMBuildICmp(ctx->builder, LLVMIntNE, l, r, "neq");
+
       return LLVMConstInt(LLVMInt32Type(), 0, 0);
   }
   else if (node->type == NODE_ARRAY_ACCESS) {
@@ -180,13 +315,38 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
              return LLVMBuildLoad2(ctx->builder, LLVMInt8Type(), gep, "char_val");
         }
         
-        // ... existing array/ptr access implementation ...
         LLVMValueRef target = codegen_addr(ctx, aa->target);
         if(!target) target = codegen_expr(ctx, aa->target); 
         LLVMValueRef index = codegen_expr(ctx, aa->index);
         LLVMTypeRef el_type = get_llvm_type(ctx, target_t); 
-        LLVMValueRef gep = LLVMBuildGEP2(ctx->builder, el_type, target, &index, 1, "ptr_idx");
-        return LLVMBuildLoad2(ctx->builder, el_type, gep, "val");
+        
+        // Handle pointer vs array
+        if (target_t.ptr_depth > 0) {
+            el_type = LLVMGetElementType(el_type); // deref the pointer type for GEP
+            LLVMValueRef base = LLVMBuildLoad2(ctx->builder, el_type, target, "ptr_base");
+            LLVMValueRef gep = LLVMBuildGEP2(ctx->builder, LLVMGetElementType(el_type), base, &index, 1, "ptr_idx");
+            return LLVMBuildLoad2(ctx->builder, LLVMGetElementType(el_type), gep, "val");
+        } else {
+             LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), index };
+             LLVMValueRef gep = LLVMBuildGEP2(ctx->builder, el_type, target, indices, 2, "arr_idx");
+             return LLVMBuildLoad2(ctx->builder, LLVMGetElementType(el_type), gep, "val");
+        }
+  }
+  else if (node->type == NODE_MEMBER_ACCESS) {
+      // For R-values, usually we load from address
+      LLVMValueRef addr = codegen_addr(ctx, node);
+      if (addr) {
+          MemberAccessNode *ma = (MemberAccessNode*)node;
+          VarType vt = codegen_calc_type(ctx, node);
+          LLVMTypeRef type = get_llvm_type(ctx, vt);
+          return LLVMBuildLoad2(ctx->builder, type, addr, "mem_val");
+      }
+  }
+  else if (node->type == NODE_VAR_REF) {
+      Symbol *sym = find_symbol(ctx, ((VarRefNode*)node)->name);
+      if (sym) {
+          return LLVMBuildLoad2(ctx->builder, sym->type, sym->value, sym->name);
+      }
   }
   
   return LLVMConstInt(LLVMInt32Type(), 0, 0);
