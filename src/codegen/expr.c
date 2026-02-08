@@ -162,6 +162,10 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
              vt.ptr_depth = 1; 
              return vt;
         }
+        if (strcmp(c->name, "setjmp") == 0) {
+             vt.base = TYPE_INT;
+             return vt;
+        }
 
         FuncSymbol *fs = find_func_symbol(ctx, c->name);
         if (fs) return fs->ret_type;
@@ -458,6 +462,29 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
         LLVMValueRef args[] = { num, sz };
         return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->calloc_func), ctx->calloc_func, args, 2, "calloc_res");
     }
+    // setjmp
+    if (strcmp(c->name, "setjmp") == 0) {
+        LLVMValueRef buf = codegen_expr(ctx, c->args);
+        // Force bitcast to i8* (void*) as setjmp expects generic pointer
+        if (LLVMGetTypeKind(LLVMTypeOf(buf)) != LLVMPointerTypeKind) {
+             // If array, codegen_expr might have returned GEP to decay, which is good.
+        }
+        buf = LLVMBuildBitCast(ctx->builder, buf, LLVMPointerType(LLVMInt8Type(), 0), "jmpbuf_cast");
+        LLVMValueRef args[] = { buf };
+        return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->setjmp_func), ctx->setjmp_func, args, 1, "sj_res");
+    }
+    // longjmp
+    if (strcmp(c->name, "longjmp") == 0) {
+        LLVMValueRef buf = codegen_expr(ctx, c->args);
+        LLVMValueRef val = codegen_expr(ctx, c->args->next);
+        
+        buf = LLVMBuildBitCast(ctx->builder, buf, LLVMPointerType(LLVMInt8Type(), 0), "jmpbuf_cast");
+        val = LLVMBuildIntCast(ctx->builder, val, LLVMInt32Type(), "val_cast");
+        
+        LLVMValueRef args[] = { buf, val };
+        return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->longjmp_func), ctx->longjmp_func, args, 2, "");
+    }
+
     if (strcmp(c->name, "free") == 0) {
         // --- SMART FREE ---
         // 1. Stack Allocation Warning

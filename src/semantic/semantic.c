@@ -200,7 +200,7 @@ static const char* find_closest_type_name(SemCtx *ctx, const char *name) {
 }
 
 static const char* find_closest_func_name(SemCtx *ctx, const char *name) {
-    const char *builtins[] = {"print", "printf", "input", "malloc", "alloc", "free", NULL};
+    const char *builtins[] = {"print", "printf", "input", "malloc", "alloc", "free", "setjmp", "longjmp", NULL};
     const char *best = NULL;
     int min_dist = 3;
 
@@ -581,6 +581,32 @@ static VarType check_expr(SemCtx *ctx, ASTNode *node) {
                  }
                  VarType ret = {TYPE_VOID, 0, NULL};
                  return ret;
+            }
+            
+            // setjmp: int setjmp(void* buffer)
+            if (strcmp(c->name, "setjmp") == 0) {
+                if (!c->args) {
+                     sem_error(ctx, node, "'setjmp' requires 1 argument (jmp_buf buffer)");
+                } else if (c->args->next) {
+                     sem_error(ctx, node, "'setjmp' requires exactly 1 argument");
+                }
+                // Argument can be array or pointer
+                VarType ret = {TYPE_INT, 0, NULL};
+                return ret;
+            }
+            
+            // longjmp: void longjmp(void* buffer, int val)
+            if (strcmp(c->name, "longjmp") == 0) {
+                if (!c->args || !c->args->next) {
+                     sem_error(ctx, node, "'longjmp' requires 2 arguments (jmp_buf buffer, int val)");
+                } else if (c->args->next->next) {
+                     sem_error(ctx, node, "'longjmp' requires exactly 2 arguments");
+                } else {
+                     VarType t2 = check_expr(ctx, c->args->next);
+                     if (t2.base != TYPE_INT) sem_error(ctx, c->args->next, "Second argument to longjmp must be integer");
+                }
+                VarType ret = {TYPE_VOID, 0, NULL};
+                return ret;
             }
 
             SemFunc *f = find_func(ctx, c->name);

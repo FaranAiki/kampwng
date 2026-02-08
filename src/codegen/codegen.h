@@ -86,6 +86,10 @@ typedef struct {
   LLVMValueRef strlen_func;
   LLVMValueRef strcpy_func;
   LLVMValueRef strdup_func;
+  
+  // setjmp/longjmp support
+  LLVMValueRef setjmp_func;
+  LLVMValueRef longjmp_func;
 } CodegenCtx;
 
 // --- Core API ---

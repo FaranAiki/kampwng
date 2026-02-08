@@ -47,6 +47,16 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
     LLVMTypeRef free_type = LLVMFunctionType(LLVMVoidType(), free_args, 1, false);
     ctx->free_func = LLVMAddFunction(module, "free", free_type);
     
+    // setjmp - returns i32, takes i8* (pointer to jmp_buf)
+    LLVMTypeRef setjmp_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };
+    LLVMTypeRef setjmp_type = LLVMFunctionType(LLVMInt32Type(), setjmp_args, 1, false);
+    ctx->setjmp_func = LLVMAddFunction(module, "setjmp", setjmp_type);
+    
+    // longjmp - returns void, takes i8* (pointer to jmp_buf) and i32
+    LLVMTypeRef longjmp_args[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMInt32Type() };
+    LLVMTypeRef longjmp_type = LLVMFunctionType(LLVMVoidType(), longjmp_args, 2, false);
+    ctx->longjmp_func = LLVMAddFunction(module, "longjmp", longjmp_type);
+    
     // Getchar
     LLVMTypeRef getchar_type = LLVMFunctionType(LLVMInt32Type(), NULL, 0, false);
     LLVMValueRef getchar_func = LLVMAddFunction(module, "getchar", getchar_type);
