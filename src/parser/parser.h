@@ -16,8 +16,8 @@ typedef enum {
   NODE_LOOP,    
   NODE_WHILE,   
   NODE_IF,
-  NODE_SWITCH,  // Added
-  NODE_CASE,    // Added
+  NODE_SWITCH,
+  NODE_CASE,
   NODE_VAR_DECL,  
   NODE_ASSIGN,  
   NODE_VAR_REF,
@@ -74,6 +74,7 @@ typedef struct Parameter {
 typedef struct {
   ASTNode base;
   char *name;
+  char *mangled_name; // Added for overloading
   VarType ret_type;
   Parameter *params;
   ASTNode *body; 
@@ -134,6 +135,7 @@ typedef struct {
 typedef struct {
   ASTNode base;
   char *name;
+  char *mangled_name; // Added: resolved overload name
   ASTNode *args; 
 } CallNode;
 

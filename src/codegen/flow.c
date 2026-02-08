@@ -42,8 +42,15 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
   }
   
   LLVMTypeRef ret_type = get_llvm_type(ctx, node->ret_type);
-  LLVMTypeRef func_type = LLVMFunctionType(ret_type, param_types, total_params, node->is_varargs); 
-  LLVMValueRef func = LLVMAddFunction(ctx->module, node->name, func_type);
+  LLVMTypeRef func_type = LLVMFunctionType(ret_type, param_types, total_params, node->is_varargs);
+  
+  // Use Mangled Name (if available) unless it is main
+  const char *func_name = node->name;
+  if (node->mangled_name && strcmp(node->name, "main") != 0) {
+      func_name = node->mangled_name;
+  }
+  
+  LLVMValueRef func = LLVMAddFunction(ctx->module, func_name, func_type);
   free(param_types);
   
   if (!node->body) return; // Extern
@@ -93,6 +100,7 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
 }
 
 void codegen_loop(CodegenCtx *ctx, LoopNode *node) {
+  // ... (unchanged) ...
   LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
   LLVMBasicBlockRef cond_bb = LLVMAppendBasicBlock(func, "loop_cond");
   LLVMBasicBlockRef body_bb = LLVMAppendBasicBlock(func, "loop_body");
@@ -135,6 +143,7 @@ void codegen_loop(CodegenCtx *ctx, LoopNode *node) {
 }
 
 void codegen_while(CodegenCtx *ctx, WhileNode *node) {
+    // ... (unchanged)
   LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
   LLVMBasicBlockRef cond_bb = LLVMAppendBasicBlock(func, "while_cond");
   LLVMBasicBlockRef body_bb = LLVMAppendBasicBlock(func, "while_body");
@@ -180,19 +189,17 @@ void codegen_while(CodegenCtx *ctx, WhileNode *node) {
 }
 
 void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
+    // ... (unchanged) ...
     LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
     LLVMValueRef cond = codegen_expr(ctx, node->condition);
     
-    // Ensure condition is an integer for switch
     if (LLVMGetTypeKind(LLVMTypeOf(cond)) != LLVMIntegerTypeKind) {
-        // Simple error or attempt cast
         cond = LLVMBuildIntCast(ctx->builder, cond, LLVMInt32Type(), "switch_cond_cast");
     }
 
     LLVMBasicBlockRef end_bb = LLVMAppendBasicBlock(func, "switch_end");
     LLVMBasicBlockRef default_bb = LLVMAppendBasicBlock(func, "switch_default");
     
-    // Pre-scan to create basic blocks for all cases
     int case_count = 0;
     ASTNode *c = node->cases;
     while(c) { case_count++; c = c->next; }
@@ -202,55 +209,37 @@ void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
         case_bbs[i] = LLVMAppendBasicBlock(func, "case_bb");
     }
     
-    // Create the Switch Instruction
     LLVMValueRef switch_inst = LLVMBuildSwitch(ctx->builder, cond, default_bb, case_count);
     
-    // Fill cases
     c = node->cases;
     int i = 0;
     while(c) {
         CaseNode *cn = (CaseNode*)c;
-        
-        // Add case to switch inst
         LLVMValueRef val = codegen_expr(ctx, cn->value);
-        if (!LLVMIsConstant(val)) {
-             // Error: Case value must be constant
-        }
-        
-        // Fix for LLVMConstIntCast/ZExt implicit declaration
-        // We manually extract the value and create a new constant of the correct type
         if (LLVMTypeOf(val) != LLVMTypeOf(cond)) {
             if (LLVMIsConstant(val) && LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMIntegerTypeKind) {
                 unsigned long long raw_val = LLVMConstIntGetZExtValue(val);
                 val = LLVMConstInt(LLVMTypeOf(cond), raw_val, 0);
             } else {
-                // Fallback (mostly for pointers or odd types, though switch implies int)
                 val = LLVMConstBitCast(val, LLVMTypeOf(cond));
             }
         }
         
         LLVMAddCase(switch_inst, val, case_bbs[i]);
         
-        // Gen Body
         LLVMPositionBuilderAtEnd(ctx->builder, case_bbs[i]);
-        
-        // Allow `break` to jump to end_bb
         push_loop_ctx(ctx, NULL, end_bb); 
         codegen_node(ctx, cn->body);
         pop_loop_ctx(ctx);
         
-        // Handle Fallthrough or Break
         if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
             if (cn->is_leak) {
-                // Fallthrough to next case, or default, or end
                 if (i + 1 < case_count) {
                     LLVMBuildBr(ctx->builder, case_bbs[i+1]);
                 } else {
-                    // Leak last case falls to default
                     LLVMBuildBr(ctx->builder, default_bb);
                 }
             } else {
-                // Standard Auto-Break
                 LLVMBuildBr(ctx->builder, end_bb);
             }
         }
@@ -260,7 +249,6 @@ void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
     }
     free(case_bbs);
     
-    // Default Block
     LLVMPositionBuilderAtEnd(ctx->builder, default_bb);
     if (node->default_case) {
         push_loop_ctx(ctx, NULL, end_bb);
@@ -291,6 +279,7 @@ void codegen_continue(CodegenCtx *ctx) {
 }
 
 void codegen_if(CodegenCtx *ctx, IfNode *node) {
+    // ... (unchanged)
   LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
   LLVMBasicBlockRef then_bb = LLVMAppendBasicBlock(func, "if_then");
   LLVMBasicBlockRef else_bb = LLVMAppendBasicBlock(func, "if_else");

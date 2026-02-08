@@ -1,0 +1,22 @@
+int s(int p) {
+  print "True!\n";
+}
+
+int s(double p) {
+  print "True! ss\n";
+}
+
+int s(char *s) {
+   printf "%s", s;
+}
+
+int main() {
+  print "int s(int p)\n";
+  s(1);
+  print "int s(char *p)\n";
+  s(2.0);
+  print "int s(char *s)\n";
+  s("tesjt");
+}
+
+

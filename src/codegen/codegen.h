@@ -20,6 +20,8 @@ typedef struct Symbol {
 typedef struct FuncSymbol {
     char *name;
     VarType ret_type;
+    VarType *param_types; // Added: for overload resolution checks in codegen
+    int param_count;      // Added
     struct FuncSymbol *next;
 } FuncSymbol;
 
@@ -65,7 +67,7 @@ typedef struct {
   Symbol *symbols;
   FuncSymbol *functions;
   ClassInfo *classes; 
-  EnumInfo *enums; // Added
+  EnumInfo *enums; 
   LoopContext *current_loop; 
   
   // Namespacing
@@ -81,7 +83,7 @@ typedef struct {
   LLVMValueRef input_func;
   LLVMValueRef strcmp_func;
   LLVMValueRef malloc_func;
-  LLVMValueRef calloc_func; // Added
+  LLVMValueRef calloc_func;
   LLVMValueRef free_func;
   LLVMValueRef strlen_func;
   LLVMValueRef strcpy_func;
@@ -102,7 +104,7 @@ void codegen_error(CodegenCtx *ctx, ASTNode *node, const char *msg);
 // --- Shared Internal ---
 void add_symbol(CodegenCtx *ctx, const char *name, LLVMValueRef val, LLVMTypeRef type, VarType vtype, int is_array, int is_mut);
 Symbol* find_symbol(CodegenCtx *ctx, const char *name);
-void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type);
+void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type, VarType *params, int pcount);
 FuncSymbol* find_func_symbol(CodegenCtx *ctx, const char *name);
 
 // Namespace Helpers
@@ -136,7 +138,7 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node);
 void codegen_loop(CodegenCtx *ctx, LoopNode *node);
 void codegen_while(CodegenCtx *ctx, WhileNode *node);
 void codegen_if(CodegenCtx *ctx, IfNode *node);
-void codegen_switch(CodegenCtx *ctx, SwitchNode *node); // Added
+void codegen_switch(CodegenCtx *ctx, SwitchNode *node);
 void codegen_break(CodegenCtx *ctx);
 void codegen_continue(CodegenCtx *ctx);
 
