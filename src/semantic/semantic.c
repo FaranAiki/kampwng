@@ -61,6 +61,7 @@ typedef struct {
     int in_loop;                   // For checking break/continue
     const char *current_class;     // For 'this' context
     const char *source_code;       // For error reporting
+    const char *filename;          // For error reporting context
 } SemCtx;
 
 // --- Forward Declarations ---
@@ -134,6 +135,7 @@ static void sem_error(SemCtx *ctx, ASTNode *node, const char *fmt, ...) {
     Lexer l;
     if (ctx->source_code) {
         lexer_init(&l, ctx->source_code);
+        l.filename = ctx->filename; // Set filename on temp lexer
     }
     
     report_error(ctx->source_code ? &l : NULL, t, msg);
@@ -154,6 +156,7 @@ static void sem_info(SemCtx *ctx, ASTNode *node, const char *fmt, ...) {
     Lexer l;
     if (ctx->source_code) {
         lexer_init(&l, ctx->source_code);
+        l.filename = ctx->filename;
     }
     report_info(ctx->source_code ? &l : NULL, t, msg);
 }
@@ -167,6 +170,7 @@ static void sem_hint(SemCtx *ctx, ASTNode *node, const char *msg) {
     Lexer l;
     if (ctx->source_code) {
         lexer_init(&l, ctx->source_code);
+        l.filename = ctx->filename;
     }
     report_hint(ctx->source_code ? &l : NULL, t, msg);
 }
@@ -186,6 +190,7 @@ static void sem_reason(SemCtx *ctx, int line, int col, const char *fmt, ...) {
     Lexer l;
     if (ctx->source_code) {
         lexer_init(&l, ctx->source_code);
+        l.filename = ctx->filename;
     }
     report_reason(ctx->source_code ? &l : NULL, t, msg);
 }
@@ -199,6 +204,7 @@ static void sem_suggestion(SemCtx *ctx, ASTNode *node, const char *suggestion) {
     Lexer l;
     if (ctx->source_code) {
         lexer_init(&l, ctx->source_code);
+        l.filename = ctx->filename;
     }
     report_suggestion(ctx->source_code ? &l : NULL, t, suggestion);
 }
@@ -1197,7 +1203,7 @@ static void check_program(SemCtx *ctx, ASTNode *node) {
     }
 }
 
-int semantic_analysis(ASTNode *root, const char *source) {
+int semantic_analysis(ASTNode *root, const char *source, const char *filename) {
     SemCtx ctx;
     ctx.current_scope = NULL;
     ctx.functions = NULL;
@@ -1207,6 +1213,7 @@ int semantic_analysis(ASTNode *root, const char *source) {
     ctx.in_loop = 0;
     ctx.current_class = NULL;
     ctx.source_code = source;
+    ctx.filename = filename;
     
     enter_scope(&ctx);
     
@@ -1215,6 +1222,5 @@ int semantic_analysis(ASTNode *root, const char *source) {
     
     exit_scope(&ctx);
     
-    // Cleanup not shown for brevity, similar to original file
     return ctx.error_count;
 }

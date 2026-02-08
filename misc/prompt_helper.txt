@@ -137,3 +137,6 @@ The project uses the pure C API (`llvm-c/Core.h`) rather than the C++ object-ori
 
 * **Effect:** This requires manual management of strings and builders (`LLVMBuildAdd`, `LLVMBuildRet`).
 * **Architecture:** It allows the entire compiler to remain pure C, ensuring high portability and a smaller runtime footprint compared to linking against the C++ LLVM libraries. It requires explicit type creation (e.g., `LLVMInt32Type()`) at every step.
+
+## 6. What to Do 
+With the given information, do:

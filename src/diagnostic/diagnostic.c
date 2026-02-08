@@ -6,6 +6,7 @@
 // Global Context Tracker
 static char current_namespace[256] = "main";
 static char last_reported_namespace[256] = ""; 
+static char last_reported_filename[1024] = "";
 
 void diag_set_namespace(const char *ns) {
     if (ns && strlen(ns) > 0) {
@@ -18,6 +19,41 @@ void diag_set_namespace(const char *ns) {
 
 const char* diag_get_namespace(void) {
     return current_namespace;
+}
+
+// Helper to shorten path to last 3 components
+static void get_short_path(const char *in, char *out, size_t size) {
+    if (!in || strlen(in) == 0) { 
+        out[0] = 0; 
+        return; 
+    }
+    
+    int slashes = 0;
+    const char *p = in;
+    while(*p) { if (*p == '/' || *p == '\\') slashes++; p++; }
+    
+    // If path is short enough, return as is
+    if (slashes <= 2) {
+        strncpy(out, in, size);
+        out[size-1] = '\0';
+        return;
+    }
+    
+    // Find the 3rd slash from the end
+    int count = 0;
+    p = in + strlen(in) - 1;
+    while(p > in) {
+        if (*p == '/' || *p == '\\') {
+            count++;
+            if (count == 3) {
+                p++; // Move past the slash to start of the component
+                break;
+            }
+        }
+        p--;
+    }
+    
+    snprintf(out, size, ".../%s", p);
 }
 
 // --- Levenshtein Distance ---
@@ -70,7 +106,7 @@ const char* find_closest_keyword(const char *ident) {
         "if", "else", "while", "loop", "break", "continue", "class", 
         "namespace", "import", "link", "extern", "define", "has", "is",
         "open", "closed", "let", "mut", "imut", "typeof", 
-        "switch", "case", "default", "leak", // Added missing switch keywords
+        "switch", "case", "default", "leak", 
         NULL
     };
     
@@ -117,9 +153,21 @@ static void print_source_snippet(Lexer *l, Token t) {
 static void report_generic(Lexer *l, Token t, const char *label, const char *color, const char *msg) {
     // Namespace info: Only print if context has changed
     if (strcmp(current_namespace, last_reported_namespace) != 0) {
-        fprintf(stderr, "at namespace %s:\n", current_namespace);
+        fprintf(stderr, "at namespace %s%s%s:\n", DIAG_BOLD, current_namespace, DIAG_RESET);
         strncpy(last_reported_namespace, current_namespace, 255);
         last_reported_namespace[255] = '\0';
+    }
+    
+    // File Context info
+    if (l && l->filename) {
+        if (strcmp(l->filename, last_reported_filename) != 0) {
+            char short_path[256];
+            get_short_path(l->filename, short_path, sizeof(short_path));
+            fprintf(stderr, "in %s%s%s:\n", DIAG_PURPLE, short_path, DIAG_RESET);
+            
+            strncpy(last_reported_filename, l->filename, 1023);
+            last_reported_filename[1023] = '\0';
+        }
     }
     
     // Diagnostic Line

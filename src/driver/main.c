@@ -58,6 +58,8 @@ int main(int argc, char *argv[]) {
 
   Lexer l;
   lexer_init(&l, code);
+  l.filename = filename; // Set filename for diagnostic context
+  
   ASTNode *root = parse_program(&l);
   
   if (!root && parser_error_count > 0) {
@@ -66,7 +68,7 @@ int main(int argc, char *argv[]) {
   }
   
   // --- SEMANTIC ANALYSIS PHASE ---
-  if (semantic_analysis(root, code) != 0) {
+  if (semantic_analysis(root, code, filename) != 0) {
       // TODO move this to diagnostic to make it standardized
       fprintf(stderr, "Semantic analysis failed. Compilation stopped.\n");
       free(code);

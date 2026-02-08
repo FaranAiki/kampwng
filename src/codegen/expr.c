@@ -35,6 +35,16 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
         return t;
     }
 
+    if (node->type == NODE_TRAIT_ACCESS) {
+        TraitAccessNode *ta = (TraitAccessNode*)node;
+        VarType t = codegen_calc_type(ctx, ta->object);
+        if (t.base == TYPE_CLASS) {
+            // Returns TraitType* (same ptr depth as object)
+            t.class_name = strdup(ta->trait_name);
+            return t;
+        }
+    }
+
     if (node->type == NODE_MEMBER_ACCESS) {
         MemberAccessNode *ma = (MemberAccessNode*)node;
         VarType obj_t = codegen_calc_type(ctx, ma->object);
@@ -109,6 +119,8 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
 
      if (node->type == NODE_MEMBER_ACCESS) {
          MemberAccessNode *ma = (MemberAccessNode*)node;
+         
+         // Try getting address of object (L-value)
          LLVMValueRef obj = codegen_addr(ctx, ma->object);
          
          VarType obj_t = codegen_calc_type(ctx, ma->object);
@@ -119,11 +131,23 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
                  if (idx != -1) {
                      if (obj_t.ptr_depth > 0) {
                         // Obj is a pointer (e.g., 'this', or Class* ptr)
-                        LLVMValueRef base = LLVMBuildLoad2(ctx->builder, LLVMPointerType(ci->struct_type, 0), obj, "obj_ptr");
+                        LLVMValueRef base;
+                        if (obj) {
+                            base = LLVMBuildLoad2(ctx->builder, LLVMPointerType(ci->struct_type, 0), obj, "obj_ptr");
+                        } else {
+                            // Fallback: Object is R-value pointer (e.g. Faran[Hand])
+                            base = codegen_expr(ctx, ma->object);
+                        }
+                        
                         LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), idx, 0) };
                         return LLVMBuildGEP2(ctx->builder, ci->struct_type, base, indices, 2, "mem_ptr");
                      } else {
-                        // Obj is a struct value on stack
+                        // Obj is a struct value on stack (L-value must exist)
+                        if (!obj) {
+                             char msg[256];
+                             snprintf(msg, 256, "Cannot access member '%s' of r-value struct", ma->member_name);
+                             codegen_error(ctx, node, msg);
+                        }
                         LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), idx, 0) };
                         return LLVMBuildGEP2(ctx->builder, ci->struct_type, obj, indices, 2, "mem_ptr");
                      }
@@ -131,7 +155,11 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
              }
          }
      }
-
+     
+     // NODE_TRAIT_ACCESS is strictly an R-value calculation (pointer arithmetic)
+     // unless it returns a reference, but we treat classes as pointers usually.
+     // codegen_addr returning NULL here signals it's not a variable slot.
+     
      return NULL;
 }
 
@@ -221,6 +249,43 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
     LLVMTypeRef ftype = LLVMGlobalGetValueType(func);
     LLVMValueRef ret = LLVMBuildCall2(ctx->builder, ftype, func, args, arg_count, "");
     free(args); return ret;
+  }
+  else if (node->type == NODE_TRAIT_ACCESS) {
+      TraitAccessNode *ta = (TraitAccessNode*)node;
+      
+      // Get base pointer
+      LLVMValueRef obj_ptr = NULL;
+      VarType obj_t = codegen_calc_type(ctx, ta->object);
+      
+      if (obj_t.ptr_depth > 0) {
+          // Object is a pointer expression
+          obj_ptr = codegen_expr(ctx, ta->object);
+      } else {
+          // Object is L-value, get address
+          obj_ptr = codegen_addr(ctx, ta->object);
+      }
+      
+      if (!obj_ptr) codegen_error(ctx, node, "Cannot access trait of null/invalid object");
+
+      ClassInfo *ci = find_class(ctx, obj_t.class_name);
+      if (!ci) codegen_error(ctx, node, "Object is not a class");
+
+      int offset = get_trait_offset(ci, ta->trait_name);
+      if (offset == -1) {
+          char msg[256]; snprintf(msg, 256, "Class '%s' does not have trait '%s'", ci->name, ta->trait_name);
+          codegen_error(ctx, node, msg);
+      }
+      
+      ClassInfo *trait = find_class(ctx, ta->trait_name);
+      LLVMTypeRef trait_type = trait ? trait->struct_type : LLVMStructCreateNamed(LLVMGetGlobalContext(), ta->trait_name);
+      
+      // GEP to sub-object
+      // Note: If offset is 0, we can just cast. 
+      // But GEP is safer for types.
+      LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), offset, 0) };
+      LLVMValueRef trait_ptr = LLVMBuildGEP2(ctx->builder, ci->struct_type, obj_ptr, indices, 2, "trait_ptr");
+      
+      return LLVMBuildBitCast(ctx->builder, trait_ptr, LLVMPointerType(trait_type, 0), "trait_cast");
   }
   else if (node->type == NODE_LITERAL) {
     LiteralNode *l = (LiteralNode*)node;

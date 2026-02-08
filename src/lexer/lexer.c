@@ -6,6 +6,7 @@
 
 void lexer_init(Lexer *l, const char *src) {
   l->src = src;
+  l->filename = NULL; // Default to no filename
   l->pos = 0;
   l->line = 1;
   l->col = 1;

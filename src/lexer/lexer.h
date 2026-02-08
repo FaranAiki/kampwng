@@ -122,6 +122,7 @@ typedef struct {
 
 typedef struct {
   const char *src;
+  const char *filename; // Added for diagnostic context
   int pos;
   int line;
   int col;

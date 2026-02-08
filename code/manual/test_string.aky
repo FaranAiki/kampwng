@@ -1,4 +1,6 @@
 int main() {
   char a[] = ['a','b','c','\0'];
   print "%s", a;
+  let t = "s";
+  print "%s";
 }

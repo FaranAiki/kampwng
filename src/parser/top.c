@@ -370,13 +370,17 @@ ASTNode* parse_top_level(Lexer *l) {
         free(fname); 
         parser_fail(l, msg); 
     }
-    free(fname);
     
     Token saved_token = current_token;
     current_token.text = NULL; current_token.type = TOKEN_UNKNOWN; 
     Lexer import_l; lexer_init(&import_l, src);
+    import_l.filename = fname; // Set filename on the imported lexer
+    
     ASTNode* imported_root = parse_program(&import_l);
+    
     free(src);
+    free(fname); // Can free filename string here since import_l is stack allocated and done
+    
     current_token = saved_token;
     return imported_root; 
   }

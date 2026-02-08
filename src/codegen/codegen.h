@@ -34,11 +34,24 @@ typedef struct ClassMember {
     struct ClassMember *next;
 } ClassMember;
 
+// Track where traits begin in the struct layout
+typedef struct TraitOffset {
+    char *trait_name;
+    int offset_index; 
+    struct TraitOffset *next;
+} TraitOffset;
+
 typedef struct ClassInfo {
     char *name;
     char *parent_name; 
     LLVMTypeRef struct_type;
     ClassMember *members;
+    
+    // Trait Support
+    char **trait_names;
+    int trait_count;
+    TraitOffset *trait_offsets;
+
     struct ClassInfo *next;
 } ClassInfo;
 
@@ -115,6 +128,7 @@ int is_namespace(CodegenCtx *ctx, const char *name);
 void add_class_info(CodegenCtx *ctx, ClassInfo *ci);
 ClassInfo* find_class(CodegenCtx *ctx, const char *name);
 int get_member_index(ClassInfo *ci, const char *member, LLVMTypeRef *out_type, VarType *out_vtype);
+int get_trait_offset(ClassInfo *ci, const char *trait_name);
 
 // Enum Helpers
 void add_enum_info(CodegenCtx *ctx, EnumInfo *ei);
