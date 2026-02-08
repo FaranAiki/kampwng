@@ -124,6 +124,9 @@ typedef struct {
   ASTNode *object;
   char *method_name;
   ASTNode *args;
+  // Resolution Info
+  char *mangled_name; // The actual function to call (e.g., _Z7Parent3foo...)
+  char *owner_class;  // The class/trait where it was found (for 'this' adjustment)
 } MethodCallNode;
 
 typedef struct {

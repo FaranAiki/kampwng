@@ -65,7 +65,6 @@ typedef struct {
 } SemCtx;
 
 // --- Forward Declarations ---
-// Moved up to resolve circular dependency between resolve_overload and check_expr
 static VarType check_expr(SemCtx *ctx, ASTNode *node);
 static void check_stmt(SemCtx *ctx, ASTNode *node);
 
@@ -73,7 +72,6 @@ static void check_stmt(SemCtx *ctx, ASTNode *node);
 
 static void mangle_type(char *buf, VarType t) {
     if (t.array_size > 0) {
-        // Simple encoding for array: A<size>_
         sprintf(buf + strlen(buf), "A%d_", t.array_size);
     }
     for(int i=0; i<t.ptr_depth; i++) strcat(buf, "P");
@@ -103,6 +101,7 @@ static char* mangle_function(const char *name, Parameter *params) {
     char buf[1024];
     buf[0] = '\0';
     
+    // Basic mangling scheme: _Z + len + name + params
     sprintf(buf, "_Z%ld%s", strlen(name), name);
     
     Parameter *p = params;
@@ -135,7 +134,7 @@ static void sem_error(SemCtx *ctx, ASTNode *node, const char *fmt, ...) {
     Lexer l;
     if (ctx->source_code) {
         lexer_init(&l, ctx->source_code);
-        l.filename = ctx->filename; // Set filename on temp lexer
+        l.filename = ctx->filename; 
     }
     
     report_error(ctx->source_code ? &l : NULL, t, msg);
@@ -216,7 +215,6 @@ static int are_types_equal(VarType a, VarType b) {
 
     if (a.base != b.base) {
         if (a.base == TYPE_AUTO || b.base == TYPE_AUTO) return 1;
-        // Alkyl String == Alkyl String
         if (a.base == TYPE_STRING && b.base == TYPE_STRING) return 1;
         return 0;
     }
@@ -240,7 +238,6 @@ static int get_conversion_cost(VarType from, VarType to) {
         if (from.base == TYPE_CHAR && to.base == TYPE_INT) return 1;
     }
     
-    // Implicit: string -> char* (C-string)
     if (from.base == TYPE_STRING && from.ptr_depth == 0) {
         if (to.base == TYPE_CHAR && to.ptr_depth == 1) return 1;
     }
@@ -364,7 +361,6 @@ static void exit_scope(SemCtx *ctx) {
     if (!ctx->current_scope) return;
     Scope *s = ctx->current_scope;
     
-    // Free symbols
     SemSymbol *sym = s->symbols;
     while(sym) {
         SemSymbol *next = sym->next;
@@ -417,7 +413,7 @@ static void add_func(SemCtx *ctx, const char *name, char *mangled, VarType ret, 
     f->name = strdup(name);
     f->mangled_name = strdup(mangled);
     f->ret_type = ret;
-    f->param_types = params; // Takes ownership
+    f->param_types = params; 
     f->param_count = pcount;
     f->next = ctx->functions;
     ctx->functions = f;
@@ -457,49 +453,7 @@ static SemFunc* resolve_overload(SemCtx *ctx, ASTNode *call_node, const char *na
         }
         cand = cand->next;
     }
-    
-    // Emit diagnostic info
-    if (best && best_score > 0) {
-        ASTNode *arg = args_list;
-        for(int i=0; i<best->param_count; i++) {
-            VarType arg_t = check_expr(ctx, arg);
-            int cost = get_conversion_cost(arg_t, best->param_types[i]);
-            if (cost > 0) {
-                sem_info(ctx, arg, "'%s' is converted to %s.", type_to_str(arg_t), type_to_str(best->param_types[i]));
-                
-                if (arg->type == NODE_LITERAL) {
-                    LiteralNode *ln = (LiteralNode*)arg;
-                    
-                    if (arg_t.base == TYPE_INT && best->param_types[i].base == TYPE_DOUBLE) {
-                        char buf[64];
-                        snprintf(buf, sizeof(buf), "Use '%d.0' if you want to explicitly state double", ln->val.int_val);
-                        sem_hint(ctx, arg, buf);
-                    }
-                    
-                    // NEW: String -> char* hint
-                    if (arg_t.base == TYPE_STRING && best->param_types[i].base == TYPE_CHAR && best->param_types[i].ptr_depth == 1) {
-                         if (ln->val.str_val) {
-                             char buf[256];
-                             snprintf(buf, sizeof(buf), "Use c\"%s\" if you want to explicitly state C-string", ln->val.str_val);
-                             sem_hint(ctx, arg, buf);
-                         }
-                    }
-                }
-            }
-            arg = arg->next;
-        }
-    }
-    
     return best;
-}
-
-static SemFunc* find_func(SemCtx *ctx, const char *name) {
-    SemFunc *f = ctx->functions;
-    while(f) {
-        if (strcmp(f->name, name) == 0) return f;
-        f = f->next;
-    }
-    return NULL;
 }
 
 static SemEnum* find_sem_enum(SemCtx *ctx, const char *name) {
@@ -523,7 +477,7 @@ static void add_class(SemCtx *ctx, const char *name, const char *parent, char **
         for(int i=0; i<trait_count; i++) c->traits[i] = strdup(traits[i]);
     }
     
-    c->members = NULL; // Init members
+    c->members = NULL; 
     c->next = ctx->classes;
     ctx->classes = c;
 }
@@ -550,6 +504,13 @@ static SemSymbol* find_member(SemCtx *ctx, const char *class_name, const char *m
     if (cls->parent_name) {
         return find_member(ctx, cls->parent_name, member_name);
     }
+    
+    // Check traits (if they have fields, usually they don't, but for robustness)
+    for(int i=0; i<cls->trait_count; i++) {
+        SemSymbol *res = find_member(ctx, cls->traits[i], member_name);
+        if (res) return res;
+    }
+
     return NULL;
 }
 
@@ -566,6 +527,38 @@ static int class_has_trait(SemCtx *ctx, const char *class_name, const char *trai
     }
     return 0;
 }
+
+// --- Recursive Method Resolution ---
+// Searches Class -> Traits -> Parent for a method name that matches args
+static SemFunc* resolve_method_in_hierarchy(SemCtx *ctx, ASTNode *call_node, const char *class_name, const char *method_name, ASTNode *args, char **out_owner_class) {
+    
+    // 1. Check Class itself
+    char qualified[512];
+    snprintf(qualified, sizeof(qualified), "%s.%s", class_name, method_name);
+    SemFunc *f = resolve_overload(ctx, call_node, qualified, args);
+    if (f) {
+        if (out_owner_class) *out_owner_class = strdup(class_name);
+        return f;
+    }
+    
+    SemClass *cls = find_sem_class(ctx, class_name);
+    if (!cls) return NULL;
+
+    // 2. Check Traits
+    for(int i=0; i<cls->trait_count; i++) {
+        SemFunc *tf = resolve_method_in_hierarchy(ctx, call_node, cls->traits[i], method_name, args, out_owner_class);
+        if (tf) return tf; // Found in trait
+    }
+
+    // 3. Check Parent
+    if (cls->parent_name) {
+        SemFunc *pf = resolve_method_in_hierarchy(ctx, call_node, cls->parent_name, method_name, args, out_owner_class);
+        if (pf) return pf; // Found in parent
+    }
+
+    return NULL;
+}
+
 
 // --- Checks ---
 
@@ -647,13 +640,8 @@ static VarType check_expr(SemCtx *ctx, ASTNode *node) {
             
             if (l.base == TYPE_UNKNOWN || r.base == TYPE_UNKNOWN) return unknown;
 
-            // Alkyl String Operations
             if (l.base == TYPE_STRING && r.base == TYPE_STRING && l.ptr_depth == 0 && r.ptr_depth == 0) {
-                 // Concatenation
-                 if (op->op == TOKEN_PLUS) {
-                     return l; // String + String = String
-                 }
-                 // Comparison
+                 if (op->op == TOKEN_PLUS) return l; 
                  if (op->op == TOKEN_EQ || op->op == TOKEN_NEQ || 
                      op->op == TOKEN_LT || op->op == TOKEN_GT || 
                      op->op == TOKEN_LTE || op->op == TOKEN_GTE) {
@@ -714,7 +702,6 @@ static VarType check_expr(SemCtx *ctx, ASTNode *node) {
             if (l_type.base != TYPE_UNKNOWN && r_type.base != TYPE_UNKNOWN) {
                 if (!are_types_equal(l_type, r_type)) {
                     int compatible = 0;
-                    // Conversions in assignment?
                     if (get_conversion_cost(r_type, l_type) != -1) compatible = 1;
                     if (l_type.ptr_depth > 0 && r_type.array_size > 0 && l_type.base == r_type.base) compatible = 1;
                     
@@ -728,7 +715,6 @@ static VarType check_expr(SemCtx *ctx, ASTNode *node) {
 
         case NODE_CALL: {
             CallNode *c = (CallNode*)node;
-            // Pre-calculate args
             ASTNode *arg = c->args;
             while(arg) { check_expr(ctx, arg); arg = arg->next; }
 
@@ -740,9 +726,7 @@ static VarType check_expr(SemCtx *ctx, ASTNode *node) {
             if (strcmp(c->name, "setjmp") == 0) return (VarType){TYPE_INT, 0, NULL};
             if (strcmp(c->name, "longjmp") == 0) return (VarType){TYPE_VOID, 0, NULL};
 
-            // Overload Resolution
             SemFunc *match = resolve_overload(ctx, node, c->name, c->args);
-            
             if (match) {
                 c->mangled_name = strdup(match->mangled_name);
                 return match->ret_type;
@@ -757,7 +741,6 @@ static VarType check_expr(SemCtx *ctx, ASTNode *node) {
             }
 
             sem_error(ctx, node, "No matching overload for function '%s'", c->name);
-
             const char *type_guess = find_closest_type_name(ctx, c->name);
             const char *func_guess = find_closest_func_name(ctx, c->name);
             
@@ -773,22 +756,43 @@ static VarType check_expr(SemCtx *ctx, ASTNode *node) {
         }
         
         case NODE_METHOD_CALL: {
-            // Simplified: Not handling overload for methods yet in this snippet
             MethodCallNode *mc = (MethodCallNode*)node;
             
+            VarType obj_t = {TYPE_UNKNOWN, 0, NULL};
+
+            // Case 1: Implicit 'this' call? (object is null in parser?)
+            // Actually parser assigns 'this' explicitly or handles it?
+            // If the parser produces METHOD_CALL, it has an object.
+            
             if (mc->object->type == NODE_VAR_REF) {
-                char *ns_name = ((VarRefNode*)mc->object)->name;
-                char qname[512];
-                snprintf(qname, sizeof(qname), "%s.%s", ns_name, mc->method_name);
+                char *var_name = ((VarRefNode*)mc->object)->name;
                 
-                // TODO: Overload resolution for qualified names
-                SemFunc *f = resolve_overload(ctx, node, qname, mc->args);
-                if (f) return f->ret_type;
+                // Check if it's a Namespace Call? e.g. Math.sin()
+                // Not supported cleanly here yet without Symbol lookup.
+                // Assuming it's a variable or 'this'.
+                obj_t = check_expr(ctx, mc->object);
+            } else {
+                obj_t = check_expr(ctx, mc->object);
             }
             
-            // Just traverse args for now
             ASTNode *arg = mc->args;
             while(arg) { check_expr(ctx, arg); arg = arg->next; }
+
+            if (obj_t.base == TYPE_CLASS && obj_t.class_name) {
+                char *owner = NULL;
+                SemFunc *f = resolve_method_in_hierarchy(ctx, node, obj_t.class_name, mc->method_name, mc->args, &owner);
+                
+                if (f) {
+                    mc->mangled_name = strdup(f->mangled_name);
+                    mc->owner_class = owner; 
+                    return f->ret_type;
+                } else {
+                    sem_error(ctx, node, "Method '%s' not found in class '%s' (or parents/traits)", mc->method_name, obj_t.class_name);
+                }
+            } else {
+                sem_error(ctx, node, "Method call on non-class type '%s'", type_to_str(obj_t));
+            }
+
             return unknown; 
         }
         
@@ -831,7 +835,6 @@ static VarType check_expr(SemCtx *ctx, ASTNode *node) {
                 sem_error(ctx, node, "Array index must be an integer, got '%s'", type_to_str(idx_t));
             }
             
-            // Alkyl String Indexing -> returns char value
             if (target_t.base == TYPE_STRING && target_t.ptr_depth == 0) {
                  return (VarType){TYPE_CHAR, 0, NULL};
             }
@@ -980,9 +983,7 @@ static void check_stmt(SemCtx *ctx, ASTNode *node) {
 
         case NODE_SWITCH: {
             SwitchNode *s = (SwitchNode*)node;
-            VarType ct = check_expr(ctx, s->condition);
-            if (ct.base != TYPE_INT && ct.base != TYPE_CHAR) {
-            }
+            check_expr(ctx, s->condition);
             
             enter_scope(ctx);
             int prev_loop = ctx->in_loop;
@@ -1073,7 +1074,7 @@ static void scan_declarations(SemCtx *ctx, ASTNode *node, const char *prefix) {
             int i = 0;
             while(p) { ptypes[i++] = p->type; p = p->next; }
             
-            // Check redefinition
+            // Check redefinition (checking mangled name for overloads)
             SemFunc *exist = ctx->functions;
             while(exist) {
                 if (strcmp(exist->mangled_name, mangled) == 0) {
@@ -1194,7 +1195,7 @@ static void check_program(SemCtx *ctx, ASTNode *node) {
              check_program(ctx, ((NamespaceNode*)node)->body);
         }
         else if (node->type == NODE_CLASS) {
-             // Basic class check
+             // Basic class check (scan_declarations already handled sigs)
         }
         else {
             check_stmt(ctx, node);

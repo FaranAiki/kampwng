@@ -41,6 +41,8 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
         if (t.base == TYPE_CLASS) {
             // Returns TraitType* (same ptr depth as object)
             t.class_name = strdup(ta->trait_name);
+            // Trait access always produces a pointer (view/GEP) to the trait part
+            if (t.ptr_depth == 0) t.ptr_depth = 1;
             return t;
         }
     }
@@ -62,10 +64,30 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
     if (node->type == NODE_CALL) {
         CallNode *call = (CallNode*)node;
         const char *name = call->mangled_name ? call->mangled_name : call->name;
+        
+        // 1. Check Function Symbol
         FuncSymbol *fs = find_func_symbol(ctx, name);
         if (fs) return fs->ret_type;
-        // Check builtin return types
+        
+        // 2. Check Class Constructor
+        ClassInfo *ci = find_class(ctx, call->name); // Use original name for class lookup
+        if (ci) {
+            vt.base = TYPE_CLASS;
+            vt.class_name = strdup(call->name);
+            vt.ptr_depth = 0; // Constructor returns the struct (or ptr if we decide so, usually struct in var)
+            return vt;
+        }
+
+        // 3. Check Builtins
         if (strcmp(name, "input") == 0) { vt.base = TYPE_STRING; return vt; }
+    }
+
+    if (node->type == NODE_METHOD_CALL) {
+        MethodCallNode *mc = (MethodCallNode*)node;
+        if (mc->mangled_name) {
+             FuncSymbol *fs = find_func_symbol(ctx, mc->mangled_name);
+             if (fs) return fs->ret_type;
+        }
     }
     
     return vt;
@@ -173,7 +195,36 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
         // Constructor: Allocate struct size
         LLVMValueRef size = LLVMSizeOf(ci->struct_type);
         LLVMValueRef mem = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->malloc_func), ctx->malloc_func, &size, 1, "new_obj");
-        return LLVMBuildBitCast(ctx->builder, mem, LLVMPointerType(ci->struct_type, 0), "obj_cast");
+        LLVMValueRef obj = LLVMBuildBitCast(ctx->builder, mem, LLVMPointerType(ci->struct_type, 0), "obj_cast");
+        
+        // Initialize members with arguments
+        ASTNode *arg = c->args;
+        ClassMember *m = ci->members;
+        
+        while (arg && m) {
+            LLVMValueRef arg_val = codegen_expr(ctx, arg);
+            
+            // GEP to member
+            LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), m->index, 0) };
+            LLVMValueRef mem_ptr = LLVMBuildGEP2(ctx->builder, ci->struct_type, obj, indices, 2, "init_mem_ptr");
+            
+            // Handle String Array Initialization (basic strcpy)
+            if (m->vtype.array_size > 0 && m->vtype.base == TYPE_CHAR) {
+                 LLVMValueRef dest = LLVMBuildBitCast(ctx->builder, mem_ptr, LLVMPointerType(LLVMInt8Type(), 0), "dest_cast");
+                 LLVMValueRef src = arg_val;
+                 // If src is i8* (decayed string) and dest is i8*, we can copy
+                 // NOTE: arg_val MUST be i8*, so codegen_expr of array must return decayed pointer
+                 LLVMValueRef args[] = { dest, src };
+                 LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->strcpy_func), ctx->strcpy_func, args, 2, "");
+            } else {
+                 LLVMBuildStore(ctx->builder, arg_val, mem_ptr);
+            }
+            
+            arg = arg->next;
+            m = m->next;
+        }
+
+        return obj;
     }
     
     // Builtins
@@ -250,6 +301,71 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
     LLVMValueRef ret = LLVMBuildCall2(ctx->builder, ftype, func, args, arg_count, "");
     free(args); return ret;
   }
+  else if (node->type == NODE_METHOD_CALL) {
+      MethodCallNode *mc = (MethodCallNode*)node;
+      
+      // 1. Get object pointer
+      LLVMValueRef obj_ptr = NULL;
+      VarType obj_t = codegen_calc_type(ctx, mc->object);
+      
+      if (obj_t.ptr_depth > 0) obj_ptr = codegen_expr(ctx, mc->object);
+      else obj_ptr = codegen_addr(ctx, mc->object);
+      
+      if (!obj_ptr) codegen_error(ctx, node, "Invalid object for method call");
+      
+      // 2. Adjust 'this' pointer if method belongs to parent or trait
+      // FIX: Check if class_name is valid before strcmp to avoid SEGFAULT
+      if (mc->owner_class && obj_t.class_name && strcmp(mc->owner_class, obj_t.class_name) != 0) {
+          ClassInfo *ci = find_class(ctx, obj_t.class_name);
+          
+          // Check for Trait Offset
+          int offset = get_trait_offset(ci, mc->owner_class);
+          if (offset != -1) {
+              // GEP to trait
+              LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), offset, 0) };
+              obj_ptr = LLVMBuildGEP2(ctx->builder, ci->struct_type, obj_ptr, indices, 2, "trait_this_adj");
+          } else {
+              // Assume Parent -> BitCast
+              ClassInfo *target_cls = find_class(ctx, mc->owner_class);
+              if (target_cls) {
+                  obj_ptr = LLVMBuildBitCast(ctx->builder, obj_ptr, LLVMPointerType(target_cls->struct_type, 0), "parent_this_cast");
+              }
+          }
+      }
+      
+      // 3. Resolve Function
+      if (!mc->mangled_name) {
+          char msg[256];
+          snprintf(msg, 256, "Semantic Error: Method '%s' resolution failed (mangled name is null).", mc->method_name);
+          codegen_error(ctx, node, msg);
+      }
+
+      LLVMValueRef func = LLVMGetNamedFunction(ctx->module, mc->mangled_name);
+      if (!func) {
+          char msg[256];
+          snprintf(msg, 256, "Linker Error: Method '%s' not found.", mc->mangled_name);
+          codegen_error(ctx, node, msg);
+      }
+      
+      // 4. Build Args (Arg 0 is this)
+      int arg_count = 0;
+      ASTNode *arg = mc->args;
+      while(arg) { arg_count++; arg = arg->next; }
+      
+      LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * (arg_count + 1));
+      args[0] = obj_ptr; // 'this'
+      
+      arg = mc->args;
+      for(int i=0; i<arg_count; i++) {
+          args[i+1] = codegen_expr(ctx, arg);
+          arg = arg->next;
+      }
+      
+      LLVMTypeRef ftype = LLVMGlobalGetValueType(func);
+      LLVMValueRef ret = LLVMBuildCall2(ctx->builder, ftype, func, args, arg_count + 1, "");
+      free(args);
+      return ret;
+  }
   else if (node->type == NODE_TRAIT_ACCESS) {
       TraitAccessNode *ta = (TraitAccessNode*)node;
       
@@ -267,6 +383,8 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       
       if (!obj_ptr) codegen_error(ctx, node, "Cannot access trait of null/invalid object");
 
+      if (!obj_t.class_name) codegen_error(ctx, node, "Object type has no class name");
+      
       ClassInfo *ci = find_class(ctx, obj_t.class_name);
       if (!ci) codegen_error(ctx, node, "Object is not a class");
 
@@ -403,6 +521,13 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       if (addr) {
           MemberAccessNode *ma = (MemberAccessNode*)node;
           VarType vt = codegen_calc_type(ctx, node);
+          
+          // Fix for Array Decay: Return pointer to start instead of loading aggregate
+          if (vt.array_size > 0 && vt.ptr_depth == 0) {
+               LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+               return LLVMBuildGEP2(ctx->builder, get_llvm_type(ctx, vt), addr, indices, 2, "mem_decay");
+          }
+
           LLVMTypeRef type = get_llvm_type(ctx, vt);
           return LLVMBuildLoad2(ctx->builder, type, addr, "mem_val");
       }
@@ -410,6 +535,11 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
   else if (node->type == NODE_VAR_REF) {
       Symbol *sym = find_symbol(ctx, ((VarRefNode*)node)->name);
       if (sym) {
+          // Fix for Array Decay: Return pointer to start instead of loading aggregate
+          if (sym->vtype.array_size > 0 && sym->vtype.ptr_depth == 0) {
+              LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
+              return LLVMBuildGEP2(ctx->builder, get_llvm_type(ctx, sym->vtype), sym->value, indices, 2, "arr_decay");
+          }
           return LLVMBuildLoad2(ctx->builder, sym->type, sym->value, sym->name);
       }
   }
