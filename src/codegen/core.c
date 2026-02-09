@@ -140,6 +140,7 @@ void add_class_info(CodegenCtx *ctx, ClassInfo *ci) {
 }
 
 ClassInfo* find_class(CodegenCtx *ctx, const char *name) {
+    if (!ctx) return NULL; // Safety against null context
     ClassInfo *cur = ctx->classes;
     while(cur) {
         if (strcmp(cur->name, name) == 0) return cur;
@@ -189,7 +190,8 @@ int get_member_index(ClassInfo *ci, const char *member, LLVMTypeRef *out_type, V
     return -1;
 }
 
-int get_trait_offset(ClassInfo *ci, const char *trait_name) {
+// FIX: Added ctx to safely recursively lookup parents
+int get_trait_offset(CodegenCtx *ctx, ClassInfo *ci, const char *trait_name) {
     // Check direct traits
     TraitOffset *to = ci->trait_offsets;
     while(to) {
@@ -199,10 +201,8 @@ int get_trait_offset(ClassInfo *ci, const char *trait_name) {
     
     // Check parent
     if (ci->parent_name) {
-        ClassInfo *parent = find_class(NULL, ci->parent_name); 
-        // Limitation: find_class uses ctx. But here ctx is optional if we rely on global/static lists.
-        // Assuming find_class works.
-        if (parent) return get_trait_offset(parent, trait_name);
+        ClassInfo *parent = find_class(ctx, ci->parent_name); 
+        if (parent) return get_trait_offset(ctx, parent, trait_name);
     }
     return -1;
 }

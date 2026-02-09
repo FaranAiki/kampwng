@@ -1,4 +1,6 @@
 #include "semantic.h"
+#include <string.h>
+#include <stdio.h>
 
 // TODO simplify this
 VarType check_expr(SemCtx *ctx, ASTNode *node) {
@@ -197,6 +199,31 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
         case NODE_METHOD_CALL: {
             MethodCallNode *mc = (MethodCallNode*)node;
             
+            // CRITICAL: Resolve arguments FIRST. 
+            // 'resolve_overload' needs argument types to match signature.
+            ASTNode *arg = mc->args;
+            while(arg) { check_expr(ctx, arg); arg = arg->next; }
+
+            // Optimization: Check for potential Namespace/Static call first
+            if (mc->object->type == NODE_VAR_REF) {
+                char *name = ((VarRefNode*)mc->object)->name;
+                
+                // Only treat as namespace if NOT a variable in scope
+                if (!find_symbol_semantic(ctx, name)) {
+                     char qualified[512];
+                     snprintf(qualified, sizeof(qualified), "%s.%s", name, mc->method_name);
+                     
+                     // Now that args are typed, this should work for namespace functions
+                     SemFunc *ns_func = resolve_overload(ctx, node, qualified, mc->args);
+                     if (ns_func) {
+                         mc->mangled_name = strdup(ns_func->mangled_name);
+                         mc->is_static = 1; // It's a static/namespace call
+                         return ns_func->ret_type;
+                     }
+                     // If not found, fall through. It might be an undefined variable error.
+                }
+            }
+
             VarType obj_t = {TYPE_UNKNOWN, 0, NULL};
 
             // Case 1: Implicit 'this' call? (object is null in parser?)
@@ -205,17 +232,12 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
             
             if (mc->object->type == NODE_VAR_REF) {
                 char *var_name = ((VarRefNode*)mc->object)->name;
-                
-                // Check if it's a Namespace Call? e.g. Math.sin()
-                // Not supported cleanly here yet without Symbol lookup.
-                // Assuming it's a variable or 'this'.
-                obj_t = check_expr(ctx, mc->object);
+                obj_t = check_expr(ctx, mc->object); // This will emit "Undefined symbol" if 'Math' is not a variable
             } else {
                 obj_t = check_expr(ctx, mc->object);
             }
             
-            ASTNode *arg = mc->args;
-            while(arg) { check_expr(ctx, arg); arg = arg->next; }
+            // Note: args already checked at start of function
 
             if (obj_t.base == TYPE_CLASS && obj_t.class_name) {
                 char *owner = NULL;
@@ -229,7 +251,10 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                     sem_error(ctx, node, "Method '%s' not found in class '%s' (or parents/traits)", mc->method_name, obj_t.class_name);
                 }
             } else {
-                sem_error(ctx, node, "Method call on non-class type '%s'", type_to_str(obj_t));
+                // Only report this if obj_t is not UNKNOWN (to avoid cascading errors)
+                if (obj_t.base != TYPE_UNKNOWN) {
+                    sem_error(ctx, node, "Method call on non-class type '%s'", type_to_str(obj_t));
+                }
             }
 
             return unknown; 

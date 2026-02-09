@@ -347,6 +347,30 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
   }
   else if (node->type == NODE_METHOD_CALL) {
       MethodCallNode *mc = (MethodCallNode*)node;
+
+      // 0. Handle Static/Namespace Calls
+      if (mc->is_static) {
+          if (!mc->mangled_name) codegen_error(ctx, node, "Static call missing mangled name");
+          
+          LLVMValueRef func = LLVMGetNamedFunction(ctx->module, mc->mangled_name);
+          if (!func) codegen_error(ctx, node, "Static function not found in module");
+          
+          int arg_count = 0;
+          ASTNode *arg = mc->args;
+          while(arg) { arg_count++; arg = arg->next; }
+          
+          LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * arg_count);
+          arg = mc->args;
+          for(int i=0; i<arg_count; i++) {
+              args[i] = codegen_expr(ctx, arg);
+              arg = arg->next;
+          }
+          
+          LLVMTypeRef ftype = LLVMGlobalGetValueType(func);
+          LLVMValueRef ret = LLVMBuildCall2(ctx->builder, ftype, func, args, arg_count, "");
+          free(args);
+          return ret;
+      }
       
       // 1. Get object pointer
       LLVMValueRef obj_ptr = NULL;
@@ -362,7 +386,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
           ClassInfo *ci = find_class(ctx, obj_t.class_name);
           
           // Check for Trait Offset
-          int offset = get_trait_offset(ci, mc->owner_class);
+          int offset = get_trait_offset(ctx, ci, mc->owner_class);
           if (offset != -1) {
               // GEP to trait
               LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), offset, 0) };
@@ -431,7 +455,8 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       ClassInfo *ci = find_class(ctx, obj_t.class_name);
       if (!ci) codegen_error(ctx, node, "Object is not a class");
 
-      int offset = get_trait_offset(ci, ta->trait_name);
+      // FIX: pass ctx to prevent crash when looking up parents
+      int offset = get_trait_offset(ctx, ci, ta->trait_name);
       if (offset == -1) {
           char msg[256]; snprintf(msg, 256, "Class '%s' does not have trait '%s'", ci->name, ta->trait_name);
           codegen_error(ctx, node, msg);

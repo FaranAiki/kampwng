@@ -129,7 +129,9 @@ int is_namespace(CodegenCtx *ctx, const char *name);
 void add_class_info(CodegenCtx *ctx, ClassInfo *ci);
 ClassInfo* find_class(CodegenCtx *ctx, const char *name);
 int get_member_index(ClassInfo *ci, const char *member, LLVMTypeRef *out_type, VarType *out_vtype);
-int get_trait_offset(ClassInfo *ci, const char *trait_name);
+
+// FIX: Added ctx to signature to prevent NULL context crash during parent lookup
+int get_trait_offset(CodegenCtx *ctx, ClassInfo *ci, const char *trait_name);
 
 // Enum Helpers
 void add_enum_info(CodegenCtx *ctx, EnumInfo *ei);

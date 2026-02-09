@@ -127,6 +127,7 @@ typedef struct {
   // Resolution Info
   char *mangled_name; // The actual function to call (e.g., _Z7Parent3foo...)
   char *owner_class;  // The class/trait where it was found (for 'this' adjustment)
+  int is_static;      // Added for namespace calls
 } MethodCallNode;
 
 typedef struct {
