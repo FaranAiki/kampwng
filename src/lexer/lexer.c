@@ -40,11 +40,35 @@ Token lexer_next(Lexer *l) {
       continue;
     }
 
+    // Single line comment
     if (c == '/' && l->src[l->pos + 1] == '/') {
       while (peek(l) != '\0' && peek(l) != '\n') {
         advance(l);
       }
       continue; 
+    }
+
+    // Block comment
+    if (c == '/' && l->src[l->pos + 1] == '*') {
+      advance(l); // consume '/'
+      advance(l); // consume '*'
+      
+      while (1) {
+          char next = peek(l);
+          if (next == '\0') {
+              fprintf(stderr, "Lexer Error: Unclosed block comment at line %d\n", l->line);
+              exit(1); 
+          }
+          
+          if (next == '*' && l->src[l->pos + 1] == '/') {
+              advance(l); // consume '*'
+              advance(l); // consume '/'
+              break;
+          }
+          
+          advance(l);
+      }
+      continue;
     }
 
     break;
