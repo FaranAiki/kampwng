@@ -390,6 +390,7 @@ VarType parse_type(Lexer *l) {
           case TOKEN_KW_BOOL: t.base = TYPE_BOOL; break;
           case TOKEN_KW_SINGLE: t.base = TYPE_FLOAT; break;
           case TOKEN_KW_DOUBLE: t.base = TYPE_DOUBLE; break;
+          case TOKEN_KW_STRING: t.base = TYPE_STRING; break; // Added 'string' keyword mapping
           case TOKEN_KW_VOID: t.base = TYPE_VOID; break;
           case TOKEN_KW_LET: t.base = TYPE_AUTO; break;
           default: return t; // Unknown

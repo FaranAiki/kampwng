@@ -62,7 +62,7 @@ Token lexer_next(Lexer *l) {
           
           if (next == '*' && l->src[l->pos + 1] == '/') {
               advance(l); // consume '*'
-              advance(l); // consume '/'
+              advance(l); // consume '*'
               break;
           }
           
@@ -395,6 +395,7 @@ Token lexer_next(Lexer *l) {
     else if (strcmp(word, "bool") == 0) t.type = TOKEN_KW_BOOL;
     else if (strcmp(word, "single") == 0) t.type = TOKEN_KW_SINGLE;
     else if (strcmp(word, "double") == 0) t.type = TOKEN_KW_DOUBLE;
+    else if (strcmp(word, "string") == 0) t.type = TOKEN_KW_STRING; // Added logic for string
     else if (strcmp(word, "let") == 0) t.type = TOKEN_KW_LET;
     
     else if (strcmp(word, "mut") == 0) t.type = TOKEN_KW_MUT;

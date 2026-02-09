@@ -17,8 +17,6 @@ define protected as family;
 
 define ref, pointer as *;
 
-define typedef as define;
-
 define hydrogen as int main();
 
 // TODO decide whether we should separate entity to interface or not 

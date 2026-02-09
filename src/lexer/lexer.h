@@ -70,6 +70,7 @@ typedef enum {
   TOKEN_KW_BOOL,   
   TOKEN_KW_SINGLE, 
   TOKEN_KW_DOUBLE, 
+  TOKEN_KW_STRING, // Added for 'string' type
   TOKEN_KW_LET,    
 
   TOKEN_KW_MUT,    

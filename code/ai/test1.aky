@@ -1,5 +1,4 @@
 // --- Alkyl Language Example ---
-typedef string as char[];
 
 // 1. External Definitions (FFI)
 // 'print' is intrinsic, but we can define others
@@ -23,7 +22,7 @@ class Logger {
 
     // Method with array parameter (testing the parser fix)
     // This previously caused an LLVM type mismatch error.
-    void log(char msg[100]) {
+    void log(string msg) {
         print("[%s]: %s\n", this.prefix, msg);
     }
 }

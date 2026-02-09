@@ -1,0 +1,13 @@
+class Animal {
+  string t;
+
+  void speak(string s) {
+    print "I said %s", s;
+  }
+}
+
+int main() {
+  char s[] = "this";
+  s[0] = 'a';
+  printf "%s", s;
+}
