@@ -1,0 +1,8 @@
+int main() {
+  int a = 10;
+  print "Expected 10, got %d\n", a;
+  a++;
+  print "Expected 11, got %d\n", a;
+  print "Expected 12, got %d\n", ++a;
+  print "Expected 12, got %d\n", a;
+}

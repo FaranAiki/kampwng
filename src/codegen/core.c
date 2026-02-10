@@ -572,6 +572,15 @@ void scan_enums(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
                 eei->next = NULL;
                 *tail = eei;
                 tail = &eei->next;
+                
+                // REGISTER MEMBER AS CONSTANT SYMBOL
+                // This allows 'let x = EnumMember;' to work
+                LLVMValueRef const_val = LLVMConstInt(LLVMInt32Type(), curr_ent->value, 0);
+                VarType vt = {TYPE_INT, 0, NULL};
+                add_symbol(ctx, curr_ent->name, const_val, LLVMInt32Type(), vt, 0, 0);
+                // Mark as direct value so we don't try to load it from memory
+                if (ctx->symbols) ctx->symbols->is_direct_value = 1;
+
                 curr_ent = curr_ent->next;
             }
             

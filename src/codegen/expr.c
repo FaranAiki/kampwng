@@ -52,6 +52,10 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
     if (node->type == NODE_VAR_REF) {
         Symbol *s = find_symbol(ctx, ((VarRefNode*)node)->name);
         if (s) return s->vtype;
+        
+        // Check Enum Type
+        EnumInfo *ei = find_enum(ctx, ((VarRefNode*)node)->name);
+        if (ei) return (VarType){TYPE_INT, 0, NULL}; // Placeholder type for the Enum Type itself
 
         // Implicit 'this' member type lookup
         Symbol *this_sym = find_symbol(ctx, "this");
@@ -68,6 +72,13 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
     
     if (node->type == NODE_ARRAY_ACCESS) {
         ArrayAccessNode *aa = (ArrayAccessNode*)node;
+        
+        // Check Enum lookup
+        if (aa->target->type == NODE_VAR_REF) {
+            EnumInfo *ei = find_enum(ctx, ((VarRefNode*)aa->target)->name);
+            if (ei) return (VarType){TYPE_STRING, 0, NULL};
+        }
+
         VarType t = codegen_calc_type(ctx, aa->target);
         if (t.ptr_depth > 0) t.ptr_depth--;
         else if (t.array_size > 0) { t.array_size = 0; } // Decay array to element
@@ -88,6 +99,13 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
 
     if (node->type == NODE_MEMBER_ACCESS) {
         MemberAccessNode *ma = (MemberAccessNode*)node;
+        
+        // Fix for Enum Member Type Inference (e.g. Makanan.Ayam should be int)
+        if (ma->object->type == NODE_VAR_REF) {
+            EnumInfo *ei = find_enum(ctx, ((VarRefNode*)ma->object)->name);
+            if (ei) return (VarType){TYPE_INT, 0, NULL};
+        }
+
         VarType obj_t = codegen_calc_type(ctx, ma->object);
         if (obj_t.base == TYPE_CLASS && obj_t.class_name) {
             ClassInfo *ci = find_class(ctx, obj_t.class_name);
@@ -142,6 +160,10 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
      if (node->type == NODE_VAR_REF) {
         VarRefNode *r = (VarRefNode*)node;
         Symbol *sym = find_symbol(ctx, r->name);
+        
+        // If it is a direct value (enum constant), it has no address
+        if (sym && sym->is_direct_value) return NULL;
+        
         if (sym) return sym->value;
         
         // Check for implicit 'this' member access
@@ -162,6 +184,12 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
      
      if (node->type == NODE_ARRAY_ACCESS) {
          ArrayAccessNode *aa = (ArrayAccessNode*)node;
+         
+         // Enum lookup is R-Value
+         if (aa->target->type == NODE_VAR_REF) {
+              if (find_enum(ctx, ((VarRefNode*)aa->target)->name)) return NULL;
+         }
+
          LLVMValueRef target = codegen_addr(ctx, aa->target);
          if (!target) target = codegen_expr(ctx, aa->target); // Might be a pointer r-value
          
@@ -186,6 +214,11 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
      if (node->type == NODE_MEMBER_ACCESS) {
          MemberAccessNode *ma = (MemberAccessNode*)node;
          
+         // Check Enum Member Access (R-Value)
+         if (ma->object->type == NODE_VAR_REF) {
+              if (find_enum(ctx, ((VarRefNode*)ma->object)->name)) return NULL;
+         }
+
          // Try getting address of object (L-value)
          LLVMValueRef obj = codegen_addr(ctx, ma->object);
          
@@ -221,10 +254,6 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
              }
          }
      }
-     
-     // NODE_TRAIT_ACCESS is strictly an R-value calculation (pointer arithmetic)
-     // unless it returns a reference, but we treat classes as pointers usually.
-     // codegen_addr returning NULL here signals it's not a variable slot.
      
      return NULL;
 }
@@ -403,7 +432,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       // 3. Resolve Function
       if (!mc->mangled_name) {
           char msg[256];
-          snprintf(msg, 256, "Semantic Error: Method '%s' resolution failed (mangled name is null).", mc->method_name);
+          snprintf(msg, 256, "Method '%s' resolution failed (mangled name is null).", mc->method_name);
           codegen_error(ctx, node, msg);
       }
 
@@ -565,6 +594,22 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
   else if (node->type == NODE_ARRAY_ACCESS) {
         ArrayAccessNode *aa = (ArrayAccessNode*)node;
         VarType target_t = codegen_calc_type(ctx, aa->target);
+
+        // Check Enum String Lookup (e.g. Makanan[sarapan])
+        if (aa->target->type == NODE_VAR_REF) {
+             const char *name = ((VarRefNode*)aa->target)->name;
+             EnumInfo *ei = find_enum(ctx, name);
+             if (ei) {
+                 LLVMValueRef idx = codegen_expr(ctx, aa->index);
+                 if (LLVMGetTypeKind(LLVMTypeOf(idx)) != LLVMIntegerTypeKind) {
+                    idx = LLVMBuildFPToUI(ctx->builder, idx, LLVMInt32Type(), "idx_cast");
+                 } else {
+                    idx = LLVMBuildIntCast(ctx->builder, idx, LLVMInt32Type(), "idx_cast");
+                 }
+                 
+                 return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ei->to_string_func), ei->to_string_func, &idx, 1, "enum_str");
+             }
+        }
         
         // String Indexing
         if (target_t.base == TYPE_STRING) {
@@ -592,10 +637,29 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
         }
   }
   else if (node->type == NODE_MEMBER_ACCESS) {
+      MemberAccessNode *ma = (MemberAccessNode*)node;
+      
+      // Check Enum Member Access (Enum.Member)
+      if (ma->object->type == NODE_VAR_REF) {
+           const char *obj_name = ((VarRefNode*)ma->object)->name;
+           EnumInfo *ei = find_enum(ctx, obj_name);
+           if (ei) {
+               // Find member value
+               EnumEntryInfo *curr = ei->entries;
+               while(curr) {
+                   if (strcmp(curr->name, ma->member_name) == 0) {
+                       return LLVMConstInt(LLVMInt32Type(), curr->value, 0);
+                   }
+                   curr = curr->next;
+               }
+               // This should be unreachable if semantic analysis passes, but safe to error
+               codegen_error(ctx, node, "Enum member not found in codegen");
+           }
+      }
+
       // For R-values, usually we load from address
       LLVMValueRef addr = codegen_addr(ctx, node);
       if (addr) {
-          MemberAccessNode *ma = (MemberAccessNode*)node;
           VarType vt = codegen_calc_type(ctx, node);
           
           // Fix for Array Decay: Return pointer to start instead of loading aggregate
@@ -612,6 +676,11 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       const char *name = ((VarRefNode*)node)->name;
       Symbol *sym = find_symbol(ctx, name);
       if (sym) {
+          // Direct Value (Enum Constant)
+          if (sym->is_direct_value) {
+              return sym->value;
+          }
+
           // Fix for Array Decay: Return pointer to start instead of loading aggregate
           if (sym->vtype.array_size > 0 && sym->vtype.ptr_depth == 0) {
               LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), 0, 0) };
