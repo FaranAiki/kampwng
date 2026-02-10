@@ -171,8 +171,7 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
         if (this_sym && this_sym->vtype.class_name) {
              ClassInfo *ci = find_class(ctx, this_sym->vtype.class_name);
              if (ci) {
-                 LLVMTypeRef mem_type;
-                 int idx = get_member_index(ci, r->name, &mem_type, NULL);
+                 int idx = get_member_index(ci, r->name, NULL, NULL);
                  if (idx != -1) {
                      LLVMValueRef this_val = LLVMBuildLoad2(ctx->builder, this_sym->type, this_sym->value, "this_ptr");
                      LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), idx, 0) };
@@ -671,6 +670,46 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
           LLVMTypeRef type = get_llvm_type(ctx, vt);
           return LLVMBuildLoad2(ctx->builder, type, addr, "mem_val");
       }
+  }
+  else if (node->type == NODE_INC_DEC) {
+      IncDecNode *id = (IncDecNode*)node;
+      
+      // 1. Get Address
+      LLVMValueRef addr = codegen_addr(ctx, id->target);
+      if (!addr) {
+          codegen_error(ctx, node, "Operand must be an l-value");
+      }
+      
+      // 2. Load Old Value
+      VarType vt = codegen_calc_type(ctx, id->target);
+      LLVMTypeRef type = get_llvm_type(ctx, vt);
+      LLVMValueRef old_val = LLVMBuildLoad2(ctx->builder, type, addr, "old_val");
+      
+      // 3. Compute New Value
+      LLVMValueRef new_val = NULL;
+      LLVMValueRef one = NULL;
+      
+      int is_float = (vt.base == TYPE_FLOAT || vt.base == TYPE_DOUBLE);
+      
+      if (is_float) {
+          one = LLVMConstReal(type, 1.0);
+          if (id->op == TOKEN_INCREMENT) 
+              new_val = LLVMBuildFAdd(ctx->builder, old_val, one, "new_val");
+          else 
+              new_val = LLVMBuildFSub(ctx->builder, old_val, one, "new_val");
+      } else {
+          one = LLVMConstInt(type, 1, 0);
+          if (id->op == TOKEN_INCREMENT) 
+              new_val = LLVMBuildAdd(ctx->builder, old_val, one, "new_val");
+          else 
+              new_val = LLVMBuildSub(ctx->builder, old_val, one, "new_val");
+      }
+      
+      // 4. Store New Value
+      LLVMBuildStore(ctx->builder, new_val, addr);
+      
+      // 5. Return Result
+      return id->is_prefix ? new_val : old_val;
   }
   else if (node->type == NODE_VAR_REF) {
       const char *name = ((VarRefNode*)node)->name;

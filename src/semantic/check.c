@@ -154,6 +154,24 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
             return l_type;
         }
 
+        case NODE_INC_DEC: {
+            IncDecNode *id = (IncDecNode*)node;
+            VarType t = check_expr(ctx, id->target);
+            
+            // Check if l-value is mutable
+            if (id->target->type == NODE_VAR_REF) {
+                SemSymbol *sym = find_symbol_semantic(ctx, ((VarRefNode*)id->target)->name);
+                if (sym && !sym->is_mutable) {
+                    sem_error(ctx, node, "Cannot modify immutable variable '%s'", sym->name);
+                }
+            }
+            
+            if (t.base != TYPE_INT && t.base != TYPE_FLOAT && t.base != TYPE_DOUBLE && t.base != TYPE_CHAR) {
+                 sem_error(ctx, node, "Increment/decrement requires numeric type, got '%s'", type_to_str(t));
+            }
+            return t;
+        }
+
         case NODE_CALL: {
             CallNode *c = (CallNode*)node;
             ASTNode *arg = c->args;
@@ -198,47 +216,32 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
         
         case NODE_METHOD_CALL: {
             MethodCallNode *mc = (MethodCallNode*)node;
-            
-            // CRITICAL: Resolve arguments FIRST. 
-            // 'resolve_overload' needs argument types to match signature.
             ASTNode *arg = mc->args;
             while(arg) { check_expr(ctx, arg); arg = arg->next; }
 
-            // Optimization: Check for potential Namespace/Static call first
             if (mc->object->type == NODE_VAR_REF) {
                 char *name = ((VarRefNode*)mc->object)->name;
-                
-                // Only treat as namespace if NOT a variable in scope
                 if (!find_symbol_semantic(ctx, name)) {
                      char qualified[512];
                      snprintf(qualified, sizeof(qualified), "%s.%s", name, mc->method_name);
                      
-                     // Now that args are typed, this should work for namespace functions
                      SemFunc *ns_func = resolve_overload(ctx, node, qualified, mc->args);
                      if (ns_func) {
                          mc->mangled_name = strdup(ns_func->mangled_name);
-                         mc->is_static = 1; // It's a static/namespace call
+                         mc->is_static = 1; 
                          return ns_func->ret_type;
                      }
-                     // If not found, fall through. It might be an undefined variable error.
                 }
             }
 
             VarType obj_t = {TYPE_UNKNOWN, 0, NULL};
 
-            // Case 1: Implicit 'this' call? (object is null in parser?)
-            // Actually parser assigns 'this' explicitly or handles it?
-            // If the parser produces METHOD_CALL, it has an object.
-            
             if (mc->object->type == NODE_VAR_REF) {
-                char *var_name = ((VarRefNode*)mc->object)->name;
-                obj_t = check_expr(ctx, mc->object); // This will emit "Undefined symbol" if 'Math' is not a variable
+                obj_t = check_expr(ctx, mc->object); 
             } else {
                 obj_t = check_expr(ctx, mc->object);
             }
             
-            // Note: args already checked at start of function
-
             if (obj_t.base == TYPE_CLASS && obj_t.class_name) {
                 char *owner = NULL;
                 SemFunc *f = resolve_method_in_hierarchy(ctx, node, obj_t.class_name, mc->method_name, mc->args, &owner);
@@ -251,7 +254,6 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                     sem_error(ctx, node, "Method '%s' not found in class '%s' (or parents/traits)", mc->method_name, obj_t.class_name);
                 }
             } else {
-                // Only report this if obj_t is not UNKNOWN (to avoid cascading errors)
                 if (obj_t.base != TYPE_UNKNOWN) {
                     sem_error(ctx, node, "Method call on non-class type '%s'", type_to_str(obj_t));
                 }
@@ -375,7 +377,6 @@ void check_stmt(SemCtx *ctx, ASTNode *node) {
                     sem_reason(ctx, existing->decl_line, existing->decl_col, "Previous definition of '%s' was here", vd->name);
                 }
             } else {
-                // Check for shadowing in outer scopes
                 Scope *s = ctx->current_scope->parent;
                 SemSymbol *shadowed = NULL;
                 const char *shadow_type = "outer scope";
@@ -393,7 +394,6 @@ void check_stmt(SemCtx *ctx, ASTNode *node) {
                     s = s->parent;
                 }
 
-                // Check for shadowing class members (implicit 'this')
                 if (!shadowed && ctx->current_class) {
                     SemSymbol *mem = find_member(ctx, ctx->current_class, vd->name);
                     if (mem) {
