@@ -329,6 +329,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
     }
     
     // Builtins
+    // should I remove printf ?
     if (strcmp(c->name, "print") == 0 || strcmp(c->name, "printf") == 0) {
       int arg_count = 0; ASTNode *curr = c->args; while(curr) { arg_count++; curr = curr->next; }
       LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * arg_count);
@@ -341,6 +342,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
         return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->input_func), ctx->input_func, NULL, 0, "user_input");
     }
     
+    // is alloc == malloc?
     if (strcmp(c->name, "malloc") == 0 || strcmp(c->name, "alloc") == 0) {
         LLVMValueRef size = codegen_expr(ctx, c->args);
         return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->malloc_func), ctx->malloc_func, &size, 1, "malloc_res");
@@ -533,6 +535,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       // GEP to sub-object
       // Note: If offset is 0, we can just cast. 
       // But GEP is safer for types.
+      // What the fuck is GEP lol.
       LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), offset, 0) };
       LLVMValueRef trait_ptr = LLVMBuildGEP2(ctx->builder, ci->struct_type, obj_ptr, indices, 2, "trait_ptr");
       

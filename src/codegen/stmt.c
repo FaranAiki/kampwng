@@ -189,6 +189,7 @@ void codegen_return(CodegenCtx *ctx, ReturnNode *node) {
   }
 }
 
+// code generation for node
 void codegen_node(CodegenCtx *ctx, ASTNode *node) {
   while (node) {
   if (node->type == NODE_FUNC_DEF) codegen_func_def(ctx, (FuncDefNode*)node);
@@ -217,6 +218,18 @@ void codegen_node(CodegenCtx *ctx, ASTNode *node) {
       ctx->current_prefix = new_prefix;
       codegen_node(ctx, ns->body);
       ctx->current_prefix = old_prefix;
+  }
+  else if (node->type == NODE_CLASS) {
+    ClassNode *cn = (ClassNode*)node;
+    ASTNode *m = cn->members;
+    while(m) {
+        if (m->type == NODE_FUNC_DEF) {
+            FuncDefNode *fd = (FuncDefNode*)m;
+            fd->class_name = cn->name;
+            codegen_func_def(ctx, fd);
+        }
+        m = m->next;
+    }
   }
   node = node->next;
   }
