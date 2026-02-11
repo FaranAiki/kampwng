@@ -466,7 +466,7 @@ ASTNode* parse_top_level(Lexer *l) {
             ptype.ptr_depth++;
         }
         
-        Parameter *p = calloc(1, sizeof(Parameter)); p->type = ptype; p->name = pname; *curr_param = p; curr_param = &p->next;
+        // Parameter *p = calloc(1, sizeof(Parameter)); p->type = ptype; p->name = pname; *curr_param = p; curr_param = &p->next;
         if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA); else break;
       }
     }

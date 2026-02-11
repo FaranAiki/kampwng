@@ -2,16 +2,22 @@
 
 // import "lib/cstring.hky";
 
-// Mana SYNTAX HIGHTLIGHTING ANJENGGGGGGGGGGGGG
-
+// Import from the standard library
 import "std"; 
 
+// This create a class called hand
+// which can be used as a trait later on 
 open class Hand {
+  // a trait wave
   void wave(int n) {
     printf "I am waving %d times\n", n;
   }
 }
 
+// This create a class called person 
+// that has a trait called Hand 
+// accessing use Person[Hand] if
+// wants to wave
 open class Person has Hand {
   char name[256] = "unnamed";
   int age = 0;
