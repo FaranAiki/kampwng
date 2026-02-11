@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
   printf("Compiled to out.o\n");
   
   char cmd[2048];
-  snprintf(cmd, sizeof(cmd), "gcc out.o -o out -no-pie%s", link_flags);
+  snprintf(cmd, sizeof(cmd), "gcc -g -O0 out.o -o out -no-pie%s", link_flags);
   
   printf("Linking: %s\n", cmd);
   int res = system(cmd);

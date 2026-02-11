@@ -13,11 +13,8 @@ typedef struct MacroSig {
     int param_count;
 } MacroSig;
 
-ASTNode* parse_top_level(Lexer *l) {
-  
-  // Fix: Handle empty statements (semicolons) at top level.
-  // This prevents the parser from attempting to parse a semicolon as an expression,
-  // which ensures that definitions following a namespace or class (e.g. '};') are reached.
+ASTNode* parse_top_level(Lexer *l) { 
+  // Empty semicolon
   if (current_token.type == TOKEN_SEMICOLON) {
       eat(l, TOKEN_SEMICOLON);
       return NULL;
@@ -26,6 +23,7 @@ ASTNode* parse_top_level(Lexer *l) {
   // 0. NAMESPACE
   if (current_token.type == TOKEN_NAMESPACE) {
       eat(l, TOKEN_NAMESPACE);
+      // TODO: this is when the namespace {} (without identifier)
       if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected namespace name");
       char *ns_name = strdup(current_token.text);
       eat(l, TOKEN_IDENTIFIER);
@@ -466,7 +464,7 @@ ASTNode* parse_top_level(Lexer *l) {
             ptype.ptr_depth++;
         }
         
-        // Parameter *p = calloc(1, sizeof(Parameter)); p->type = ptype; p->name = pname; *curr_param = p; curr_param = &p->next;
+        Parameter *p = calloc(1, sizeof(Parameter)); p->type = ptype; p->name = pname; *curr_param = p; curr_param = &p->next;
         if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA); else break;
       }
     }

@@ -475,7 +475,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
 
       if (!func) {
           char msg[256];
-          snprintf(msg, 256, "Linker Error: Method '%s' not found.", mc->mangled_name);
+          snprintf(msg, 256, "Method '%s' not found.", mc->mangled_name);
           codegen_error(ctx, node, msg);
       }
       

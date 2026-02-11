@@ -8,48 +8,68 @@ void scan_declarations(SemCtx *ctx, ASTNode *node, const char *prefix) {
     while(node) {
         if (node->type == NODE_FUNC_DEF) {
             FuncDefNode *fd = (FuncDefNode*)node;
-            char *name = fd->name;
+            char *name = fd->name ? fd->name : "anonymous";
+            char *lookup_name = name; 
             char *qualified = NULL;
-            if (prefix) {
+            
+            if (prefix && fd->name) {
                 int len = strlen(prefix) + strlen(name) + 2;
                 qualified = malloc(len);
                 snprintf(qualified, len, "%s.%s", prefix, name);
-                name = qualified;
+                lookup_name = qualified;
             }
             
-            // Mangling
-            char *mangled = mangle_function(name, fd->params);
-            fd->mangled_name = strdup(mangled);
+            char *mangled = NULL;
+            if (fd->body == NULL) {
+                // EXTERN function - Use original name for LLVM linking (FFI)
+                // This ensures math.sin still links to C's 'sin'
+                mangled = strdup(fd->name ? fd->name : "anonymous_extern");
+            } else {
+                // Regular function - Full mangling
+                mangled = mangle_function(lookup_name, fd->params);
+            }
+            
+            if (mangled) {
+                fd->mangled_name = strdup(mangled);
+            }
             
             // Collect param types for resolution
             int pcount = 0;
             Parameter *p = fd->params;
             while(p) { pcount++; p = p->next; }
             
-            VarType *ptypes = malloc(sizeof(VarType) * pcount);
-            p = fd->params;
-            int i = 0;
-            while(p) { ptypes[i++] = p->type; p = p->next; }
-            
-            // Check redefinition (checking mangled name for overloads)
-            SemFunc *exist = ctx->functions;
-            while(exist) {
-                if (strcmp(exist->mangled_name, mangled) == 0) {
-                     sem_error(ctx, node, "Redefinition of function '%s' with same signature", name);
-                }
-                exist = exist->next;
+            VarType *ptypes = NULL;
+            if (pcount > 0) {
+                ptypes = malloc(sizeof(VarType) * pcount);
+                p = fd->params;
+                int i = 0;
+                while(p) { ptypes[i++] = p->type; p = p->next; }
             }
             
-            add_func(ctx, name, mangled, fd->ret_type, ptypes, pcount);
+            // Check redefinition (checking mangled name for overloads)
+            if (mangled) {
+                SemFunc *exist = ctx->functions;
+                while(exist) {
+                    // Conflict if same mangled name AND (same lookup name OR not extern)
+                    if (exist->mangled_name && strcmp(exist->mangled_name, mangled) == 0) {
+                         if (fd->body != NULL || (exist->name && strcmp(exist->name, lookup_name) == 0)) {
+                             sem_error(ctx, node, "Redefinition of function '%s' with same signature", lookup_name);
+                         }
+                    }
+                    exist = exist->next;
+                }
+                
+                add_func(ctx, lookup_name, mangled, fd->ret_type, ptypes, pcount);
+                free(mangled);
+            }
             
-            free(mangled);
             if (qualified) free(qualified);
         } 
         else if (node->type == NODE_CLASS) {
             ClassNode *cn = (ClassNode*)node;
-            char *name = cn->name;
+            char *name = cn->name ? cn->name : "anonymous_class";
             char *qualified = NULL;
-            if (prefix) {
+            if (prefix && cn->name) {
                 int len = strlen(prefix) + strlen(name) + 2;
                 qualified = malloc(len);
                 snprintf(qualified, len, "%s.%s", prefix, name);
@@ -64,18 +84,20 @@ void scan_declarations(SemCtx *ctx, ASTNode *node, const char *prefix) {
                 while(mem) {
                     if (mem->type == NODE_VAR_DECL) {
                         VarDeclNode *vd = (VarDeclNode*)mem;
-                        SemSymbol *s = malloc(sizeof(SemSymbol));
-                        s->name = strdup(vd->name);
-                        s->type = vd->var_type;
-                        s->is_mutable = vd->is_mutable;
-                        s->is_array = vd->is_array;
-                        
-                        // Set Decl Location
-                        s->decl_line = vd->base.line;
-                        s->decl_col = vd->base.col;
+                        if (vd->name) {
+                            SemSymbol *s = malloc(sizeof(SemSymbol));
+                            s->name = strdup(vd->name);
+                            s->type = vd->var_type;
+                            s->is_mutable = vd->is_mutable;
+                            s->is_array = vd->is_array;
+                            
+                            // Set Decl Location
+                            s->decl_line = vd->base.line;
+                            s->decl_col = vd->base.col;
 
-                        s->next = cls->members;
-                        cls->members = s;
+                            s->next = cls->members;
+                            cls->members = s;
+                        }
                     }
                     mem = mem->next;
                 }
@@ -87,9 +109,9 @@ void scan_declarations(SemCtx *ctx, ASTNode *node, const char *prefix) {
         }
         else if (node->type == NODE_NAMESPACE) {
              NamespaceNode *ns = (NamespaceNode*)node;
-             char *new_prefix = ns->name;
+             char *new_prefix = ns->name ? ns->name : "anonymous_ns";
              char *qualified = NULL;
-             if (prefix) {
+             if (prefix && ns->name) {
                  int len = strlen(prefix) + strlen(ns->name) + 2;
                  qualified = malloc(len);
                  snprintf(qualified, len, "%s.%s", prefix, ns->name);
@@ -100,7 +122,7 @@ void scan_declarations(SemCtx *ctx, ASTNode *node, const char *prefix) {
         }
         else if (node->type == NODE_ENUM) {
             EnumNode *en = (EnumNode*)node;
-            char *name = en->name;
+            char *name = en->name ? en->name : "anonymous_enum";
             
             SemEnum *se = malloc(sizeof(SemEnum));
             se->name = strdup(name);
@@ -112,14 +134,16 @@ void scan_declarations(SemCtx *ctx, ASTNode *node, const char *prefix) {
             struct SemEnumMember **tail = &se->members;
             
             while(ent) {
-                struct SemEnumMember *m = malloc(sizeof(struct SemEnumMember));
-                m->name = strdup(ent->name);
-                m->next = NULL;
-                *tail = m;
-                tail = &m->next;
+                if (ent->name) {
+                    struct SemEnumMember *m = malloc(sizeof(struct SemEnumMember));
+                    m->name = strdup(ent->name);
+                    m->next = NULL;
+                    *tail = m;
+                    tail = &m->next;
 
-                VarType vt = {TYPE_INT, 0, NULL};
-                add_symbol_semantic(ctx, ent->name, vt, 0, 0, 0, en->base.line, en->base.col);
+                    VarType vt = {TYPE_INT, 0, NULL};
+                    add_symbol_semantic(ctx, ent->name, vt, 0, 0, 0, en->base.line, en->base.col);
+                }
                 ent = ent->next;
             }
         }
@@ -137,39 +161,41 @@ void check_program(SemCtx *ctx, ASTNode *node) {
             
             Parameter *p = fd->params;
             while(p) {
-                // Check shadowing for parameters
-                SemSymbol *shadowed = NULL;
-                Scope *s = ctx->current_scope->parent;
-                
-                // 1. Check outer scopes (globals)
-                while (s) {
-                    SemSymbol *sym = s->symbols;
-                    while (sym) {
-                        if (strcmp(sym->name, p->name) == 0) {
-                            shadowed = sym;
-                            break;
+                if (p->name) {
+                    // Check shadowing for parameters
+                    SemSymbol *shadowed = NULL;
+                    Scope *s = ctx->current_scope->parent;
+                    
+                    // 1. Check outer scopes (globals)
+                    while (s) {
+                        SemSymbol *sym = s->symbols;
+                        while (sym) {
+                            if (sym->name && strcmp(sym->name, p->name) == 0) {
+                                shadowed = sym;
+                                break;
+                            }
+                            sym = sym->next;
                         }
-                        sym = sym->next;
+                        if (shadowed) break;
+                        s = s->parent;
                     }
-                    if (shadowed) break;
-                    s = s->parent;
-                }
-                
-                // 2. Check class members if inside method
-                if (!shadowed && fd->class_name) {
-                    SemSymbol *mem = find_member(ctx, fd->class_name, p->name);
-                    if (mem) shadowed = mem;
-                }
+                    
+                    // 2. Check class members if inside method
+                    if (!shadowed && fd->class_name) {
+                        SemSymbol *mem = find_member(ctx, fd->class_name, p->name);
+                        if (mem) shadowed = mem;
+                    }
 
-                if (shadowed) {
-                     char msg[256];
-                     snprintf(msg, 256, "Parameter '%s' shadows a variable in outer scope", p->name);
-                     sem_info(ctx, node, msg);
-                     if (shadowed->decl_line > 0)
-                        sem_reason(ctx, shadowed->decl_line, shadowed->decl_col, "Shadowed declaration is here");
-                }
+                    if (shadowed) {
+                         char msg[256];
+                         snprintf(msg, 256, "Parameter '%s' shadows a variable in outer scope", p->name);
+                         sem_info(ctx, node, msg);
+                         if (shadowed->decl_line > 0)
+                            sem_reason(ctx, shadowed->decl_line, shadowed->decl_col, "Shadowed declaration is here");
+                    }
 
-                add_symbol_semantic(ctx, p->name, p->type, 1, 0, 0, 0, 0); 
+                    add_symbol_semantic(ctx, p->name, p->type, 1, 0, 0, 0, 0); 
+                }
                 p = p->next;
             }
             
