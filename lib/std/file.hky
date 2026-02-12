@@ -1,0 +1,20 @@
+// link is automatically for C
+
+namespace IO {
+
+closed class File {
+  int opened = 0;
+  
+
+  string read() {
+    let my_string = 
+  }
+}
+
+// use fopen here using extern
+File open() {
+  let file = File()
+  return 
+}
+
+}

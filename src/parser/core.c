@@ -431,11 +431,10 @@ char* read_file_content(const char* path) {
 // TODO add more extensions (?)
 char* read_import_file(const char* filename) {
   // Smart Import Logic
-  // Search Paths: current directory "", "lib/"
-  // Extensions: ".hky", ".aky", "" (no extension)
   
   const char* paths[] = { "", "lib/" };
-  const char* exts[] = { ".hky", ".aky", "" };
+  // prioritize .aky because .aky statistically imports from .hky
+  const char* exts[] = { ".aky", ".hky", "" };
   
   char path[1024];
   
