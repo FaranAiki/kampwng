@@ -23,6 +23,7 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
     ctx->current_switch_inst = NULL;
     ctx->flux_ctx_val = NULL;
     ctx->next_flux_state = 0;
+    ctx->current_flux_struct_type = NULL;
 
     // TODO add open, fopen, .etc
 
@@ -115,12 +116,13 @@ Symbol* find_symbol(CodegenCtx *ctx, const char *name) {
   return NULL;
 }
 
-void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type, VarType *params, int pcount) {
+void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type, VarType *params, int pcount, int is_flux) {
     FuncSymbol *s = malloc(sizeof(FuncSymbol));
     s->name = strdup(name);
     s->ret_type = ret_type;
     s->param_types = params;
     s->param_count = pcount;
+    s->is_flux = is_flux;
     s->next = ctx->functions;
     ctx->functions = s;
 }
@@ -510,7 +512,13 @@ void scan_functions(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
             int i = 0;
             while(p) { ptypes[i++] = p->type; p=p->next; }
             
-            add_func_symbol(ctx, sym_name, fd->ret_type, ptypes, pcount);
+            // If flux, we change ret_type to void* so expressions see it as a context pointer
+            VarType rt = fd->ret_type;
+            if (fd->is_flux) {
+                rt = (VarType){TYPE_VOID, 1, NULL, 0, 0};
+            }
+
+            add_func_symbol(ctx, sym_name, rt, ptypes, pcount, fd->is_flux);
         }
         else if (node->type == NODE_CLASS) {
             ClassNode *cn = (ClassNode*)node;
@@ -544,7 +552,12 @@ void scan_functions(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
                         while(p) { ptypes[i++] = p->type; p=p->next; }
                     }
 
-                    add_func_symbol(ctx, mangled, fd->ret_type, ptypes, pcount);
+                    VarType rt = fd->ret_type;
+                    if (fd->is_flux) {
+                        rt = (VarType){TYPE_VOID, 1, NULL, 0, 0};
+                    }
+
+                    add_func_symbol(ctx, mangled, rt, ptypes, pcount, fd->is_flux);
                     
                     // Add method metadata to ClassInfo
                     if (ci) {

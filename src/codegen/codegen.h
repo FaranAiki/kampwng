@@ -24,6 +24,7 @@ typedef struct FuncSymbol {
     VarType ret_type;
     VarType *param_types; // Added: for overload resolution checks in codegen
     int param_count;      // Added
+    int is_flux;          // Added: Track if this is a generator
     struct FuncSymbol *next;
 } FuncSymbol;
 
@@ -117,6 +118,7 @@ typedef struct {
   // Flux / Generator Support
   LLVMValueRef current_switch_inst; // Switch instruction for the current flux function
   LLVMValueRef flux_ctx_val;        // Pointer to the flux context struct
+  LLVMTypeRef current_flux_struct_type; // The actual Struct Type of the flux context (prevents Segfaults with opaque pointers)
   int next_flux_state;              // Counter for state labels
 } CodegenCtx;
 
@@ -130,7 +132,7 @@ void codegen_error(CodegenCtx *ctx, ASTNode *node, const char *msg);
 // --- Shared Internal ---
 void add_symbol(CodegenCtx *ctx, const char *name, LLVMValueRef val, LLVMTypeRef type, VarType vtype, int is_array, int is_mut);
 Symbol* find_symbol(CodegenCtx *ctx, const char *name);
-void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type, VarType *params, int pcount);
+void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type, VarType *params, int pcount, int is_flux);
 FuncSymbol* find_func_symbol(CodegenCtx *ctx, const char *name);
 
 // Namespace Helpers

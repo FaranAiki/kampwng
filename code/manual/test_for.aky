@@ -8,7 +8,7 @@ flux int gen() {
 }
 
 int main() {
-  // let t = gen();  
+  let t = gen();  
   print "Ss\n";
 
   // print i to 500
@@ -16,12 +16,13 @@ int main() {
     print "%d\n", i;
   }
 
+  print "This will loop hello world!\n";
   for c in "Hello, World!" {
     print "%c\n", c;
   }
 
-  /*
+  print "Emit!\n";
   for emitted in t {
     print "%d", emitted;
-  }*/
+  }
 }

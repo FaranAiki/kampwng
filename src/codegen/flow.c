@@ -489,6 +489,9 @@ void codegen_flux_def(CodegenCtx *ctx, FuncDefNode *node) {
     LLVMTypeRef ctx_type = LLVMStructCreateNamed(LLVMGetGlobalContext(), struct_name);
     LLVMStructSetBody(ctx_type, struct_elems, total_fields, false);
     
+    // SAVE CTX TYPE
+    ctx->current_flux_struct_type = ctx_type;
+    
     // 2. Generate the Init/Factory Function (The one the user calls)
     // Returns FluxCtx* (Pointer to heap allocated context)
     
@@ -609,6 +612,8 @@ void codegen_flux_def(CodegenCtx *ctx, FuncDefNode *node) {
     ctx->current_switch_inst = NULL;
     ctx->flux_ctx_val = NULL;
     
+    ctx->current_flux_struct_type = NULL;
+    
     free(struct_elems);
     free(init_param_types);
     free(local_types);
@@ -625,9 +630,13 @@ void codegen_emit(CodegenCtx *ctx, EmitNode *node) {
     
     // Update State in Context
     LLVMValueRef ctx_ptr = ctx->flux_ctx_val;
-    // We assume ctx type is opaque here, we need the struct type. 
-    // Hack: Get element type from pointer.
-    LLVMTypeRef ctx_type = LLVMGetElementType(LLVMTypeOf(ctx_ptr));
+    
+    // FIX SEGV: Use cached struct type instead of deriving from pointer
+    if (!ctx->current_flux_struct_type) {
+         codegen_error(ctx, (ASTNode*)node, "Internal Error: Emit used without flux struct type context");
+    }
+    LLVMTypeRef ctx_type = ctx->current_flux_struct_type;
+    
     LLVMValueRef state_ptr = LLVMBuildStructGEP2(ctx->builder, ctx_type, ctx_ptr, 0, "state_ptr");
     LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt32Type(), next_state, 0), state_ptr);
     
