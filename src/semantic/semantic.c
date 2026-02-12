@@ -247,7 +247,43 @@ void check_program(SemCtx *ctx, ASTNode *node) {
                      check_program(ctx, m); // Checks the method
                  }
                  else if (m->type == NODE_VAR_DECL) {
-                     check_stmt(ctx, m); // Validates defaults on initializers
+                     VarDeclNode *vd = (VarDeclNode*)m;
+                     vd->var_type = resolve_typedef(ctx, vd->var_type);
+                     SemSymbol *s = find_member(ctx, cn->name, vd->name);
+                     if (s) s->type = vd->var_type;
+
+                     if (vd->initializer) {
+                         VarType init_t = check_expr(ctx, vd->initializer);
+                         if (vd->var_type.base == TYPE_AUTO) {
+                             vd->var_type = init_t;
+                             if (s) s->type = init_t;
+                         } else if (!are_types_equal(vd->var_type, init_t)) {
+                             int cost = get_conversion_cost(init_t, vd->var_type);
+                             int ok = 0;
+                             if (cost != -1) ok = 1;
+                             if (vd->var_type.base == TYPE_STRING && init_t.base == TYPE_STRING) ok = 1;
+                             if (vd->var_type.base == TYPE_CHAR && vd->is_array && init_t.base == TYPE_STRING) ok = 1;
+                             if (vd->var_type.base == TYPE_CHAR && vd->var_type.ptr_depth == 1 && init_t.base == TYPE_STRING) ok = 1;
+                             
+                             if (ok) {
+                                 if (cost > 0) {
+                                     sem_info(ctx, m, "Implicit conversion from '%s' to '%s'", 
+                                              type_to_str(init_t), type_to_str(vd->var_type));
+                                     CastNode *cast = calloc(1, sizeof(CastNode));
+                                     cast->base.type = NODE_CAST;
+                                     cast->base.line = vd->initializer->line;
+                                     cast->base.col = vd->initializer->col;
+                                     cast->base.expr_type = vd->var_type;
+                                     cast->var_type = vd->var_type;
+                                     cast->operand = vd->initializer;
+                                     vd->initializer = (ASTNode*)cast;
+                                 }
+                             } else {
+                                sem_error(ctx, m, "Class member '%s' type mismatch. Declared '%s', init '%s'", 
+                                          vd->name, type_to_str(vd->var_type), type_to_str(init_t));
+                             }
+                         }
+                     }
                  }
                  m = m->next;
              }

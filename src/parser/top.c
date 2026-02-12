@@ -354,6 +354,8 @@ ASTNode* parse_class(Lexer *l) {
       
       while (current_token.type != TOKEN_RBRACE && current_token.type != TOKEN_EOF) {
           int member_open = is_open;
+          int line = current_token.line;
+          int col = current_token.col;
           if (current_token.type == TOKEN_OPEN) { member_open = 1; eat(l, TOKEN_OPEN); }
           else if (current_token.type == TOKEN_CLOSED) { member_open = 0; eat(l, TOKEN_CLOSED); }
           
@@ -399,6 +401,8 @@ ASTNode* parse_class(Lexer *l) {
                   
                   FuncDefNode *func = calloc(1, sizeof(FuncDefNode));
                   func->base.type = NODE_FUNC_DEF;
+                  func->base.line = line;
+                  func->base.col = col;
                   func->name = mem_name;
                   func->ret_type = vt;
                   func->params = params;
@@ -428,6 +432,8 @@ ASTNode* parse_class(Lexer *l) {
                   
                   VarDeclNode *var = calloc(1, sizeof(VarDeclNode));
                   var->base.type = NODE_VAR_DECL;
+                  var->base.line = line;
+                  var->base.col = col;
                   var->name = mem_name;
                   var->var_type = vt;
                   var->initializer = init;
@@ -495,7 +501,6 @@ ASTNode* parse_top_level(Lexer *l) {
       return (ASTNode*)ns;
   }
 
-  // 0.1 DEFINE
   if (current_token.type == TOKEN_DEFINE) {
     return parse_define(l);
   }
@@ -536,6 +541,7 @@ ASTNode* parse_top_level(Lexer *l) {
   int col = current_token.col;
 
   // SMART TYPO CHECK
+  // try parse_return 
   if (current_token.type == TOKEN_IDENTIFIER) {
       const char *top_kws[] = {
           "typedef", "namespace", "define", "class", "import", "link", "extern", 

@@ -91,7 +91,8 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
     }
   } else {
      if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-      LLVMBuildRet(ctx->builder, LLVMConstInt(LLVMInt32Type(), 0, 0));
+      // Return Safe Zero Memory Representation for everything instead of just throwing i32 0. Fixes implicit fallback validation.
+      LLVMBuildRet(ctx->builder, LLVMConstNull(ret_type));
     }
   }
   
@@ -265,7 +266,6 @@ void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
 void codegen_break(CodegenCtx *ctx) {
     if (!ctx->current_loop) {
         fprintf(stderr, "Error: 'break' outside of loop or switch\n");
-        // exit(1);
     }
     LLVMBuildBr(ctx->builder, ctx->current_loop->break_target);
 }
@@ -273,7 +273,6 @@ void codegen_break(CodegenCtx *ctx) {
 void codegen_continue(CodegenCtx *ctx) {
     if (!ctx->current_loop || !ctx->current_loop->continue_target) {
         fprintf(stderr, "Error: 'continue' outside of loop\n");
-        // exit(1);
     }
     LLVMBuildBr(ctx->builder, ctx->current_loop->continue_target);
 }

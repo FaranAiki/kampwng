@@ -1,6 +1,5 @@
 define hydrogren as int main();
-define inta, intaa as int;
-typedef intb as int; 
+define inta, intaa, intb as int;
 
 inta zero0 = 0;
 intaa zero1 = 1; 

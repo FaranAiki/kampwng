@@ -77,7 +77,12 @@ VarType check_expr_internal(SemCtx *ctx, ASTNode *node) {
                 sem_error(ctx, node, "Undefined symbol '%s'", name);
                 
                 const char *guess = find_closest_var_name(ctx, name);
-                if (guess) sem_suggestion(ctx, node, guess);
+
+                if (guess) {
+                    char hint[128];
+                    snprintf(hint, sizeof(hint), "Did you mean '%s'?", guess);
+                    sem_suggestion(ctx, node, hint);
+                }
                 
                 return unknown;
             }

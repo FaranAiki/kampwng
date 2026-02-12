@@ -1,0 +1,39 @@
+
+// import "c/stdlib";
+
+extern int atoi(const char*);
+
+int add_1(int param) {
+  return param + 1;
+}
+
+int add_2(int param) {
+  return param + 2;
+}
+
+int add_3(int param) {
+  return param + 3;
+}
+
+int autozero(int whatever) {
+  return 0;
+}
+
+fun[int] choose(int a) {
+  switch a {
+    case 1:
+      return add_1;
+    case 2:
+      return add_2;
+    case 3:
+      return add_3;
+    default:
+      return autozero;
+  }
+}
+
+int main() {
+  int chose = atoi(input("What is your preferred addon: "));
+  int number = atoi(input("What is your preferred number: "));
+  printf "Here is you addon: %d", choose(chose)(number);
+}
