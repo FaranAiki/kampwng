@@ -103,7 +103,7 @@ int levenshtein_dist(const char *s1, const char *s2) {
 const char* find_closest_keyword(const char *ident) {
     const char *keywords[] = {
         "int", "void", "char", "bool", "single", "double", "return", 
-        "if", "else", "while", "loop", "break", "continue", "class", 
+        "if", "else", "while", "loop", "break", "continue", "class", "struct",
         "namespace", "import", "link", "extern", "define", "has", "is",
         "open", "closed", "let", "mut", "imut", "typeof", 
         "switch", "case", "default", "leak", 
@@ -187,9 +187,6 @@ void report_warning(Lexer *l, Token t, const char *msg) {
 }
 
 void report_hint(Lexer *l, Token t, const char *msg) {
-    // Hints follow an error and don't repeat the snippet usually, 
-    // but if passed specific location different from error, maybe useful.
-    // For now keeping simple.
     (void)l; (void)t; 
     fprintf(stderr, "%shint:%s %s\n", DIAG_YELLOW, DIAG_RESET, msg);
 }
@@ -199,7 +196,6 @@ void report_info(Lexer *l, Token t, const char *msg) {
 }
 
 void report_reason(Lexer *l, Token t, const char *msg) {
-    // Reason prints location/snippet to show context (e.g. definition site)
     fprintf(stderr, "%d:%d: %sreason:%s %s\n", t.line, t.col, DIAG_PURPLE, DIAG_RESET, msg);
     if (l) print_source_snippet(l, t);
 }

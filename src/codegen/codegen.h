@@ -57,6 +57,8 @@ typedef struct ClassInfo {
     // Metadata for reflection (hasmethod)
     char **method_names;
     int method_count;
+    
+    int is_extern; // Supports opaque types
 
     struct ClassInfo *next;
 } ClassInfo;

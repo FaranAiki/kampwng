@@ -29,7 +29,7 @@ char advance(Lexer *l) {
 }
 
 Token lexer_next(Lexer *l) {
-  Token t = {TOKEN_UNKNOWN, NULL, 0, 0.0, l->line, l->col};
+  Token t = {TOKEN_UNKNOWN, NULL, 0, 0, 0.0, l->line, l->col};
   
   while (1) {
     char c = peek(l);
@@ -199,7 +199,7 @@ Token lexer_next(Lexer *l) {
   // --- Literals ---
 
   if (isdigit(c)) {
-    long val = 0;
+    unsigned long long val = 0;
     while (isdigit(peek(l))) {
       val = val * 10 + (advance(l) - '0');
     }
@@ -212,13 +212,47 @@ Token lexer_next(Lexer *l) {
         fraction /= 10.0;
         dval += (advance(l) - '0') * fraction;
       }
+      
       t.type = TOKEN_FLOAT;
       t.double_val = dval;
+      
+      // Handle 'L' suffix for float
+      if (tolower(peek(l)) == 'l') {
+          advance(l);
+          t.type = TOKEN_LONG_DOUBLE_LIT;
+      } else if (tolower(peek(l)) == 'f') {
+          advance(l);
+      }
       return t;
     }
 
+    // Handle integer suffixes: U, L, LL
+    int is_u = 0, is_l = 0, is_ll = 0;
+    while (1) {
+        char s = tolower(peek(l));
+        if (s == 'u') { is_u = 1; advance(l); }
+        else if (s == 'l') {
+            advance(l);
+            if (tolower(peek(l)) == 'l') {
+                is_ll = 1; advance(l);
+            } else {
+                is_l = 1;
+            }
+        } else {
+            break;
+        }
+    }
+
     t.type = TOKEN_NUMBER;
+    if (is_ll && is_u) t.type = TOKEN_ULONG_LONG_LIT;
+    else if (is_ll) t.type = TOKEN_LONG_LONG_LIT;
+    else if (is_l && is_u) t.type = TOKEN_ULONG_LIT;
+    else if (is_l) t.type = TOKEN_LONG_LIT;
+    else if (is_u) t.type = TOKEN_UINT_LIT;
+    
+    t.double_val = (double)val; 
     t.int_val = (int)val;
+    t.long_val = val;
     return t;
   }
 
@@ -247,6 +281,7 @@ Token lexer_next(Lexer *l) {
       
       t.type = TOKEN_CHAR_LIT;
       t.int_val = (int)val;
+      t.long_val = (unsigned long long)val;
       return t;
   }
 
@@ -381,6 +416,7 @@ Token lexer_next(Lexer *l) {
     else if (strcmp(word, "typedef") == 0) t.type = TOKEN_TYPEDEF;
     
     else if (strcmp(word, "class") == 0) t.type = TOKEN_CLASS;
+    else if (strcmp(word, "struct") == 0) t.type = TOKEN_STRUCT; // Handle struct alias
     else if (strcmp(word, "is") == 0) t.type = TOKEN_IS;
     else if (strcmp(word, "has") == 0) t.type = TOKEN_HAS;
     else if (strcmp(word, "open") == 0) t.type = TOKEN_OPEN;
@@ -393,11 +429,14 @@ Token lexer_next(Lexer *l) {
 
     else if (strcmp(word, "void") == 0) t.type = TOKEN_KW_VOID;
     else if (strcmp(word, "int") == 0) t.type = TOKEN_KW_INT;
+    else if (strcmp(word, "short") == 0) t.type = TOKEN_KW_SHORT;
+    else if (strcmp(word, "long") == 0) t.type = TOKEN_KW_LONG;
+    else if (strcmp(word, "unsigned") == 0) t.type = TOKEN_KW_UNSIGNED;
     else if (strcmp(word, "char") == 0) t.type = TOKEN_KW_CHAR;
     else if (strcmp(word, "bool") == 0) t.type = TOKEN_KW_BOOL;
     else if (strcmp(word, "single") == 0) t.type = TOKEN_KW_SINGLE;
     else if (strcmp(word, "double") == 0) t.type = TOKEN_KW_DOUBLE;
-    else if (strcmp(word, "string") == 0) t.type = TOKEN_KW_STRING; // Added logic for string
+    else if (strcmp(word, "string") == 0) t.type = TOKEN_KW_STRING;
     else if (strcmp(word, "let") == 0) t.type = TOKEN_KW_LET;
     
     else if (strcmp(word, "mut") == 0) t.type = TOKEN_KW_MUT;

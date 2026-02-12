@@ -6,14 +6,20 @@ void mangle_type(char *buf, VarType t) {
     }
     for(int i=0; i<t.ptr_depth; i++) strcat(buf, "P");
     
+    if (t.is_unsigned) strcat(buf, "U");
+    
     switch(t.base) {
         case TYPE_INT: strcat(buf, "i"); break;
+        case TYPE_SHORT: strcat(buf, "s"); break;
+        case TYPE_LONG: strcat(buf, "l"); break;
+        case TYPE_LONG_LONG: strcat(buf, "x"); break;
         case TYPE_DOUBLE: strcat(buf, "d"); break;
         case TYPE_FLOAT: strcat(buf, "f"); break;
+        case TYPE_LONG_DOUBLE: strcat(buf, "g"); break;
         case TYPE_BOOL: strcat(buf, "b"); break;
         case TYPE_CHAR: strcat(buf, "c"); break;
         case TYPE_VOID: strcat(buf, "v"); break;
-        case TYPE_STRING: strcat(buf, "s"); break;
+        case TYPE_STRING: strcat(buf, "S"); break;
         case TYPE_CLASS: 
             if (t.class_name)
                 sprintf(buf + strlen(buf), "C%ld%s", strlen(t.class_name), t.class_name);
@@ -73,21 +79,27 @@ const char* type_to_str(VarType t) {
     char *buf = buffers[idx];
     idx = (idx + 1) % 4;
 
-    const char *base;
+    char base_buf[64] = "";
+    if (t.is_unsigned) strcpy(base_buf, "unsigned ");
+
     switch (t.base) {
-        case TYPE_INT: base = "int"; break;
-        case TYPE_CHAR: base = "char"; break;
-        case TYPE_BOOL: base = "bool"; break;
-        case TYPE_FLOAT: base = "single"; break;
-        case TYPE_DOUBLE: base = "double"; break;
-        case TYPE_VOID: base = "void"; break;
-        case TYPE_STRING: base = "string"; break;
-        case TYPE_CLASS: base = t.class_name ? t.class_name : "class"; break;
-        case TYPE_UNKNOWN: base = "unknown"; break;
-        case TYPE_AUTO: base = "auto"; break;
-        default: base = "???"; break;
+        case TYPE_INT: strcat(base_buf, "int"); break;
+        case TYPE_SHORT: strcat(base_buf, "short"); break;
+        case TYPE_LONG: strcat(base_buf, "long"); break;
+        case TYPE_LONG_LONG: strcat(base_buf, "long long"); break;
+        case TYPE_CHAR: strcat(base_buf, "char"); break;
+        case TYPE_BOOL: strcat(base_buf, "bool"); break;
+        case TYPE_FLOAT: strcat(base_buf, "single"); break;
+        case TYPE_DOUBLE: strcat(base_buf, "double"); break;
+        case TYPE_LONG_DOUBLE: strcat(base_buf, "long double"); break;
+        case TYPE_VOID: strcat(base_buf, "void"); break;
+        case TYPE_STRING: strcat(base_buf, "string"); break;
+        case TYPE_CLASS: strcat(base_buf, t.class_name ? t.class_name : "class"); break;
+        case TYPE_UNKNOWN: strcat(base_buf, "unknown"); break;
+        case TYPE_AUTO: strcat(base_buf, "auto"); break;
+        default: strcat(base_buf, "???"); break;
     }
-    strcpy(buf, base);
+    strcpy(buf, base_buf);
     for(int i=0; i<t.ptr_depth; i++) strcat(buf, "*");
     if (t.array_size > 0) {
         char tmp[16]; sprintf(tmp, "[%d]", t.array_size);
@@ -98,7 +110,7 @@ const char* type_to_str(VarType t) {
 
 const char* find_closest_type_name(SemCtx *ctx, const char *name) {
     const char *primitives[] = {
-        "int", "char", "bool", "single", "double", "void", "string", "let", "auto", NULL
+        "int", "short", "long", "unsigned", "char", "bool", "single", "double", "void", "string", "let", "auto", NULL
     };
     
     const char *best = NULL;
@@ -243,7 +255,7 @@ int are_types_equal(VarType a, VarType b) {
         if (a.base == TYPE_VOID || b.base == TYPE_VOID) return 1;
     }
 
-    if (a.base != b.base) {
+    if (a.base != b.base || a.is_unsigned != b.is_unsigned) {
         if (a.base == TYPE_AUTO || b.base == TYPE_AUTO) return 1;
         if (a.base == TYPE_STRING && b.base == TYPE_STRING) return 1;
         return 0;
@@ -262,18 +274,38 @@ int get_conversion_cost(VarType from, VarType to) {
     if (are_types_equal(from, to)) return 0;
     
     if (from.ptr_depth == 0 && to.ptr_depth == 0) {
-        // Widening (Safe) - Cost 1
-        if (from.base == TYPE_INT && to.base == TYPE_DOUBLE) return 1;
-        if (from.base == TYPE_INT && to.base == TYPE_FLOAT) return 1;
-        if (from.base == TYPE_FLOAT && to.base == TYPE_DOUBLE) return 1;
-        if (from.base == TYPE_CHAR && to.base == TYPE_INT) return 1;
-
-        // Narrowing (Lossy) - Cost 2
-        // Allows implicit cast but we can warn about it
-        if (from.base == TYPE_DOUBLE && to.base == TYPE_INT) return 2;
-        if (from.base == TYPE_FLOAT && to.base == TYPE_INT) return 2;
-        if (from.base == TYPE_DOUBLE && to.base == TYPE_FLOAT) return 2;
-        if (from.base == TYPE_INT && to.base == TYPE_CHAR) return 2;
+        // Evaluate type rank for numeric conversions
+        int from_rank = 0, to_rank = 0;
+        switch(from.base) {
+            case TYPE_BOOL: from_rank = 1; break;
+            case TYPE_CHAR: from_rank = 2; break;
+            case TYPE_SHORT: from_rank = 3; break;
+            case TYPE_INT: from_rank = 4; break;
+            case TYPE_LONG: from_rank = 5; break;
+            case TYPE_LONG_LONG: from_rank = 6; break;
+            case TYPE_FLOAT: from_rank = 7; break;
+            case TYPE_DOUBLE: from_rank = 8; break;
+            case TYPE_LONG_DOUBLE: from_rank = 9; break;
+            default: from_rank = 0; break;
+        }
+        switch(to.base) {
+            case TYPE_BOOL: to_rank = 1; break;
+            case TYPE_CHAR: to_rank = 2; break;
+            case TYPE_SHORT: to_rank = 3; break;
+            case TYPE_INT: to_rank = 4; break;
+            case TYPE_LONG: to_rank = 5; break;
+            case TYPE_LONG_LONG: to_rank = 6; break;
+            case TYPE_FLOAT: to_rank = 7; break;
+            case TYPE_DOUBLE: to_rank = 8; break;
+            case TYPE_LONG_DOUBLE: to_rank = 9; break;
+            default: to_rank = 0; break;
+        }
+        
+        if (from_rank > 0 && to_rank > 0) {
+            if (from_rank < to_rank) return 1; // Widening
+            if (from_rank > to_rank) return 2; // Narrowing
+            if (from.is_unsigned != to.is_unsigned) return 2; // Signedness change penalty
+        }
     }
     
     if (from.base == TYPE_STRING && from.ptr_depth == 0) {

@@ -22,7 +22,6 @@ define hydrogen as int main();
 // TODO decide whether we should separate entity to interface or not 
 
 define entity, interface as class;
-define struct as open class;
 
 // TODO implement flux & emit
 define stream as flux; 

@@ -48,6 +48,7 @@ typedef struct SemClass {
     char **traits;      // List of implemented traits
     int trait_count;
     SemSymbol *members; // List of class fields
+    int is_extern;      // Opaque tracking
     struct SemClass *next;
 } SemClass;
 

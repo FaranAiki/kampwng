@@ -43,10 +43,14 @@ typedef enum {
 typedef enum {
   TYPE_VOID,
   TYPE_INT,
+  TYPE_SHORT,
+  TYPE_LONG,
+  TYPE_LONG_LONG,
   TYPE_CHAR,
   TYPE_BOOL,
   TYPE_FLOAT,
   TYPE_DOUBLE,
+  TYPE_LONG_DOUBLE,
   TYPE_STRING,
   TYPE_AUTO,
   TYPE_CLASS, 
@@ -58,6 +62,7 @@ typedef struct {
   int ptr_depth; 
   char *class_name;
   int array_size; 
+  int is_unsigned; // Indicates unsigned nature of types like int, long, char, etc.
 } VarType;
 
 typedef struct ASTNode {
@@ -96,6 +101,7 @@ typedef struct {
   } traits; 
   ASTNode *members; 
   int is_open; 
+  int is_extern; // Added for opaque C types
 } ClassNode;
 
 typedef struct EnumEntry {
@@ -268,6 +274,7 @@ typedef struct {
   VarType var_type;
   union {
     int int_val;
+    unsigned long long long_val;
     double double_val;
     char *str_val; 
   } val;

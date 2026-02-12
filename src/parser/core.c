@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-Token current_token = {TOKEN_UNKNOWN, NULL, 0, 0.0};
+Token current_token = {TOKEN_UNKNOWN, NULL, 0, 0, 0.0};
 jmp_buf *parser_env = NULL;         // REPL
 jmp_buf *parser_recover_buf = NULL; // Compilation
 int parser_error_count = 0;
@@ -191,7 +191,9 @@ void parser_fail(Lexer *l, const char *msg) {
 void parser_reset(void) {
     safe_free_current_token();
     current_token.type = TOKEN_UNKNOWN;
-    current_token.int_val = 0; current_token.double_val = 0.0;
+    current_token.int_val = 0; 
+    current_token.long_val = 0;
+    current_token.double_val = 0.0;
     current_token.line = 0; current_token.col = 0;
     parser_env = NULL;
     parser_recover_buf = NULL;
@@ -364,10 +366,15 @@ void eat(Lexer *l, TokenType type) {
   }
 }
 
-// for [type] [var] 
+// Composite type parsing helper: handling sequences like `unsigned long long`
 VarType parse_type(Lexer *l) {
-  VarType t = {TYPE_UNKNOWN, 0, NULL}; 
-  
+  VarType t = {TYPE_UNKNOWN, 0, NULL, 0, 0}; 
+
+  if (current_token.type == TOKEN_KW_UNSIGNED) {
+      t.is_unsigned = 1;
+      eat(l, TOKEN_KW_UNSIGNED);
+  }
+
   if (current_token.type == TOKEN_IDENTIFIER) {
       // Check Alias First
       VarType *alias = get_alias(current_token.text);
@@ -393,18 +400,54 @@ VarType parse_type(Lexer *l) {
           }
       }
   } else {
-      switch(current_token.type) {
-          case TOKEN_KW_INT: t.base = TYPE_INT; break;
-          case TOKEN_KW_CHAR: t.base = TYPE_CHAR; break;
-          case TOKEN_KW_BOOL: t.base = TYPE_BOOL; break;
-          case TOKEN_KW_SINGLE: t.base = TYPE_FLOAT; break;
-          case TOKEN_KW_DOUBLE: t.base = TYPE_DOUBLE; break;
-          case TOKEN_KW_STRING: t.base = TYPE_STRING; break; // Added 'string' keyword mapping
-          case TOKEN_KW_VOID: t.base = TYPE_VOID; break;
-          case TOKEN_KW_LET: t.base = TYPE_AUTO; break;
-          default: return t; // Unknown
+      if (current_token.type == TOKEN_KW_INT) { t.base = TYPE_INT; eat(l, TOKEN_KW_INT); }
+      else if (current_token.type == TOKEN_KW_SHORT) { t.base = TYPE_SHORT; eat(l, TOKEN_KW_SHORT); }
+      else if (current_token.type == TOKEN_KW_LONG) {
+          eat(l, TOKEN_KW_LONG);
+          if (current_token.type == TOKEN_KW_LONG) {
+              eat(l, TOKEN_KW_LONG);
+              if (current_token.type == TOKEN_KW_DOUBLE) {
+                  eat(l, TOKEN_KW_DOUBLE);
+                  t.base = TYPE_LONG_DOUBLE;
+              } else {
+                  t.base = TYPE_LONG_LONG;
+              }
+          } else if (current_token.type == TOKEN_KW_DOUBLE) {
+              eat(l, TOKEN_KW_DOUBLE);
+              t.base = TYPE_LONG_DOUBLE;
+          } else if (current_token.type == TOKEN_KW_INT) {
+              eat(l, TOKEN_KW_INT);
+              t.base = TYPE_LONG;
+          } else {
+              t.base = TYPE_LONG;
+          }
       }
-      eat(l, current_token.type);
+      else if (current_token.type == TOKEN_KW_DOUBLE) {
+          eat(l, TOKEN_KW_DOUBLE);
+          if (current_token.type == TOKEN_KW_LONG) {
+              eat(l, TOKEN_KW_LONG);
+              if (current_token.type == TOKEN_KW_LONG) {
+                   eat(l, TOKEN_KW_LONG); // double long long
+              }
+              t.base = TYPE_LONG_DOUBLE;
+          } else {
+              t.base = TYPE_DOUBLE;
+          }
+      }
+      else if (current_token.type == TOKEN_KW_CHAR) { t.base = TYPE_CHAR; eat(l, TOKEN_KW_CHAR); }
+      else if (current_token.type == TOKEN_KW_BOOL) { t.base = TYPE_BOOL; eat(l, TOKEN_KW_BOOL); }
+      else if (current_token.type == TOKEN_KW_SINGLE) { t.base = TYPE_FLOAT; eat(l, TOKEN_KW_SINGLE); }
+      else if (current_token.type == TOKEN_KW_STRING) { t.base = TYPE_STRING; eat(l, TOKEN_KW_STRING); }
+      else if (current_token.type == TOKEN_KW_VOID) { t.base = TYPE_VOID; eat(l, TOKEN_KW_VOID); }
+      else if (current_token.type == TOKEN_KW_LET) { t.base = TYPE_AUTO; eat(l, TOKEN_KW_LET); }
+      else {
+          if (t.is_unsigned) {
+              // If just `unsigned`, defaults to `unsigned int`
+              t.base = TYPE_INT; 
+          } else {
+              return t; // Unknown
+          }
+      }
   }
 
   while (current_token.type == TOKEN_STAR) {

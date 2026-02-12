@@ -198,12 +198,34 @@ ASTNode* parse_factor(Lexer *l) {
     node = (ASTNode*)an;
     set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_NUMBER) {
+  else if (current_token.type == TOKEN_NUMBER || 
+           current_token.type == TOKEN_UINT_LIT ||
+           current_token.type == TOKEN_LONG_LIT ||
+           current_token.type == TOKEN_ULONG_LIT ||
+           current_token.type == TOKEN_LONG_LONG_LIT ||
+           current_token.type == TOKEN_ULONG_LONG_LIT) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;
-    ln->var_type.base = TYPE_INT;
-    ln->val.int_val = current_token.int_val;
-    eat(l, TOKEN_NUMBER);
+    
+    if (current_token.type == TOKEN_UINT_LIT) { ln->var_type.base = TYPE_INT; ln->var_type.is_unsigned = 1; }
+    else if (current_token.type == TOKEN_LONG_LIT) { ln->var_type.base = TYPE_LONG; }
+    else if (current_token.type == TOKEN_ULONG_LIT) { ln->var_type.base = TYPE_LONG; ln->var_type.is_unsigned = 1; }
+    else if (current_token.type == TOKEN_LONG_LONG_LIT) { ln->var_type.base = TYPE_LONG_LONG; }
+    else if (current_token.type == TOKEN_ULONG_LONG_LIT) { ln->var_type.base = TYPE_LONG_LONG; ln->var_type.is_unsigned = 1; }
+    else { ln->var_type.base = TYPE_INT; }
+
+    ln->val.long_val = current_token.long_val;
+    eat(l, current_token.type);
+    node = (ASTNode*)ln;
+    set_loc(node, line, col);
+  }
+  else if (current_token.type == TOKEN_FLOAT || current_token.type == TOKEN_LONG_DOUBLE_LIT) {
+    LiteralNode *ln = calloc(1, sizeof(LiteralNode));
+    ln->base.type = NODE_LITERAL;
+    if (current_token.type == TOKEN_LONG_DOUBLE_LIT) ln->var_type.base = TYPE_LONG_DOUBLE;
+    else ln->var_type.base = TYPE_DOUBLE;
+    ln->val.double_val = current_token.double_val;
+    eat(l, current_token.type);
     node = (ASTNode*)ln;
     set_loc(node, line, col);
   }
@@ -211,17 +233,8 @@ ASTNode* parse_factor(Lexer *l) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;
     ln->var_type.base = TYPE_CHAR;
-    ln->val.int_val = current_token.int_val;
+    ln->val.long_val = current_token.int_val;
     eat(l, TOKEN_CHAR_LIT);
-    node = (ASTNode*)ln;
-    set_loc(node, line, col);
-  }
-  else if (current_token.type == TOKEN_FLOAT) {
-    LiteralNode *ln = calloc(1, sizeof(LiteralNode));
-    ln->base.type = NODE_LITERAL;
-    ln->var_type.base = TYPE_DOUBLE;
-    ln->val.double_val = current_token.double_val;
-    eat(l, TOKEN_FLOAT);
     node = (ASTNode*)ln;
     set_loc(node, line, col);
   }
@@ -250,7 +263,7 @@ ASTNode* parse_factor(Lexer *l) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;
     ln->var_type.base = TYPE_BOOL;
-    ln->val.int_val = (current_token.type == TOKEN_TRUE) ? 1 : 0;
+    ln->val.long_val = (current_token.type == TOKEN_TRUE) ? 1 : 0;
     eat(l, current_token.type);
     node = (ASTNode*)ln;
     set_loc(node, line, col);
@@ -322,7 +335,8 @@ ASTNode* parse_unary(Lexer *l) {
       TokenType t = current_token.type;
       
       // Heuristic: Check if next token starts a type
-      if (t == TOKEN_KW_INT || t == TOKEN_KW_CHAR || t == TOKEN_KW_BOOL || 
+      if (t == TOKEN_KW_INT || t == TOKEN_KW_SHORT || t == TOKEN_KW_LONG || 
+          t == TOKEN_KW_UNSIGNED || t == TOKEN_KW_CHAR || t == TOKEN_KW_BOOL || 
           t == TOKEN_KW_SINGLE || t == TOKEN_KW_DOUBLE || t == TOKEN_KW_VOID || 
           t == TOKEN_KW_STRING || t == TOKEN_KW_LET) {
           is_cast = 1;

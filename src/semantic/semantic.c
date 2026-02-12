@@ -100,26 +100,30 @@ void scan_declarations(SemCtx *ctx, ASTNode *node, const char *prefix) {
             
             SemClass *cls = find_sem_class(ctx, name);
             if (cls) {
-                ASTNode *mem = cn->members;
-                while(mem) {
-                    if (mem->type == NODE_VAR_DECL) {
-                        VarDeclNode *vd = (VarDeclNode*)mem;
-                        if (vd->name) {
-                            SemSymbol *s = malloc(sizeof(SemSymbol));
-                            s->name = strdup(vd->name);
-                            s->type = vd->var_type;
-                            s->is_mutable = vd->is_mutable;
-                            s->is_array = vd->is_array;
-                            
-                            // Set Decl Location
-                            s->decl_line = vd->base.line;
-                            s->decl_col = vd->base.col;
+                cls->is_extern = cn->is_extern;
+                
+                if (!cn->is_extern) {
+                    ASTNode *mem = cn->members;
+                    while(mem) {
+                        if (mem->type == NODE_VAR_DECL) {
+                            VarDeclNode *vd = (VarDeclNode*)mem;
+                            if (vd->name) {
+                                SemSymbol *s = malloc(sizeof(SemSymbol));
+                                s->name = strdup(vd->name);
+                                s->type = vd->var_type;
+                                s->is_mutable = vd->is_mutable;
+                                s->is_array = vd->is_array;
+                                
+                                // Set Decl Location
+                                s->decl_line = vd->base.line;
+                                s->decl_col = vd->base.col;
 
-                            s->next = cls->members;
-                            cls->members = s;
+                                s->next = cls->members;
+                                cls->members = s;
+                            }
                         }
+                        mem = mem->next;
                     }
-                    mem = mem->next;
                 }
             }
 

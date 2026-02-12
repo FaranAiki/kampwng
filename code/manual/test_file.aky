@@ -1,0 +1,11 @@
+// from fopen 
+
+import "std";
+
+int main() {
+  let file = fopen("test_file.aky", "r");
+  char *myread = malloc(256L);
+  print "%s\n", typeof(file);
+  print "%s\n", typeof(myread);
+  fread()
+}

@@ -1,0 +1,2 @@
+// C compatibility
+typedef size_t as unsigned long long;

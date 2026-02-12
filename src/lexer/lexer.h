@@ -55,6 +55,7 @@ typedef enum {
 
   // OOP Keywords
   TOKEN_CLASS,
+  TOKEN_STRUCT, // Added struct keyword
   TOKEN_IS,     
   TOKEN_HAS,    
   TOKEN_OPEN,   
@@ -74,6 +75,18 @@ typedef enum {
   TOKEN_KW_DOUBLE, 
   TOKEN_KW_STRING, // Added for 'string' type
   TOKEN_KW_LET,    
+
+  TOKEN_KW_SHORT,
+  TOKEN_KW_LONG,
+  TOKEN_KW_UNSIGNED,
+
+  // Extended Literal Tokens
+  TOKEN_ULONG_LONG_LIT,
+  TOKEN_LONG_LONG_LIT,
+  TOKEN_ULONG_LIT,
+  TOKEN_LONG_LIT,
+  TOKEN_UINT_LIT,
+  TOKEN_LONG_DOUBLE_LIT,
 
   TOKEN_KW_MUT,    
   TOKEN_KW_IMUT,   
@@ -118,6 +131,7 @@ typedef struct {
   TokenType type;
   char *text;    
   int int_val;   
+  unsigned long long long_val; // Added for extended ints
   double double_val; 
   int line;      
   int col;       

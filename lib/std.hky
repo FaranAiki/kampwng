@@ -1,2 +1,4 @@
 // This is to import all of the directories in std/*
 import "std/alias.hky";
+import "std/typedef.hky";
+import "std/file.hky";

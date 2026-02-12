@@ -244,6 +244,11 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
             int is_cls = 0;
             while(cls) { if(strcmp(cls->name, c->name) == 0) { is_cls=1; break; } cls = cls->next; }
             if (is_cls) {
+                SemClass *sc = find_sem_class(ctx, c->name);
+                if (sc && sc->is_extern) {
+                    sem_error(ctx, node, "Cannot instantiate extern opaque struct/class '%s' by calling a constructor", c->name);
+                    return unknown;
+                }
                 return (VarType){TYPE_CLASS, 0, strdup(c->name)};
             }
 
@@ -477,6 +482,15 @@ void check_stmt(SemCtx *ctx, ASTNode *node) {
         case NODE_VAR_DECL: {
             VarDeclNode *vd = (VarDeclNode*)node;
             vd->var_type = resolve_typedef(ctx, vd->var_type);
+            
+            // Check opaque struct allocation by value
+            if (vd->var_type.base == TYPE_CLASS && vd->var_type.ptr_depth == 0) {
+                SemClass *cls = find_sem_class(ctx, vd->var_type.class_name);
+                if (cls && cls->is_extern) {
+                     sem_error(ctx, node, "Cannot allocate extern opaque type '%s' by value. Use pointer (e.g. %s*).", cls->name, cls->name);
+                }
+            }
+
             SemSymbol *existing = find_symbol_current_scope(ctx, vd->name);
             if (existing) {
                 sem_error(ctx, node, "Redefinition of variable '%s' in current scope", vd->name);

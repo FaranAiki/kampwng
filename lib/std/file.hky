@@ -1,20 +1,21 @@
 // link is automatically for C
 
-namespace IO {
 
-closed class File {
+// TODO make sure that alkyl can extern struct and others
+extern struct FILE;
+extern FILE *fopen(char *filename, char *mode);
+extern int fclose(FILE *stream); 
+extern size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+
+open class File {
   int opened = 0;
   
-
   string read() {
-    let my_string = 
   }
 }
 
 // use fopen here using extern
-File open() {
-  let file = File()
-  return 
+// this is the alkyl wrapper
+File *open() {
 }
 
-}

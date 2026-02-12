@@ -150,6 +150,25 @@ ASTNode* parse_typedef(Lexer *l) {
 
 ASTNode* parse_extern(Lexer *l) {
   eat(l, TOKEN_EXTERN);
+  
+  // Check for 'extern class/struct FILE;' opaque type declarations
+  if (current_token.type == TOKEN_CLASS || current_token.type == TOKEN_STRUCT) {
+      eat(l, current_token.type);
+      if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected name for extern class/struct");
+      char *name = strdup(current_token.text);
+      eat(l, TOKEN_IDENTIFIER);
+      eat(l, TOKEN_SEMICOLON);
+      
+      register_typename(name, 0); // Register as a usable type
+      
+      ClassNode *cn = calloc(1, sizeof(ClassNode));
+      cn->base.type = NODE_CLASS;
+      cn->name = name;
+      cn->is_extern = 1; // Mark as opaque
+      return (ASTNode*)cn;
+  }
+  
+  // Regular extern function declaration
   VarType ret_type = parse_type(l);
   if (ret_type.base == TYPE_UNKNOWN) { parser_fail(l, "Expected return type for extern function"); }
   if (current_token.type != TOKEN_IDENTIFIER) { parser_fail(l, "Expected extern function name"); }
@@ -296,9 +315,9 @@ ASTNode* parse_class(Lexer *l) {
   if (current_token.type == TOKEN_OPEN) { is_open = 1; eat(l, TOKEN_OPEN); }
   else if (current_token.type == TOKEN_CLOSED) { is_open = 0; eat(l, TOKEN_CLOSED); }
   
-  if (current_token.type == TOKEN_CLASS) {
-      eat(l, TOKEN_CLASS);
-      if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected class name after 'class'");
+  if (current_token.type == TOKEN_CLASS || current_token.type == TOKEN_STRUCT) {
+      eat(l, current_token.type);
+      if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected class name after 'class' or 'struct'");
       char *class_name = strdup(current_token.text);
       eat(l, TOKEN_IDENTIFIER);
       
@@ -436,6 +455,7 @@ ASTNode* parse_class(Lexer *l) {
       
       return (ASTNode*)cls;
   }
+  return NULL;
 }
 
 ASTNode* parse_top_level(Lexer *l) { 
@@ -487,6 +507,7 @@ ASTNode* parse_top_level(Lexer *l) {
     return parse_enum(l);
   }
   if (current_token.type == TOKEN_CLASS || 
+      current_token.type == TOKEN_STRUCT || 
       (current_token.type == TOKEN_OPEN) || 
       (current_token.type == TOKEN_CLOSED)) {
     return parse_class(l);
@@ -605,4 +626,3 @@ ASTNode* parse_top_level(Lexer *l) {
     return (ASTNode*)node;
   }
 }
-
