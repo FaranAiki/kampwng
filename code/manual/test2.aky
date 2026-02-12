@@ -1,7 +1,11 @@
-define tt typedef;
-tt string char[];
+// Usage must use 
+// define * as * 
+// typedef * as *
+define tt as typedef;
+tt string as char[];
 
-
+// This declares a string 
 string s = "Hello, World!\n";
+// equivalent to let s = "Hello, World!\n"
 
 printf "%s", s;

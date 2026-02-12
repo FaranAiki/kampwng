@@ -348,10 +348,17 @@ void eat(Lexer *l, TokenType type) {
         snprintf(msg, sizeof(msg), "Expected ')' to close expression, but found '%s'", found);
     } else if (type == TOKEN_RBRACE) {
         snprintf(msg, sizeof(msg), "Expected '}' to close block, but found '%s'", found);
+    } else if (type == TOKEN_RBRACKET) {
+        snprintf(msg, sizeof(msg), "Expected ']' to close array/enum, but found '%s'", found);
+    } else if (type == TOKEN_LPAREN) {
+        snprintf(msg, sizeof(msg), "Expected '(' to start expression, but found '%s'", found);
+    } else if (type == TOKEN_LBRACE) {
+        snprintf(msg, sizeof(msg), "Expected '{' to start block, but found '%s'", found);
+    } else if (type == TOKEN_LBRACKET) {
+        snprintf(msg, sizeof(msg), "Expected '[' to start array/enum, but found '%s'", found);
     } else {
         snprintf(msg, sizeof(msg), "Expected '%s' but found '%s'", expected, found);
-    }
-    
+    } 
     parser_fail(l, msg);
   }
 }

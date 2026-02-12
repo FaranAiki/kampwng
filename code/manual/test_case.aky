@@ -1,22 +1,30 @@
-
-// enak ada makanan nih
-enum Makanan {
-  Ayam,
+// This is an enum like in C, but 
+// uses [ ] for clarity
+// because in Alkyl, 
+// [ ] is for member, whereas { } is for code
+enum Makanan [
+  Ayam, // This initialize Ayam = 0 or Makanan.Ayam = 0 and Makanan[Ayam]/Makanan[0] = "Ayam"
   Burger,
   Sapi,
   Daging
-}
+]
 
+// This is the entry point
 int main() {
   char *s = "buat";
+  // typeof(sarapan) is an integer
   let sarapan = Makanan.Ayam;
   print "%s is %d\n", Makanan[sarapan], sarapan;
   sarapan++;
   print "%s is %d\n", Makanan[sarapan], sarapan;
   sarapan = Daging;
   switch (sarapan) {
+    // case is blocked:
+    // you do not need break here
     case Ayam, Daging:
       print "Ayam ato ngak daging!\n";
+    // this will fall into the default 
+    // as the leak case "leaks"
     leak case Burger:
       print "Yeay!\n";
     case Sapi:

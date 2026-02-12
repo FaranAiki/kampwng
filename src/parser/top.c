@@ -111,7 +111,7 @@ ASTNode* parse_top_level(Lexer *l) {
         report_error(l, current_token, msg);
         
         char hint[256];
-        snprintf(hint, sizeof(hint), "Expected 'as'. Did you mean \"define %s as %s...\"?", sigs[0].name, found);
+        snprintf(hint, sizeof(hint), "Did you mean \"define %s as %s...\"?", sigs[0].name, found);
         report_hint(l, current_token, hint);
         
         // Clean up
@@ -195,13 +195,15 @@ ASTNode* parse_top_level(Lexer *l) {
       eat(l, TOKEN_IDENTIFIER);
       register_typename(enum_name, 1); // Register as ENUM (is_enum = 1)
 
-      eat(l, TOKEN_LBRACE);
+      // Maybe use [ ] instead of { } ? 
+      // Because { } is for code, whereas [ ] is for members
+      eat(l, TOKEN_LBRACKET);
       
       EnumEntry *entries_head = NULL;
       EnumEntry **curr_entry = &entries_head;
       int current_val = 0;
 
-      while (current_token.type != TOKEN_RBRACE && current_token.type != TOKEN_EOF) {
+      while (current_token.type != TOKEN_RBRACKET && current_token.type != TOKEN_EOF) {
           if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected enum member name");
           char *member_name = strdup(current_token.text);
           eat(l, TOKEN_IDENTIFIER);
@@ -225,9 +227,9 @@ ASTNode* parse_top_level(Lexer *l) {
           current_val++;
           
           if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA);
-          else if (current_token.type != TOKEN_RBRACE) parser_fail(l, "Expected ',' or '}' in enum definition");
+          else if (current_token.type != TOKEN_RBRACKET) parser_fail(l, "Expected ',' or ']' in enum definition");
       }
-      eat(l, TOKEN_RBRACE);
+      eat(l, TOKEN_RBRACKET);
       
       EnumNode *en = calloc(1, sizeof(EnumNode));
       en->base.type = NODE_ENUM;

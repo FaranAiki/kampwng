@@ -6,12 +6,36 @@ open class Engne {
   }
 }
 
+// this is wrong as it should be open, not open 
+// error:
 opn class Car has Engine {
   
 }
+// 11:1: error: Invalid statement starting with identifier 'opn'.
+//  | opn class Car has Engine {
+//  | ^
+// hint: Did you mean open?
 
-
+// TODO fix error handling 
 Engine a = Engine();
 a.running();
 printf("%d\n", 1);
 sS
+
+/* Current
+19:1: error: Invalid token 'sS'
+  | sS
+  | ^
+hint: 'sS' looks like keyword 'if'. Did you mean to use if?
+16:10: error: Assignment to undefined symbol 'a'
+  | Engine a = Engine();
+  |          ^
+16:12: error: No matching overload for function 'Engine'
+  | Engine a = Engine();
+  |            ^
+hint: 'Engine' looks like type 'Engne'. Did you mean to declare a variable?
+16:1: error: No matching overload for function 'Engine'
+  | Engine a = Engine();
+  | ^
+hint: 'Engine' looks like type 'Engne'. Did you mean to declare a variable?
+*/
