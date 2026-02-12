@@ -273,8 +273,6 @@ typedef struct {
   } val;
 } LiteralNode;
 
-// --- PROTOTYPES ---
-
 ASTNode* parse_program(Lexer *l);
 ASTNode* parse_expression(Lexer *l);
 void free_ast(ASTNode *node);

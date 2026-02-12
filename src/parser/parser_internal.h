@@ -38,11 +38,11 @@ VarType* get_alias(const char *name);
 
 Token lexer_next_raw(Lexer *l); 
 
-// --- EXPRESSION PARSERS (parser_expr.c) ---
+// parse expr
 ASTNode* parse_call(Lexer *l, char *name);
 ASTNode* parse_postfix(Lexer *l, ASTNode *node); 
 
-// --- STATEMENT PARSERS (parser_stmt.c) ---
+// parse stmt
 ASTNode* parse_single_statement_or_block(Lexer *l);
 ASTNode* parse_statements(Lexer *l);
 ASTNode* parse_var_decl_internal(Lexer *l);
@@ -54,5 +54,15 @@ ASTNode* parse_switch(Lexer *l);
 ASTNode* parse_return(Lexer *l);
 ASTNode* parse_break(Lexer *l);
 ASTNode* parse_continue(Lexer *l);
+
+// parse top level 
+ASTNode* parse_top_level(Lexer *l); 
+
+ASTNode* parse_enum(Lexer *l);
+ASTNode* parse_class(Lexer *l);
+ASTNode* parse_define(Lexer *l);
+ASTNode* parse_typedef(Lexer *l);
+ASTNode* parse_import(Lexer *l);
+
 
 #endif

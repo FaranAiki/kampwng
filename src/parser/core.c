@@ -198,6 +198,7 @@ void parser_reset(void) {
     parser_error_count = 0;
 }
 
+// use algo to not automatically crash 
 void parser_sync(Lexer *l) {
     while (current_token.type != TOKEN_EOF) {
         if (current_token.type == TOKEN_SEMICOLON) {
@@ -209,6 +210,7 @@ void parser_sync(Lexer *l) {
             return;
         }
         switch (current_token.type) {
+            // skip all case
             case TOKEN_CLASS:
             case TOKEN_NAMESPACE:
             case TOKEN_KW_INT:
@@ -339,6 +341,8 @@ void eat(Lexer *l, TokenType type) {
     const char *found = current_token.type == TOKEN_EOF ? "end of file" : 
                         (current_token.text ? current_token.text : token_type_to_string(current_token.type));
     
+    // TODO add more token casing
+    // TODO use switch statement
     if (type == TOKEN_SEMICOLON) {
         snprintf(msg, sizeof(msg), "Expected ';' after statement, but found '%s'", found);
     } else if (type == TOKEN_RPAREN) {
@@ -360,6 +364,7 @@ void eat(Lexer *l, TokenType type) {
   }
 }
 
+// for [type] [var] 
 VarType parse_type(Lexer *l) {
   VarType t = {TYPE_UNKNOWN, 0, NULL}; 
   
@@ -423,6 +428,7 @@ char* read_file_content(const char* path) {
     return buf;
 }
 
+// TODO add more extensions (?)
 char* read_import_file(const char* filename) {
   // Smart Import Logic
   // Search Paths: current directory "", "lib/"
@@ -442,6 +448,40 @@ char* read_import_file(const char* filename) {
   }
   
   return NULL;
+}
+
+ASTNode* parse_program(Lexer *l) {
+  safe_free_current_token();
+  current_token = lexer_next_raw(l);
+  
+  ASTNode *head = NULL;
+  ASTNode **current = &head;
+  
+  // Setup Recovery Buffer
+  jmp_buf recover_buf;
+  parser_recover_buf = &recover_buf;
+
+  while (current_token.type != TOKEN_EOF) {
+    // If an error occurs, we come back here via longjmp
+    if (setjmp(recover_buf) != 0) {
+        parser_sync(l);
+        if (current_token.type == TOKEN_EOF) break;
+    }
+    
+    ASTNode *node = parse_top_level(l);
+    if (node) {
+        if (!*current) *current = node; 
+        
+        // Link potential list of nodes (e.g. from import)
+        ASTNode *iter = node;
+        while (iter->next) iter = iter->next;
+        current = &iter->next;
+    }
+  }
+  
+  parser_recover_buf = NULL; // Clear recovery
+  safe_free_current_token();
+  return head;
 }
 
 void free_ast(ASTNode *node) {

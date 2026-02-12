@@ -1,8 +1,11 @@
+// this is testing for prefix/postfix operator
 int main() {
   int a = 10;
   print "Expected 10, got %d\n", a;
+  // preincrement, equivalent to a += 1
   a++;
   print "Expected 11, got %d\n", a;
+  // post fix
   print "Expected 12, got %d\n", ++a;
   print "Expected 12, got %d\n", a;
 }

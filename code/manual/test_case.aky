@@ -7,7 +7,9 @@ enum Makanan [
   Burger,
   Sapi,
   Daging
-]
+];
+
+enum Minuman[Teh, Kopi, Susu];
 
 // This is the entry point
 int main() {

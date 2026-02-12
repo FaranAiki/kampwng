@@ -13,6 +13,208 @@ typedef struct MacroSig {
     int param_count;
 } MacroSig;
 
+ASTNode* parse_enum(Lexer *l) {
+  eat(l, TOKEN_ENUM);
+  if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected enum name");
+  char *enum_name = strdup(current_token.text);
+  eat(l, TOKEN_IDENTIFIER);
+  register_typename(enum_name, 1); // Register as ENUM (is_enum = 1)
+
+  // Maybe use [ ] instead of { } ? 
+  // Because { } is for code, whereas [ ] is for members
+  eat(l, TOKEN_LBRACKET);
+  
+  EnumEntry *entries_head = NULL;
+  EnumEntry **curr_entry = &entries_head;
+  int current_val = 0;
+
+  while (current_token.type != TOKEN_RBRACKET && current_token.type != TOKEN_EOF) {
+      if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected enum member name");
+      char *member_name = strdup(current_token.text);
+      eat(l, TOKEN_IDENTIFIER);
+      
+      if (current_token.type == TOKEN_ASSIGN) {
+          eat(l, TOKEN_ASSIGN);
+          int sign = 1;
+          if (current_token.type == TOKEN_MINUS) { sign = -1; eat(l, TOKEN_MINUS); }
+          if (current_token.type != TOKEN_NUMBER) parser_fail(l, "Expected integer value for enum member");
+          current_val = current_token.int_val * sign;
+          eat(l, TOKEN_NUMBER);
+      }
+      
+      EnumEntry *entry = malloc(sizeof(EnumEntry));
+      entry->name = member_name;
+      entry->value = current_val;
+      entry->next = NULL;
+      *curr_entry = entry;
+      curr_entry = &entry->next;
+      
+      current_val++;
+      
+      if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA);
+      else if (current_token.type != TOKEN_RBRACKET) parser_fail(l, "Expected ',' or ']' in enum definition");
+  }
+  eat(l, TOKEN_RBRACKET);
+  // DO anything aftern enum 
+  /*
+  * enum Car[Toyota, Honda, ...] ... ;
+  */
+  eat(l, TOKEN_SEMICOLON);
+
+  EnumNode *en = calloc(1, sizeof(EnumNode));
+  en->base.type = NODE_ENUM;
+  en->name = enum_name;
+  en->entries = entries_head;
+  return (ASTNode*)en;
+}
+
+ASTNode* parse_class(Lexer *l) {  
+  int is_open = 0;
+  if (current_token.type == TOKEN_OPEN) { is_open = 1; eat(l, TOKEN_OPEN); }
+  else if (current_token.type == TOKEN_CLOSED) { is_open = 0; eat(l, TOKEN_CLOSED); }
+  
+  if (current_token.type == TOKEN_CLASS) {
+      eat(l, TOKEN_CLASS);
+      if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected class name after 'class'");
+      char *class_name = strdup(current_token.text);
+      eat(l, TOKEN_IDENTIFIER);
+      
+      register_typename(class_name, 0); // Register as CLASS (is_enum = 0)
+      
+      char *parent_name = NULL;
+      if (current_token.type == TOKEN_IS) {
+          eat(l, TOKEN_IS);
+          if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected parent class name after 'is'");
+          parent_name = strdup(current_token.text);
+          eat(l, TOKEN_IDENTIFIER);
+      }
+      
+      char **traits = NULL;
+      int trait_count = 0;
+      if (current_token.type == TOKEN_HAS) {
+          eat(l, TOKEN_HAS);
+          int cap = 4;
+          traits = malloc(sizeof(char*) * cap);
+          do {
+              if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected trait name after 'has'");
+              if (trait_count >= cap) { cap *= 2; traits = realloc(traits, sizeof(char*)*cap); }
+              traits[trait_count++] = strdup(current_token.text);
+              eat(l, TOKEN_IDENTIFIER);
+              if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA);
+              else break;
+          } while(1);
+      }
+      
+      eat(l, TOKEN_LBRACE);
+      
+      ASTNode *members_head = NULL;
+      ASTNode **curr_member = &members_head;
+      
+      while (current_token.type != TOKEN_RBRACE && current_token.type != TOKEN_EOF) {
+          int member_open = is_open;
+          if (current_token.type == TOKEN_OPEN) { member_open = 1; eat(l, TOKEN_OPEN); }
+          else if (current_token.type == TOKEN_CLOSED) { member_open = 0; eat(l, TOKEN_CLOSED); }
+          
+          VarType vt = parse_type(l);
+          if (vt.base != TYPE_UNKNOWN) {
+              if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected member name in class body");
+              char *mem_name = strdup(current_token.text);
+              eat(l, TOKEN_IDENTIFIER);
+              
+              if (current_token.type == TOKEN_LPAREN) {
+                  // Method
+                  eat(l, TOKEN_LPAREN);
+                  Parameter *params = NULL;
+                  Parameter **curr_p = &params;
+                  
+                  if (current_token.type != TOKEN_RPAREN) {
+                      while(1) {
+                          VarType pt = parse_type(l);
+                          if(pt.base == TYPE_UNKNOWN) parser_fail(l, "Expected parameter type in method declaration");
+                          char *pname = strdup(current_token.text);
+                          eat(l, TOKEN_IDENTIFIER);
+                          
+                          if (current_token.type == TOKEN_LBRACKET) {
+                              eat(l, TOKEN_LBRACKET);
+                              if (current_token.type != TOKEN_RBRACKET) {
+                                  ASTNode *sz = parse_expression(l);
+                                  free_ast(sz);
+                              }
+                              eat(l, TOKEN_RBRACKET);
+                              pt.ptr_depth++;
+                          }
+                          
+                          Parameter *p = calloc(1, sizeof(Parameter));
+                          p->type = pt; p->name = pname;
+                          *curr_p = p; curr_p = &p->next;
+                          if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA); else break;
+                      }
+                  }
+                  eat(l, TOKEN_RPAREN);
+                  eat(l, TOKEN_LBRACE);
+                  ASTNode *body = parse_statements(l);
+                  eat(l, TOKEN_RBRACE);
+                  
+                  FuncDefNode *func = calloc(1, sizeof(FuncDefNode));
+                  func->base.type = NODE_FUNC_DEF;
+                  func->name = mem_name;
+                  func->ret_type = vt;
+                  func->params = params;
+                  func->body = body;
+                  func->is_open = member_open;
+                  
+                  *curr_member = (ASTNode*)func;
+                  curr_member = &func->base.next;
+              } else {
+                  // Field
+                  int is_array = 0;
+                  ASTNode *array_size = NULL;
+                  if (current_token.type == TOKEN_LBRACKET) {
+                      is_array = 1;
+                      eat(l, TOKEN_LBRACKET);
+                      if (current_token.type != TOKEN_RBRACKET) array_size = parse_expression(l);
+                      eat(l, TOKEN_RBRACKET);
+                  }
+
+                  ASTNode *init = NULL;
+                  if (current_token.type == TOKEN_ASSIGN) {
+                      eat(l, TOKEN_ASSIGN);
+                      init = parse_expression(l);
+                  }
+                  eat(l, TOKEN_SEMICOLON);
+                  
+                  VarDeclNode *var = calloc(1, sizeof(VarDeclNode));
+                  var->base.type = NODE_VAR_DECL;
+                  var->name = mem_name;
+                  var->var_type = vt;
+                  var->initializer = init;
+                  var->is_mutable = 1; 
+                  var->is_open = member_open;
+                  var->is_array = is_array;
+                  var->array_size = array_size;
+                  
+                  *curr_member = (ASTNode*)var;
+                  curr_member = &var->base.next;
+              }
+          } else {
+              parser_fail(l, "Unexpected token in class body. Expected member declaration or '}'.");
+          }
+      }
+      eat(l, TOKEN_RBRACE);
+      
+      ClassNode *cls = calloc(1, sizeof(ClassNode));
+      cls->base.type = NODE_CLASS;
+      cls->name = class_name;
+      cls->parent_name = parent_name;
+      cls->traits.names = traits;
+      cls->traits.count = trait_count;
+      cls->members = members_head;
+      cls->is_open = is_open;
+      
+      return (ASTNode*)cls;
+  }
+}
+
 ASTNode* parse_top_level(Lexer *l) { 
   // Empty semicolon
   if (current_token.type == TOKEN_SEMICOLON) {
@@ -189,204 +391,12 @@ ASTNode* parse_top_level(Lexer *l) {
   
   // 0.3 ENUM
   if (current_token.type == TOKEN_ENUM) {
-      eat(l, TOKEN_ENUM);
-      if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected enum name");
-      char *enum_name = strdup(current_token.text);
-      eat(l, TOKEN_IDENTIFIER);
-      register_typename(enum_name, 1); // Register as ENUM (is_enum = 1)
-
-      // Maybe use [ ] instead of { } ? 
-      // Because { } is for code, whereas [ ] is for members
-      eat(l, TOKEN_LBRACKET);
-      
-      EnumEntry *entries_head = NULL;
-      EnumEntry **curr_entry = &entries_head;
-      int current_val = 0;
-
-      while (current_token.type != TOKEN_RBRACKET && current_token.type != TOKEN_EOF) {
-          if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected enum member name");
-          char *member_name = strdup(current_token.text);
-          eat(l, TOKEN_IDENTIFIER);
-          
-          if (current_token.type == TOKEN_ASSIGN) {
-              eat(l, TOKEN_ASSIGN);
-              int sign = 1;
-              if (current_token.type == TOKEN_MINUS) { sign = -1; eat(l, TOKEN_MINUS); }
-              if (current_token.type != TOKEN_NUMBER) parser_fail(l, "Expected integer value for enum member");
-              current_val = current_token.int_val * sign;
-              eat(l, TOKEN_NUMBER);
-          }
-          
-          EnumEntry *entry = malloc(sizeof(EnumEntry));
-          entry->name = member_name;
-          entry->value = current_val;
-          entry->next = NULL;
-          *curr_entry = entry;
-          curr_entry = &entry->next;
-          
-          current_val++;
-          
-          if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA);
-          else if (current_token.type != TOKEN_RBRACKET) parser_fail(l, "Expected ',' or ']' in enum definition");
-      }
-      eat(l, TOKEN_RBRACKET);
-      
-      EnumNode *en = calloc(1, sizeof(EnumNode));
-      en->base.type = NODE_ENUM;
-      en->name = enum_name;
-      en->entries = entries_head;
-      return (ASTNode*)en;
+    return parse_enum(l);
   }
-
-  // --- CLASS PARSING ---
   if (current_token.type == TOKEN_CLASS || 
       (current_token.type == TOKEN_OPEN) || 
       (current_token.type == TOKEN_CLOSED)) {
-      
-      int is_open = 0;
-      if (current_token.type == TOKEN_OPEN) { is_open = 1; eat(l, TOKEN_OPEN); }
-      else if (current_token.type == TOKEN_CLOSED) { is_open = 0; eat(l, TOKEN_CLOSED); }
-      
-      if (current_token.type == TOKEN_CLASS) {
-          eat(l, TOKEN_CLASS);
-          if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected class name after 'class'");
-          char *class_name = strdup(current_token.text);
-          eat(l, TOKEN_IDENTIFIER);
-          
-          register_typename(class_name, 0); // Register as CLASS (is_enum = 0)
-          
-          char *parent_name = NULL;
-          if (current_token.type == TOKEN_IS) {
-              eat(l, TOKEN_IS);
-              if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected parent class name after 'is'");
-              parent_name = strdup(current_token.text);
-              eat(l, TOKEN_IDENTIFIER);
-          }
-          
-          char **traits = NULL;
-          int trait_count = 0;
-          if (current_token.type == TOKEN_HAS) {
-              eat(l, TOKEN_HAS);
-              int cap = 4;
-              traits = malloc(sizeof(char*) * cap);
-              do {
-                  if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected trait name after 'has'");
-                  if (trait_count >= cap) { cap *= 2; traits = realloc(traits, sizeof(char*)*cap); }
-                  traits[trait_count++] = strdup(current_token.text);
-                  eat(l, TOKEN_IDENTIFIER);
-                  if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA);
-                  else break;
-              } while(1);
-          }
-          
-          eat(l, TOKEN_LBRACE);
-          
-          ASTNode *members_head = NULL;
-          ASTNode **curr_member = &members_head;
-          
-          while (current_token.type != TOKEN_RBRACE && current_token.type != TOKEN_EOF) {
-              int member_open = is_open;
-              if (current_token.type == TOKEN_OPEN) { member_open = 1; eat(l, TOKEN_OPEN); }
-              else if (current_token.type == TOKEN_CLOSED) { member_open = 0; eat(l, TOKEN_CLOSED); }
-              
-              VarType vt = parse_type(l);
-              if (vt.base != TYPE_UNKNOWN) {
-                  if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected member name in class body");
-                  char *mem_name = strdup(current_token.text);
-                  eat(l, TOKEN_IDENTIFIER);
-                  
-                  if (current_token.type == TOKEN_LPAREN) {
-                      // Method
-                      eat(l, TOKEN_LPAREN);
-                      Parameter *params = NULL;
-                      Parameter **curr_p = &params;
-                      
-                      if (current_token.type != TOKEN_RPAREN) {
-                          while(1) {
-                              VarType pt = parse_type(l);
-                              if(pt.base == TYPE_UNKNOWN) parser_fail(l, "Expected parameter type in method declaration");
-                              char *pname = strdup(current_token.text);
-                              eat(l, TOKEN_IDENTIFIER);
-                              
-                              if (current_token.type == TOKEN_LBRACKET) {
-                                  eat(l, TOKEN_LBRACKET);
-                                  if (current_token.type != TOKEN_RBRACKET) {
-                                      ASTNode *sz = parse_expression(l);
-                                      free_ast(sz);
-                                  }
-                                  eat(l, TOKEN_RBRACKET);
-                                  pt.ptr_depth++;
-                              }
-                              
-                              Parameter *p = calloc(1, sizeof(Parameter));
-                              p->type = pt; p->name = pname;
-                              *curr_p = p; curr_p = &p->next;
-                              if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA); else break;
-                          }
-                      }
-                      eat(l, TOKEN_RPAREN);
-                      eat(l, TOKEN_LBRACE);
-                      ASTNode *body = parse_statements(l);
-                      eat(l, TOKEN_RBRACE);
-                      
-                      FuncDefNode *func = calloc(1, sizeof(FuncDefNode));
-                      func->base.type = NODE_FUNC_DEF;
-                      func->name = mem_name;
-                      func->ret_type = vt;
-                      func->params = params;
-                      func->body = body;
-                      func->is_open = member_open;
-                      
-                      *curr_member = (ASTNode*)func;
-                      curr_member = &func->base.next;
-                  } else {
-                      // Field
-                      int is_array = 0;
-                      ASTNode *array_size = NULL;
-                      if (current_token.type == TOKEN_LBRACKET) {
-                          is_array = 1;
-                          eat(l, TOKEN_LBRACKET);
-                          if (current_token.type != TOKEN_RBRACKET) array_size = parse_expression(l);
-                          eat(l, TOKEN_RBRACKET);
-                      }
-
-                      ASTNode *init = NULL;
-                      if (current_token.type == TOKEN_ASSIGN) {
-                          eat(l, TOKEN_ASSIGN);
-                          init = parse_expression(l);
-                      }
-                      eat(l, TOKEN_SEMICOLON);
-                      
-                      VarDeclNode *var = calloc(1, sizeof(VarDeclNode));
-                      var->base.type = NODE_VAR_DECL;
-                      var->name = mem_name;
-                      var->var_type = vt;
-                      var->initializer = init;
-                      var->is_mutable = 1; 
-                      var->is_open = member_open;
-                      var->is_array = is_array;
-                      var->array_size = array_size;
-                      
-                      *curr_member = (ASTNode*)var;
-                      curr_member = &var->base.next;
-                  }
-              } else {
-                  parser_fail(l, "Unexpected token in class body. Expected member declaration or '}'.");
-              }
-          }
-          eat(l, TOKEN_RBRACE);
-          
-          ClassNode *cls = calloc(1, sizeof(ClassNode));
-          cls->base.type = NODE_CLASS;
-          cls->name = class_name;
-          cls->parent_name = parent_name;
-          cls->traits.names = traits;
-          cls->traits.count = trait_count;
-          cls->members = members_head;
-          cls->is_open = is_open;
-          
-          return (ASTNode*)cls;
-      }
+    return parse_class(l);
   }
 
   // 1. LINK
@@ -579,36 +589,3 @@ ASTNode* parse_top_level(Lexer *l) {
   }
 }
 
-ASTNode* parse_program(Lexer *l) {
-  safe_free_current_token();
-  current_token = lexer_next_raw(l);
-  
-  ASTNode *head = NULL;
-  ASTNode **current = &head;
-  
-  // Setup Recovery Buffer
-  jmp_buf recover_buf;
-  parser_recover_buf = &recover_buf;
-
-  while (current_token.type != TOKEN_EOF) {
-    // If an error occurs, we come back here via longjmp
-    if (setjmp(recover_buf) != 0) {
-        parser_sync(l);
-        if (current_token.type == TOKEN_EOF) break;
-    }
-    
-    ASTNode *node = parse_top_level(l);
-    if (node) {
-        if (!*current) *current = node; 
-        
-        // Link potential list of nodes (e.g. from import)
-        ASTNode *iter = node;
-        while (iter->next) iter = iter->next;
-        current = &iter->next;
-    }
-  }
-  
-  parser_recover_buf = NULL; // Clear recovery
-  safe_free_current_token();
-  return head;
-}
