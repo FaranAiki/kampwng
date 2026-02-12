@@ -3,10 +3,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// TODO simplify this
+// Forward Declaration for safe MECE abstraction
+VarType check_expr_internal(SemCtx *ctx, ASTNode *node);
+
+// Primary wrapper to ensure all branches strictly populate expr_type
 VarType check_expr(SemCtx *ctx, ASTNode *node) {
-    VarType unknown = {TYPE_UNKNOWN, 0, NULL};
-    if (!node) return unknown;
+    if (!node) {
+        VarType unknown = {TYPE_UNKNOWN, 0, NULL, 0, 0};
+        return unknown;
+    }
+    VarType res = check_expr_internal(ctx, node);
+    node->expr_type = res;
+    return res;
+}
+
+// Dedicated type inference and validation
+VarType check_expr_internal(SemCtx *ctx, ASTNode *node) {
+    VarType unknown = {TYPE_UNKNOWN, 0, NULL, 0, 0};
 
     switch(node->type) {
         case NODE_LITERAL:
@@ -15,7 +28,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
         case NODE_ARRAY_LIT: {
             ArrayLitNode *an = (ArrayLitNode*)node;
             if (!an->elements) {
-                VarType t = {TYPE_UNKNOWN, 0, NULL, 1}; 
+                VarType t = {TYPE_UNKNOWN, 0, NULL, 1, 0}; 
                 return t;
             }
             VarType first_t = check_expr(ctx, an->elements);
@@ -44,7 +57,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                         sem_error(ctx, node, "'this' used outside of class method");
                         return unknown;
                     }
-                    VarType t = {TYPE_CLASS, 1, strdup(ctx->current_class)}; 
+                    VarType t = {TYPE_CLASS, 1, strdup(ctx->current_class), 0, 0}; 
                     return t;
                 }
                 
@@ -87,7 +100,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                  if (op->op == TOKEN_EQ || op->op == TOKEN_NEQ || 
                      op->op == TOKEN_LT || op->op == TOKEN_GT || 
                      op->op == TOKEN_LTE || op->op == TOKEN_GTE) {
-                     return (VarType){TYPE_BOOL, 0, NULL};
+                     return (VarType){TYPE_BOOL, 0, NULL, 0, 0};
                  }
             }
 
@@ -98,7 +111,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                 }
             }
             if (op->op == TOKEN_LT || op->op == TOKEN_GT || op->op == TOKEN_EQ || op->op == TOKEN_NEQ || op->op == TOKEN_LTE || op->op == TOKEN_GTE) {
-                VarType bool_t = {TYPE_BOOL, 0, NULL};
+                VarType bool_t = {TYPE_BOOL, 0, NULL, 0, 0};
                 return bool_t;
             }
             return l;
@@ -116,7 +129,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
             }
             if (u->op == TOKEN_NOT) {
                 // Logical NOT
-                return (VarType){TYPE_BOOL, 0, NULL};
+                return (VarType){TYPE_BOOL, 0, NULL, 0, 0};
             }
             if (u->op == TOKEN_STAR) {
                 // Dereference
@@ -190,6 +203,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                              cast->base.type = NODE_CAST;
                              cast->base.line = a->value->line;
                              cast->base.col = a->value->col;
+                             cast->base.expr_type = l_type; // Safe pre-population
                              cast->var_type = l_type;
                              cast->operand = a->value;
                              a->value = (ASTNode*)cast;
@@ -226,12 +240,12 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
             while(arg) { check_expr(ctx, arg); arg = arg->next; }
 
             // Builtins
-            if (strcmp(c->name, "print") == 0 || strcmp(c->name, "printf") == 0) return (VarType){TYPE_VOID, 0, NULL};
-            if (strcmp(c->name, "input") == 0) return (VarType){TYPE_STRING, 0, NULL};
-            if (strcmp(c->name, "malloc") == 0 || strcmp(c->name, "alloc") == 0) return (VarType){TYPE_VOID, 1, NULL};
-            if (strcmp(c->name, "free") == 0) return (VarType){TYPE_VOID, 0, NULL};
-            if (strcmp(c->name, "setjmp") == 0) return (VarType){TYPE_INT, 0, NULL};
-            if (strcmp(c->name, "longjmp") == 0) return (VarType){TYPE_VOID, 0, NULL};
+            if (strcmp(c->name, "print") == 0 || strcmp(c->name, "printf") == 0) return (VarType){TYPE_VOID, 0, NULL, 0, 0};
+            if (strcmp(c->name, "input") == 0) return (VarType){TYPE_STRING, 0, NULL, 0, 0};
+            if (strcmp(c->name, "malloc") == 0 || strcmp(c->name, "alloc") == 0) return (VarType){TYPE_VOID, 1, NULL, 0, 0};
+            if (strcmp(c->name, "free") == 0) return (VarType){TYPE_VOID, 0, NULL, 0, 0};
+            if (strcmp(c->name, "setjmp") == 0) return (VarType){TYPE_INT, 0, NULL, 0, 0};
+            if (strcmp(c->name, "longjmp") == 0) return (VarType){TYPE_VOID, 0, NULL, 0, 0};
 
             SemFunc *match = resolve_overload(ctx, node, c->name, c->args);
             if (match) {
@@ -249,7 +263,8 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                     sem_error(ctx, node, "Cannot instantiate extern opaque struct/class '%s' by calling a constructor", c->name);
                     return unknown;
                 }
-                return (VarType){TYPE_CLASS, 0, strdup(c->name)};
+                // MECE Fix: Alkyl constructors intrinsically return pointers. Reflected in ptr_depth.
+                return (VarType){TYPE_CLASS, 1, strdup(c->name), 0, 0};
             }
 
             sem_error(ctx, node, "No matching overload for function '%s'", c->name);
@@ -287,7 +302,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                 }
             }
 
-            VarType obj_t = {TYPE_UNKNOWN, 0, NULL};
+            VarType obj_t = {TYPE_UNKNOWN, 0, NULL, 0, 0};
 
             if (mc->object->type == NODE_VAR_REF) {
                 obj_t = check_expr(ctx, mc->object); 
@@ -329,7 +344,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                 return unknown;
             }
             
-            VarType trait_type = {TYPE_CLASS, obj_t.ptr_depth, strdup(ta->trait_name)};
+            VarType trait_type = {TYPE_CLASS, obj_t.ptr_depth, strdup(ta->trait_name), 0, 0};
             trait_type.array_size = obj_t.array_size;
             return trait_type;
         }
@@ -343,7 +358,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                  if (se) {
                      VarType idx_t = check_expr(ctx, aa->index);
                      if (idx_t.base != TYPE_INT) sem_error(ctx, aa->index, "Enum string lookup requires integer index");
-                     return (VarType){TYPE_STRING, 0, NULL};
+                     return (VarType){TYPE_STRING, 0, NULL, 0, 0};
                  }
             }
 
@@ -355,19 +370,13 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
             }
             
             if (target_t.base == TYPE_STRING && target_t.ptr_depth == 0) {
-                 return (VarType){TYPE_CHAR, 0, NULL};
+                 return (VarType){TYPE_CHAR, 0, NULL, 0, 0};
             }
 
-            if (aa->index->type == NODE_LITERAL) {
-                int idx = ((LiteralNode*)aa->index)->val.int_val;
-                if (aa->target->type == NODE_VAR_REF) {
-                    SemSymbol *sym = find_symbol_semantic(ctx, ((VarRefNode*)aa->target)->name);
-                    if (sym && sym->is_array && sym->array_size > 0) {
-                        if (idx < 0 || idx >= sym->array_size) {
-                            sem_error(ctx, node, "Array index %d out of bounds (size %d)", idx, sym->array_size);
-                        }
-                    }
-                }
+            // MECE Guard: Ensures you can't bypass static safety 
+            if (target_t.ptr_depth == 0 && target_t.array_size == 0) {
+                 sem_error(ctx, node, "Cannot index non-array/non-pointer type '%s'", type_to_str(target_t));
+                 return unknown;
             }
             
             if (target_t.ptr_depth > 0) target_t.ptr_depth--;
@@ -389,7 +398,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                      while(m) { if(strcmp(m->name, ma->member_name) == 0) { found=1; break; } m=m->next; }
                      if (!found) sem_error(ctx, node, "Enum '%s' has no member '%s'", name, ma->member_name);
                      
-                     return (VarType){TYPE_INT, 0, NULL};
+                     return (VarType){TYPE_INT, 0, NULL, 0, 0};
                  }
              }
 
@@ -408,7 +417,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
                  }
              }
              
-             VarType ret = {TYPE_UNKNOWN, 0, NULL};
+             VarType ret = {TYPE_UNKNOWN, 0, NULL, 0, 0};
              return ret;
         }
         
@@ -423,7 +432,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
             // Return array of strings (string[] -> char**)
             // In Alkyl, TYPE_STRING is char*. Array is size > 0.
             // But here the size is unknown at compile time (or rather, fixed but we just return pointer to start)
-            VarType ret = {TYPE_STRING, 0, NULL};
+            VarType ret = {TYPE_STRING, 0, NULL, 0, 0};
             ret.array_size = 0; // Treated as pointer to array decay
             ret.ptr_depth = 1; // char**
             return ret;
@@ -432,7 +441,7 @@ VarType check_expr(SemCtx *ctx, ASTNode *node) {
         case NODE_TYPEOF: {
             UnaryOpNode *u = (UnaryOpNode*)node;
             check_expr(ctx, u->operand);
-            return (VarType){TYPE_STRING, 0, NULL};
+            return (VarType){TYPE_STRING, 0, NULL, 0, 0};
         }
 
         case NODE_CAST: {
@@ -561,6 +570,7 @@ void check_stmt(SemCtx *ctx, ASTNode *node) {
                              cast->base.type = NODE_CAST;
                              cast->base.line = vd->initializer->line;
                              cast->base.col = vd->initializer->col;
+                             cast->base.expr_type = vd->var_type; // Safe pre-population
                              cast->var_type = vd->var_type;
                              cast->operand = vd->initializer;
                              vd->initializer = (ASTNode*)cast;
@@ -590,7 +600,7 @@ void check_stmt(SemCtx *ctx, ASTNode *node) {
 
         case NODE_RETURN: {
             ReturnNode *r = (ReturnNode*)node;
-            VarType ret_t = {TYPE_VOID, 0, NULL};
+            VarType ret_t = {TYPE_VOID, 0, NULL, 0, 0};
             if (r->value) ret_t = check_expr(ctx, r->value);
             
             if (!are_types_equal(ctx->current_func_ret_type, ret_t)) {
@@ -602,6 +612,7 @@ void check_stmt(SemCtx *ctx, ASTNode *node) {
                          cast->base.type = NODE_CAST;
                          cast->base.line = r->value->line;
                          cast->base.col = r->value->col;
+                         cast->base.expr_type = ctx->current_func_ret_type; // Safe pre-population
                          cast->var_type = ctx->current_func_ret_type;
                          cast->operand = r->value;
                          r->value = (ASTNode*)cast;

@@ -71,6 +71,8 @@ typedef struct ASTNode {
   // Source Location
   int line;
   int col;
+  // Semantic Check Decoration
+  VarType expr_type; 
 } ASTNode;
 
 typedef struct Parameter {

@@ -1,5 +1,6 @@
 // link is automatically for C
 
+namespace io {
 
 // TODO make sure that alkyl can extern struct and others
 extern struct FILE;
@@ -7,15 +8,28 @@ extern FILE *fopen(char *filename, char *mode);
 extern int fclose(FILE *stream); 
 extern size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 
-open class File {
-  int opened = 0;
+// Make the member of the class private
+closed class File {
+  FILE *ptr;
+  int is_closed = 0;
   
   string read() {
   }
 }
 
 // use fopen here using extern
-// this is the alkyl wrapper
-File *open() {
+// this is the alkyl wrapper for fopen
+File open(char *filename, char *mode) {
+  let *file = fopen(filename, mode);
 }
 
+}
+
+/*
+Usage:
+  let csv_data = io.open("data.csv", "r");
+  // using flux and stream
+  for lines in csv_data {
+
+  }
+*/

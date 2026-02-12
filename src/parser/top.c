@@ -404,6 +404,7 @@ ASTNode* parse_class(Lexer *l) {
                   func->params = params;
                   func->body = body;
                   func->is_open = member_open;
+                  func->class_name = strdup(class_name); // Link Method to correct class context for semcheck
                   
                   *curr_member = (ASTNode*)func;
                   curr_member = &func->base.next;

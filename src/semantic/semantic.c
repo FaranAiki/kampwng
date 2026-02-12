@@ -165,7 +165,7 @@ void scan_declarations(SemCtx *ctx, ASTNode *node, const char *prefix) {
                     *tail = m;
                     tail = &m->next;
 
-                    VarType vt = {TYPE_INT, 0, NULL};
+                    VarType vt = {TYPE_INT, 0, NULL, 0, 0};
                     add_symbol_semantic(ctx, ent->name, vt, 0, 0, 0, en->base.line, en->base.col);
                 }
                 ent = ent->next;
@@ -239,7 +239,18 @@ void check_program(SemCtx *ctx, ASTNode *node) {
              check_program(ctx, ((NamespaceNode*)node)->body);
         }
         else if (node->type == NODE_CLASS) {
-             // Basic class check (scan_declarations already handled sigs)
+             ClassNode *cn = (ClassNode*)node;
+             ASTNode *m = cn->members;
+             // MECE Fix: Ensure Class Bodies are rigorously checked!
+             while(m) {
+                 if (m->type == NODE_FUNC_DEF) {
+                     check_program(ctx, m); // Checks the method
+                 }
+                 else if (m->type == NODE_VAR_DECL) {
+                     check_stmt(ctx, m); // Validates defaults on initializers
+                 }
+                 m = m->next;
+             }
         }
         else {
             check_stmt(ctx, node);
