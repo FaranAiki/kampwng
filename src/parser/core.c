@@ -398,7 +398,7 @@ VarType parse_type(Lexer *l) {
               }
               eat(l, TOKEN_IDENTIFIER);
           } else {
-              return t;
+              return t; // Unknown
           }
       }
   } else {

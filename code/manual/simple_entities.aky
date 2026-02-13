@@ -1,0 +1,47 @@
+
+class Defend {
+  int reduction = 0;
+  double reduction_persen = 0;
+
+  void defend(Attack dmg) {
+    
+  }
+}
+
+class HP has Defend {
+  int hp = 0;
+  int shield = 0;
+}
+
+class Attack {
+  int damage = 0;
+  int mult = 0;
+
+  int attack(HP hitpoint) {
+    if HP.shield != 0 {
+       
+    } else {
+
+    }
+  }
+}
+
+class Player has Attack, HP {
+  string name = "unnamed";
+  Player(int hp, int base_dmg) {
+    this[Attack].damage = base_dmg;
+    this[HP].hp = hp
+  }
+  
+}
+
+class Enemy has Attack, HP {
+  
+}
+
+int main() {
+  let prot = Player("faran");
+  let enem = Enemy("basic");
+
+  prot[Attack].attack(enem);
+}

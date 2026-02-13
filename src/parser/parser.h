@@ -4,6 +4,7 @@
 #include "../lexer/lexer.h"
 #include <setjmp.h>
 
+#define DEBUG
 #ifdef DEBUG 
 #define debug(msg, ...) printf(msg, ##__VA_ARGS__); putchar('\n');
 #else 

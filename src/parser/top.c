@@ -638,7 +638,7 @@ ASTNode* parse_top_level(Lexer *l) {
   int line = current_token.line;
   int col = current_token.col;
 
-  // SMART TYPO CHECK
+  // SMART TYPO CHECK (Optimized to be less aggressive)
   if (current_token.type == TOKEN_IDENTIFIER) {
       const char *top_kws[] = {
           "typedef", "namespace", "define", "class", "import", "link", "extern", 
@@ -646,13 +646,20 @@ ASTNode* parse_top_level(Lexer *l) {
       };
       
       const char *best_kw = NULL;
-      int min_dist = 3;
+      int min_dist = 2; // Strict minimal distance
       
-      for(int i=0; top_kws[i]; i++) {
-          int d = levenshtein_dist(current_token.text, top_kws[i]);
-          if (d < min_dist) {
-              min_dist = d;
-              best_kw = top_kws[i];
+      size_t len = strlen(current_token.text);
+      if (len > 3) { // Only check if token has enough length
+          for(int i=0; top_kws[i]; i++) {
+              int d = levenshtein_dist(current_token.text, top_kws[i]);
+              if (d < min_dist) {
+                  // Additional Check: Don't trigger if length difference is too big
+                  size_t kw_len = strlen(top_kws[i]);
+                  if (abs((int)len - (int)kw_len) <= 1) { 
+                      min_dist = d;
+                      best_kw = top_kws[i];
+                  }
+              }
           }
       }
 

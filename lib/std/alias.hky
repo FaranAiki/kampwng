@@ -23,6 +23,3 @@ define hydrogen as int main();
 
 define entity, interface as class;
 
-// TODO implement flux & emit
-define stream as flux; 
-define yield as emit; 
