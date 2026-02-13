@@ -22,7 +22,7 @@ int main() {
   }
 
   print "Emit!\n";
-  for emitted in gen() {
+  for emitted in t {
     print "%d", emitted;
   }
 }

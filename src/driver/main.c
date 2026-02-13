@@ -10,6 +10,8 @@
 // Include Semantic Analysis
 #include "../semantic/semantic.h"
 
+#define DEBUG
+
 extern int parser_error_count;
 
 char* read_file(const char* filename) {
@@ -59,7 +61,11 @@ int main(int argc, char *argv[]) {
   Lexer l;
   lexer_init(&l, code);
   l.filename = filename; // Set filename for diagnostic context
-  
+
+  #ifdef DEBUG
+  printf("Finished lexing. Start parsing.\n");
+  #endif
+
   ASTNode *root = parse_program(&l);
   
   if (!root && parser_error_count > 0) {
@@ -73,7 +79,10 @@ int main(int argc, char *argv[]) {
       return 1;
   }
   // -------------------------------
-  
+ 
+  #ifdef DEBUG
+  printf("Finished semantic analysis. Start macro-linking.\n");
+  #endif
   ASTNode *curr = root;
   while(curr) {
     if (curr->type == NODE_LINK) {
@@ -85,6 +94,10 @@ int main(int argc, char *argv[]) {
     }
     curr = curr->next;
   }
+
+  #ifdef DEBUG
+  printf("Finished semantic analysis. Start Codegen.\n");
+  #endif
 
   LLVMInitializeNativeTarget();
   LLVMInitializeNativeAsmPrinter();
