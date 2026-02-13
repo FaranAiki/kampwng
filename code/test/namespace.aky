@@ -5,8 +5,6 @@
 // to the standard math library 
 link m; // -lm 
 
-extern double sin(double);
-
 // Declare a namespace called math
 
 namespace math {
@@ -15,6 +13,10 @@ namespace math {
 
   int add(int a, int b) {
     return a + b;
+  }
+
+  double add_with_sin(int a, double b) {
+    return (double) a + math.sin(b);
   }
 }
 
@@ -35,6 +37,7 @@ int main() {
   print "Expected 5 + 6, got %d\n", a;
 
   print "What is the sine of 5? %lf\n", math.sin((double) 5);
+  print "What is the sine of 1 + sin(2)? %lf\n", math.add_with_sin(1, (double)2);
 
   One one;
   let two = One(5, 6);
