@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
   }
   // -------------------------------
  
-  debug("Finished semantic analysis. Start macro-linking.\n");
+  debug("Finished semantic analysis. Start macro-linking.");
   ASTNode *curr = root;
   while(curr) {
     if (curr->type == NODE_LINK) {

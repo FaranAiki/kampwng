@@ -512,7 +512,7 @@ ASTNode* parse_program(Lexer *l) {
         if (current_token.type == TOKEN_EOF) break;
     }
    
-    debug("Current token type: %s\n", token_type_to_string(current_token.type));
+    debug("Current token type: %s", token_type_to_string(current_token.type));
 
     ASTNode *node = parse_top_level(l);
     if (node) {
