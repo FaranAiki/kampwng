@@ -1,0 +1,12 @@
+
+#ifndef LLVM_C_LLJITUTILS_H
+#define LLVM_C_LLJITUTILS_H
+#include "llvm-c/LLJIT.h"
+#include "llvm-c/Visibility.h"
+LLVM_C_EXTERN_C_BEGIN
+
+
+LLVM_C_ABI LLVMErrorRef LLVMOrcLLJITEnableDebugSupport(LLVMOrcLLJITRef J);
+
+LLVM_C_EXTERN_C_END
+#endif 

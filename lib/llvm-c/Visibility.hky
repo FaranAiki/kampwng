@@ -1,4 +1,4 @@
-
+/*
 #ifndef LLVM_C_VISIBILITY_H
 #define LLVM_C_VISIBILITY_H
 #include "llvm/Config/llvm-config.h"
@@ -24,3 +24,4 @@
 #endif
 #endif
 #endif
+*/

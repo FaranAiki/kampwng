@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Define the target directory
+TARGET_DIR="$HOME/Git/alkyl/lib/llvm-c"
+
+# Check if the directory exists
+if [ ! -d "$TARGET_DIR" ]; then
+    echo "Error: Directory $TARGET_DIR does not exist."
+    exit 1
+fi
+
+echo "Renaming .h files to .hky in $TARGET_DIR..."
+
+# Find all .h files in the directory and its subdirectories
+find "$TARGET_DIR" -type f -name "*.h" | while read -r file; do
+    # Rename the file by stripping the extension and adding .hky
+    mv "$file" "${file%.h}.hky"
+    echo "Renamed: $file -> ${file%.h}.hky"
+done
+
+echo "Done."

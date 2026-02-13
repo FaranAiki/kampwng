@@ -1,0 +1,34 @@
+
+#ifndef LLVM_C_ORCEE_H
+#define LLVM_C_ORCEE_H
+#include "llvm-c/Error.h"
+#include "llvm-c/ExecutionEngine.h"
+#include "llvm-c/Orc.h"
+#include "llvm-c/TargetMachine.h"
+#include "llvm-c/Types.h"
+#include "llvm-c/Visibility.h"
+LLVM_C_EXTERN_C_BEGIN
+typedef void *(*LLVMMemoryManagerCreateContextCallback)(void *CtxCtx);
+typedef void (*LLVMMemoryManagerNotifyTerminatingCallback)(void *CtxCtx);
+
+
+LLVM_C_ABI LLVMOrcObjectLayerRef
+LLVMOrcCreateRTDyldObjectLinkingLayerWithSectionMemoryManager(
+    LLVMOrcExecutionSessionRef ES);
+
+LLVM_C_ABI LLVMOrcObjectLayerRef
+LLVMOrcCreateRTDyldObjectLinkingLayerWithMCJITMemoryManagerLikeCallbacks(
+    LLVMOrcExecutionSessionRef ES, void *CreateContextCtx,
+    LLVMMemoryManagerCreateContextCallback CreateContext,
+    LLVMMemoryManagerNotifyTerminatingCallback NotifyTerminating,
+    LLVMMemoryManagerAllocateCodeSectionCallback AllocateCodeSection,
+    LLVMMemoryManagerAllocateDataSectionCallback AllocateDataSection,
+    LLVMMemoryManagerFinalizeMemoryCallback FinalizeMemory,
+    LLVMMemoryManagerDestroyCallback Destroy);
+
+LLVM_C_ABI void LLVMOrcRTDyldObjectLinkingLayerRegisterJITEventListener(
+    LLVMOrcObjectLayerRef RTDyldObjLinkingLayer,
+    LLVMJITEventListenerRef Listener);
+
+LLVM_C_EXTERN_C_END
+#endif 

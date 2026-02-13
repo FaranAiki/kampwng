@@ -1,0 +1,52 @@
+#ifndef LLVM_C_LLJIT_H
+#define LLVM_C_LLJIT_H
+#include "llvm-c/Error.h"
+#include "llvm-c/Orc.h"
+#include "llvm-c/TargetMachine.h"
+#include "llvm-c/Types.h"
+#include "llvm-c/Visibility.h"
+LLVM_C_EXTERN_C_BEGIN
+typedef LLVMOrcObjectLayerRef (
+    *LLVMOrcLLJITBuilderObjectLinkingLayerCreatorFunction)(
+    void *Ctx, LLVMOrcExecutionSessionRef ES, const char *Triple);
+typedef struct LLVMOrcOpaqueLLJITBuilder *LLVMOrcLLJITBuilderRef;
+typedef struct LLVMOrcOpaqueLLJIT *LLVMOrcLLJITRef;
+LLVM_C_ABI LLVMOrcLLJITBuilderRef LLVMOrcCreateLLJITBuilder(void);
+LLVM_C_ABI void LLVMOrcDisposeLLJITBuilder(LLVMOrcLLJITBuilderRef Builder);
+LLVM_C_ABI void LLVMOrcLLJITBuilderSetJITTargetMachineBuilder(
+    LLVMOrcLLJITBuilderRef Builder, LLVMOrcJITTargetMachineBuilderRef JTMB);
+LLVM_C_ABI void LLVMOrcLLJITBuilderSetObjectLinkingLayerCreator(
+    LLVMOrcLLJITBuilderRef Builder,
+    LLVMOrcLLJITBuilderObjectLinkingLayerCreatorFunction F, void *Ctx);
+LLVM_C_ABI LLVMErrorRef LLVMOrcCreateLLJIT(LLVMOrcLLJITRef *Result,
+                                           LLVMOrcLLJITBuilderRef Builder);
+LLVM_C_ABI LLVMErrorRef LLVMOrcDisposeLLJIT(LLVMOrcLLJITRef J);
+LLVM_C_ABI LLVMOrcExecutionSessionRef
+LLVMOrcLLJITGetExecutionSession(LLVMOrcLLJITRef J);
+LLVM_C_ABI LLVMOrcJITDylibRef LLVMOrcLLJITGetMainJITDylib(LLVMOrcLLJITRef J);
+LLVM_C_ABI const char *LLVMOrcLLJITGetTripleString(LLVMOrcLLJITRef J);
+LLVM_C_ABI char LLVMOrcLLJITGetGlobalPrefix(LLVMOrcLLJITRef J);
+LLVM_C_ABI LLVMOrcSymbolStringPoolEntryRef
+LLVMOrcLLJITMangleAndIntern(LLVMOrcLLJITRef J, const char *UnmangledName);
+LLVM_C_ABI LLVMErrorRef LLVMOrcLLJITAddObjectFile(
+    LLVMOrcLLJITRef J, LLVMOrcJITDylibRef JD, LLVMMemoryBufferRef ObjBuffer);
+LLVM_C_ABI LLVMErrorRef
+LLVMOrcLLJITAddObjectFileWithRT(LLVMOrcLLJITRef J, LLVMOrcResourceTrackerRef RT,
+                                LLVMMemoryBufferRef ObjBuffer);
+LLVM_C_ABI LLVMErrorRef LLVMOrcLLJITAddLLVMIRModule(
+    LLVMOrcLLJITRef J, LLVMOrcJITDylibRef JD, LLVMOrcThreadSafeModuleRef TSM);
+LLVM_C_ABI LLVMErrorRef LLVMOrcLLJITAddLLVMIRModuleWithRT(
+    LLVMOrcLLJITRef J, LLVMOrcResourceTrackerRef JD,
+    LLVMOrcThreadSafeModuleRef TSM);
+LLVM_C_ABI LLVMErrorRef LLVMOrcLLJITLookup(LLVMOrcLLJITRef J,
+                                           LLVMOrcExecutorAddress *Result,
+                                           const char *Name);
+LLVM_C_ABI LLVMOrcObjectLayerRef
+LLVMOrcLLJITGetObjLinkingLayer(LLVMOrcLLJITRef J);
+LLVM_C_ABI LLVMOrcObjectTransformLayerRef
+LLVMOrcLLJITGetObjTransformLayer(LLVMOrcLLJITRef J);
+LLVM_C_ABI LLVMOrcIRTransformLayerRef
+LLVMOrcLLJITGetIRTransformLayer(LLVMOrcLLJITRef J);
+LLVM_C_ABI const char *LLVMOrcLLJITGetDataLayoutStr(LLVMOrcLLJITRef J);
+LLVM_C_EXTERN_C_END
+#endif 

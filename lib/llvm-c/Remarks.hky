@@ -1,0 +1,71 @@
+#ifndef LLVM_C_REMARKS_H
+#define LLVM_C_REMARKS_H
+#include "llvm-c/ExternC.h"
+#include "llvm-c/Types.h"
+#include "llvm-c/Visibility.h"
+#ifdef __cplusplus
+#include <cstddef>
+#else
+#include <stddef.h>
+#endif 
+LLVM_C_EXTERN_C_BEGIN
+// 0 -> 1: Bitstream remarks support.
+#define REMARKS_API_VERSION 1
+enum LLVMRemarkType {
+  LLVMRemarkTypeUnknown,
+  LLVMRemarkTypePassed,
+  LLVMRemarkTypeMissed,
+  LLVMRemarkTypeAnalysis,
+  LLVMRemarkTypeAnalysisFPCommute,
+  LLVMRemarkTypeAnalysisAliasing,
+  LLVMRemarkTypeFailure
+};
+typedef struct LLVMRemarkOpaqueString *LLVMRemarkStringRef;
+LLVM_C_ABI extern const char *
+LLVMRemarkStringGetData(LLVMRemarkStringRef String);
+LLVM_C_ABI extern uint32_t LLVMRemarkStringGetLen(LLVMRemarkStringRef String);
+typedef struct LLVMRemarkOpaqueDebugLoc *LLVMRemarkDebugLocRef;
+LLVM_C_ABI extern LLVMRemarkStringRef
+LLVMRemarkDebugLocGetSourceFilePath(LLVMRemarkDebugLocRef DL);
+LLVM_C_ABI extern uint32_t
+LLVMRemarkDebugLocGetSourceLine(LLVMRemarkDebugLocRef DL);
+LLVM_C_ABI extern uint32_t
+LLVMRemarkDebugLocGetSourceColumn(LLVMRemarkDebugLocRef DL);
+typedef struct LLVMRemarkOpaqueArg *LLVMRemarkArgRef;
+LLVM_C_ABI extern LLVMRemarkStringRef LLVMRemarkArgGetKey(LLVMRemarkArgRef Arg);
+LLVM_C_ABI extern LLVMRemarkStringRef
+LLVMRemarkArgGetValue(LLVMRemarkArgRef Arg);
+LLVM_C_ABI extern LLVMRemarkDebugLocRef
+LLVMRemarkArgGetDebugLoc(LLVMRemarkArgRef Arg);
+typedef struct LLVMRemarkOpaqueEntry *LLVMRemarkEntryRef;
+LLVM_C_ABI extern void LLVMRemarkEntryDispose(LLVMRemarkEntryRef Remark);
+LLVM_C_ABI extern enum LLVMRemarkType
+LLVMRemarkEntryGetType(LLVMRemarkEntryRef Remark);
+LLVM_C_ABI extern LLVMRemarkStringRef
+LLVMRemarkEntryGetPassName(LLVMRemarkEntryRef Remark);
+LLVM_C_ABI extern LLVMRemarkStringRef
+LLVMRemarkEntryGetRemarkName(LLVMRemarkEntryRef Remark);
+LLVM_C_ABI extern LLVMRemarkStringRef
+LLVMRemarkEntryGetFunctionName(LLVMRemarkEntryRef Remark);
+LLVM_C_ABI extern LLVMRemarkDebugLocRef
+LLVMRemarkEntryGetDebugLoc(LLVMRemarkEntryRef Remark);
+LLVM_C_ABI extern uint64_t LLVMRemarkEntryGetHotness(LLVMRemarkEntryRef Remark);
+LLVM_C_ABI extern uint32_t LLVMRemarkEntryGetNumArgs(LLVMRemarkEntryRef Remark);
+LLVM_C_ABI extern LLVMRemarkArgRef
+LLVMRemarkEntryGetFirstArg(LLVMRemarkEntryRef Remark);
+LLVM_C_ABI extern LLVMRemarkArgRef
+LLVMRemarkEntryGetNextArg(LLVMRemarkArgRef It, LLVMRemarkEntryRef Remark);
+typedef struct LLVMRemarkOpaqueParser *LLVMRemarkParserRef;
+LLVM_C_ABI extern LLVMRemarkParserRef
+LLVMRemarkParserCreateYAML(const void *Buf, uint64_t Size);
+LLVM_C_ABI extern LLVMRemarkParserRef
+LLVMRemarkParserCreateBitstream(const void *Buf, uint64_t Size);
+LLVM_C_ABI extern LLVMRemarkEntryRef
+LLVMRemarkParserGetNext(LLVMRemarkParserRef Parser);
+LLVM_C_ABI extern LLVMBool LLVMRemarkParserHasError(LLVMRemarkParserRef Parser);
+LLVM_C_ABI extern const char *
+LLVMRemarkParserGetErrorMessage(LLVMRemarkParserRef Parser);
+LLVM_C_ABI extern void LLVMRemarkParserDispose(LLVMRemarkParserRef Parser);
+extern uint32_t LLVMRemarkVersion(void);
+LLVM_C_EXTERN_C_END
+#endif 

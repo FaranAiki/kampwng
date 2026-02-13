@@ -1,0 +1,20 @@
+#ifndef LLVM_C_ANALYSIS_H
+#define LLVM_C_ANALYSIS_H
+#include "llvm-c/ExternC.h"
+#include "llvm-c/Types.h"
+#include "llvm-c/Visibility.h"
+LLVM_C_EXTERN_C_BEGIN
+typedef enum as {
+  LLVMAbortProcessAction, 
+  LLVMPrintMessageAction, 
+  LLVMReturnStatusAction  
+} LLVMVerifierFailureAction;
+LLVM_C_ABI LLVMBool LLVMVerifyModule(LLVMModuleRef M,
+                                     LLVMVerifierFailureAction Action,
+                                     char **OutMessage);
+LLVM_C_ABI LLVMBool LLVMVerifyFunction(LLVMValueRef Fn,
+                                       LLVMVerifierFailureAction Action);
+LLVM_C_ABI void LLVMViewFunctionCFG(LLVMValueRef Fn);
+LLVM_C_ABI void LLVMViewFunctionCFGOnly(LLVMValueRef Fn);
+LLVM_C_EXTERN_C_END
+#endif
