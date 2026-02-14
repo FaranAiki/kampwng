@@ -511,10 +511,25 @@ ASTNode* parse_class(Lexer *l) {
                   // Field
                   int is_array = 0;
                   ASTNode *array_size = NULL;
-                  if (current_token.type == TOKEN_LBRACKET) {
+                  ASTNode **curr_sz = &array_size;
+
+                  while (current_token.type == TOKEN_LBRACKET) {
                       is_array = 1;
                       eat(l, TOKEN_LBRACKET);
-                      if (current_token.type != TOKEN_RBRACKET) array_size = parse_expression(l);
+                      ASTNode *sz = NULL;
+                      if (current_token.type != TOKEN_RBRACKET) sz = parse_expression(l);
+                      else {
+                          // Implicit size 0
+                          LiteralNode *ln = calloc(1, sizeof(LiteralNode));
+                          ln->base.type = NODE_LITERAL;
+                          ln->var_type.base = TYPE_INT;
+                          ln->val.int_val = 0;
+                          sz = (ASTNode*)ln;
+                      }
+                      
+                      *curr_sz = sz;
+                      curr_sz = &sz->next;
+                      
                       eat(l, TOKEN_RBRACKET);
                   }
 
@@ -535,7 +550,7 @@ ASTNode* parse_class(Lexer *l) {
                   var->is_mutable = 1; 
                   var->is_open = member_open;
                   var->is_array = is_array;
-                  var->array_size = array_size;
+                  var->array_size = array_size; // Points to head of dimension list
                   
                   *curr_member = (ASTNode*)var;
                   curr_member = &var->base.next;
@@ -727,11 +742,25 @@ ASTNode* parse_top_level(Lexer *l) {
     char *name_val = name;
     int is_array = 0;
     ASTNode *array_size = NULL;
-    if (current_token.type == TOKEN_LBRACKET) {
+    ASTNode **curr_sz = &array_size;
+    
+    while (current_token.type == TOKEN_LBRACKET) {
       is_array = 1; eat(l, TOKEN_LBRACKET);
-      if (current_token.type != TOKEN_RBRACKET) array_size = parse_expression(l);
+      ASTNode *sz = NULL;
+      if (current_token.type != TOKEN_RBRACKET) sz = parse_expression(l);
+      else {
+          LiteralNode *ln = calloc(1, sizeof(LiteralNode));
+          ln->base.type = NODE_LITERAL;
+          ln->var_type.base = TYPE_INT;
+          ln->val.int_val = 0;
+          sz = (ASTNode*)ln;
+      }
+      *curr_sz = sz;
+      curr_sz = &sz->next;
+      
       eat(l, TOKEN_RBRACKET);
     }
+
     ASTNode *init = NULL;
     if (current_token.type == TOKEN_ASSIGN) { eat(l, TOKEN_ASSIGN); init = parse_expression(l); } 
     else { if (vtype.base == TYPE_AUTO) { parser_fail(l, "'let' variable declaration must have an initializer"); } }
@@ -739,7 +768,7 @@ ASTNode* parse_top_level(Lexer *l) {
     VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
     node->base.type = NODE_VAR_DECL; node->var_type = vtype; node->name = name_val;
     node->initializer = init; node->is_mutable = 1; 
-    node->is_array = is_array; node->array_size = array_size;
+    node->is_array = is_array; node->array_size = array_size; // Points to head
     // Set location
     node->base.line = line; node->base.col = col;
     return (ASTNode*)node;

@@ -233,13 +233,24 @@ ASTNode* parse_var_decl_internal(Lexer *l) {
   
   int is_array = 0;
   ASTNode *array_size = NULL;
+  ASTNode **curr_sz = &array_size;
   
-  if (current_token.type == TOKEN_LBRACKET) {
+  while (current_token.type == TOKEN_LBRACKET) {
     is_array = 1;
+    vtype.ptr_depth++; // Increased pointer depth for each array dimension
     eat(l, TOKEN_LBRACKET);
+    ASTNode *sz = NULL;
     if (current_token.type != TOKEN_RBRACKET) {
-      array_size = parse_expression(l);
+      sz = parse_expression(l);
+    } else {
+        LiteralNode *ln = calloc(1, sizeof(LiteralNode));
+        ln->base.type = NODE_LITERAL;
+        ln->var_type.base = TYPE_INT;
+        ln->val.int_val = 0;
+        sz = (ASTNode*)ln;
     }
+    *curr_sz = sz;
+    curr_sz = &sz->next;
     eat(l, TOKEN_RBRACKET);
   }
 
@@ -304,12 +315,26 @@ ASTNode* parse_single_statement_or_block(Lexer *l) {
       
       int is_array = 0;
       ASTNode *array_size = NULL;
-      if (current_token.type == TOKEN_LBRACKET) {
+      ASTNode **curr_sz = &array_size;
+      
+      while (current_token.type == TOKEN_LBRACKET) {
         is_array = 1;
+        peek_t.ptr_depth++; // Increased pointer depth for each array dimension
         eat(l, TOKEN_LBRACKET);
-        if (current_token.type != TOKEN_RBRACKET) array_size = parse_expression(l);
+        ASTNode *sz = NULL;
+        if (current_token.type != TOKEN_RBRACKET) sz = parse_expression(l);
+        else {
+             LiteralNode *ln = calloc(1, sizeof(LiteralNode));
+             ln->base.type = NODE_LITERAL;
+             ln->var_type.base = TYPE_INT;
+             ln->val.int_val = 0;
+             sz = (ASTNode*)ln;
+        }
+        *curr_sz = sz;
+        curr_sz = &sz->next;
         eat(l, TOKEN_RBRACKET);
       }
+
       ASTNode *init = NULL;
       if (current_token.type == TOKEN_ASSIGN) {
         eat(l, TOKEN_ASSIGN);
