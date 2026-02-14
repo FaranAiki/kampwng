@@ -1,6 +1,11 @@
 int main(int argc, char **argv) {
-  
+  int a[2] = [[1,2],[2,3]];
+
+  print "%d", a[4];  
+
+  /*
   for i in argc {
     print "%s", argv[i];
   }
+  */
 }

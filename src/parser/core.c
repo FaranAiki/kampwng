@@ -532,6 +532,60 @@ ASTNode* parse_program(Lexer *l) {
   return head;
 }
 
+const char* get_node_type_string(NodeType type) {
+    switch (type) {
+        case NODE_ROOT:          return "Root";
+        case NODE_FUNC_DEF:      return "FunctionDefinition";
+        case NODE_CALL:          return "Call";
+        case NODE_RETURN:        return "Return";
+        case NODE_BREAK:         return "Break";
+        case NODE_CONTINUE:      return "Continue";
+        
+        // Control Flow
+        case NODE_LOOP:          return "Loop";
+        case NODE_WHILE:         return "While";
+        case NODE_IF:            return "If";
+        case NODE_SWITCH:        return "Switch";
+        case NODE_CASE:          return "Case";
+        
+        // Variables & Assignment
+        case NODE_VAR_DECL:      return "VarDecl";
+        case NODE_ASSIGN:        return "Assignment";
+        case NODE_VAR_REF:       return "VarRef";
+        
+        // Operations
+        case NODE_BINARY_OP:     return "BinaryOp";
+        case NODE_UNARY_OP:      return "UnaryOp";
+        case NODE_INC_DEC:       return "IncDec";
+        case NODE_CAST:          return "Cast";
+        
+        // Data Structures
+        case NODE_LITERAL:       return "Literal";
+        case NODE_ARRAY_LIT:     return "ArrayLiteral";
+        case NODE_ARRAY_ACCESS:  return "ArrayAccess";
+        
+        // OOP & Modular
+        case NODE_LINK:          return "Link";
+        case NODE_CLASS:         return "Class";
+        case NODE_NAMESPACE:     return "Namespace";
+        case NODE_ENUM:          return "Enum";
+        case NODE_MEMBER_ACCESS: return "MemberAccess";
+        case NODE_METHOD_CALL:   return "MethodCall";
+        case NODE_TRAIT_ACCESS:  return "TraitAccess";
+        
+        // Reflection / Metaprogramming
+        case NODE_TYPEOF:        return "Typeof";
+        case NODE_HAS_METHOD:    return "HasMethod";
+        case NODE_HAS_ATTRIBUTE: return "HasAttribute";
+        
+        // Flux / Generator
+        case NODE_EMIT:          return "Emit";
+        case NODE_FOR_IN:        return "ForIn";
+        
+        default:                 return "UnknownNode";
+    }
+}
+
 void free_ast(ASTNode *node) {
   if (!node) return;
   if (node->next) free_ast(node->next);
