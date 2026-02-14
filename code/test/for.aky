@@ -24,17 +24,17 @@ int main() {
   }
 
   // integer array looping 
-  print "This will loop integer";
+  print "This will loop integer\n";
   /*
   for i in [1,2,3,4] {
     print "%d\n:%s", i, typeof(i);
   }*/
 
-  // string looping 
+  // string looping
   /*
   for s in ["Hey", "My", "Name", "Is", "Faran"] {
-    print "%s is %s\n", s, typeof(s);
-  } */
+    print "%s\n", s;
+  }*/
 
   print "Emit!\n";
   

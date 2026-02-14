@@ -180,18 +180,40 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
 }
 
 void codegen_return(CodegenCtx *ctx, ReturnNode *node) {
+  // Check if we are inside a Flux function
+  if (ctx->flux_promise_val) {
+      // Return in Flux = Finish
+      LLVMValueRef finished_ptr = LLVMBuildStructGEP2(ctx->builder, LLVMGetElementType(LLVMTypeOf(ctx->flux_promise_val)), ctx->flux_promise_val, 0, "fin_ptr");
+      LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt1Type(), 1, 0), finished_ptr);
+      
+      // Final Suspend with SAVE
+      LLVMValueRef save_args[] = { ctx->flux_coro_hdl };
+      LLVMValueRef save_tok = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->coro_save), ctx->coro_save, save_args, 1, "ret_save");
+
+      LLVMValueRef args[] = { save_tok, LLVMConstInt(LLVMInt1Type(), 1, 0) };
+      LLVMValueRef res = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->coro_suspend), ctx->coro_suspend, args, 2, "final_suspend");
+      
+      // Branch to cleanup or suspend return
+      // Similar to emit logic, we need to handle the result
+      // But practically, final suspend never returns 0.
+      
+      // We can just branch to the pre-calculated return block (cleanup)
+      LLVMBuildBr(ctx->builder, ctx->flux_return_block);
+      
+      return;
+  }
+
   if (node->value) {
-  LLVMValueRef ret = codegen_expr(ctx, node->value);
-  LLVMBuildRet(ctx->builder, ret);
+    LLVMValueRef ret = codegen_expr(ctx, node->value);
+    LLVMBuildRet(ctx->builder, ret);
   } else {
-  LLVMBuildRetVoid(ctx->builder);
+    LLVMBuildRetVoid(ctx->builder);
   }
 }
 
 // code generation for node
 void codegen_node(CodegenCtx *ctx, ASTNode *node) {
   while (node) {
-      debug("Current codegen node is %s", node_type_to_string(node->type));
   if (node->type == NODE_FUNC_DEF) codegen_func_def(ctx, (FuncDefNode*)node);
   else if (node->type == NODE_RETURN) codegen_return(ctx, (ReturnNode*)node);
   else if (node->type == NODE_CALL) codegen_expr(ctx, node); 

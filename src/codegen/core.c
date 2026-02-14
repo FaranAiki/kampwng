@@ -20,10 +20,9 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
     ctx->known_namespace_count = 0;
 
     // Flux init
-    ctx->current_switch_inst = NULL;
-    ctx->flux_ctx_val = NULL;
-    ctx->next_flux_state = 0;
-    ctx->current_flux_struct_type = NULL;
+    ctx->flux_promise_val = NULL;
+    ctx->flux_coro_hdl = NULL; // Init handle
+    ctx->flux_return_block = NULL;
 
     // TODO add open, fopen, .etc
 
@@ -73,6 +72,49 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
 
     // Input
     ctx->input_func = generate_input_func(module, builder, ctx->malloc_func, getchar_func);
+
+    // LLVM Coroutine Intrinsics
+    // llvm.coro.id
+    LLVMTypeRef id_args[] = { LLVMInt32Type(), LLVMPointerType(LLVMInt8Type(), 0), LLVMPointerType(LLVMInt8Type(), 0), LLVMPointerType(LLVMInt8Type(), 0) };
+    ctx->coro_id = LLVMAddFunction(module, "llvm.coro.id", LLVMFunctionType(LLVMTokenTypeInContext(LLVMGetGlobalContext()), id_args, 4, false));
+
+    // llvm.coro.size
+    ctx->coro_size = LLVMAddFunction(module, "llvm.coro.size.i64", LLVMFunctionType(LLVMInt64Type(), NULL, 0, false));
+
+    // llvm.coro.begin
+    LLVMTypeRef begin_args[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMPointerType(LLVMInt8Type(), 0) };
+    ctx->coro_begin = LLVMAddFunction(module, "llvm.coro.begin", LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), begin_args, 2, false));
+
+    // llvm.coro.save (Added)
+    LLVMTypeRef save_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };
+    ctx->coro_save = LLVMAddFunction(module, "llvm.coro.save", LLVMFunctionType(LLVMTokenTypeInContext(LLVMGetGlobalContext()), save_args, 1, false));
+
+    // llvm.coro.suspend
+    LLVMTypeRef suspend_args[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMInt1Type() };
+    ctx->coro_suspend = LLVMAddFunction(module, "llvm.coro.suspend", LLVMFunctionType(LLVMInt8Type(), suspend_args, 2, false));
+
+    // llvm.coro.end
+    LLVMTypeRef end_args[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMInt1Type() };
+    ctx->coro_end = LLVMAddFunction(module, "llvm.coro.end", LLVMFunctionType(LLVMInt1Type(), end_args, 2, false));
+
+    // llvm.coro.free
+    LLVMTypeRef cfree_args[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMPointerType(LLVMInt8Type(), 0) };
+    ctx->coro_free = LLVMAddFunction(module, "llvm.coro.free", LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), cfree_args, 2, false));
+
+    // llvm.coro.resume
+    LLVMTypeRef resume_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };
+    ctx->coro_resume = LLVMAddFunction(module, "llvm.coro.resume", LLVMFunctionType(LLVMVoidType(), resume_args, 1, false));
+
+    // llvm.coro.destroy
+    ctx->coro_destroy = LLVMAddFunction(module, "llvm.coro.destroy", LLVMFunctionType(LLVMVoidType(), resume_args, 1, false));
+
+    // llvm.coro.promise
+    LLVMTypeRef prom_args[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMInt32Type(), LLVMInt1Type() };
+    ctx->coro_promise = LLVMAddFunction(module, "llvm.coro.promise", LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), prom_args, 3, false));
+    
+    // llvm.coro.done
+    ctx->coro_done = LLVMAddFunction(module, "llvm.coro.done", LLVMFunctionType(LLVMInt1Type(), resume_args, 1, false));
+
 }
 
 void codegen_error(CodegenCtx *ctx, ASTNode *node, const char *msg) {
@@ -123,6 +165,7 @@ void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type, VarTyp
     s->param_types = params;
     s->param_count = pcount;
     s->is_flux = is_flux;
+    s->yield_type = (VarType){0}; // Init to zero/unknown
     s->next = ctx->functions;
     ctx->functions = s;
 }
@@ -512,13 +555,18 @@ void scan_functions(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
             int i = 0;
             while(p) { ptypes[i++] = p->type; p=p->next; }
             
-            // If flux, we change ret_type to void* so expressions see it as a context pointer
+            // If flux, we change ret_type to i8* (coroutine handle)
             VarType rt = fd->ret_type;
             if (fd->is_flux) {
-                rt = (VarType){TYPE_VOID, 1, NULL, 0, 0};
+                rt = (VarType){TYPE_CHAR, 1, NULL, 0, 0}; // char* (handle)
             }
 
             add_func_symbol(ctx, sym_name, rt, ptypes, pcount, fd->is_flux);
+            
+            // FIX: Store the original yield type in the symbol table for Flux functions
+            if (fd->is_flux) {
+                ctx->functions->yield_type = fd->ret_type;
+            }
         }
         else if (node->type == NODE_CLASS) {
             ClassNode *cn = (ClassNode*)node;
@@ -554,10 +602,15 @@ void scan_functions(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
 
                     VarType rt = fd->ret_type;
                     if (fd->is_flux) {
-                        rt = (VarType){TYPE_VOID, 1, NULL, 0, 0};
+                        rt = (VarType){TYPE_CHAR, 1, NULL, 0, 0}; // char*
                     }
 
                     add_func_symbol(ctx, mangled, rt, ptypes, pcount, fd->is_flux);
+
+                    // FIX: Store yield type for flux methods
+                    if (fd->is_flux) {
+                        ctx->functions->yield_type = fd->ret_type;
+                    }
                     
                     // Add method metadata to ClassInfo
                     if (ci) {
@@ -599,7 +652,6 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name, const cha
   // Code Gen
   ASTNode *curr = root;
   while (curr) {
-    debug("Current codegen generate node is %s", node_type_to_string(curr->type));
     if (curr->type == NODE_FUNC_DEF) {
         FuncDefNode *fd = (FuncDefNode*)curr;
         if (fd->is_flux) {

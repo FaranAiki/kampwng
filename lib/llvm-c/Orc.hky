@@ -1,38 +1,43 @@
-#ifndef LLVM_C_ORC_H
-#define LLVM_C_ORC_H
-#include "llvm-c/Error.h"
-#include "llvm-c/TargetMachine.h"
-#include "llvm-c/Types.h"
-#include "llvm-c/Visibility.h"
-LLVM_C_EXTERN_C_BEGIN
-typedef uint64_t LLVMOrcJITTargetAddress;
-typedef uint64_t LLVMOrcExecutorAddress;
-typedef enum {
+import "llvm-c/Error";
+import "llvm-c/TargetMachine";
+import "llvm-c/Types";
+import "llvm-c/Visibility";
+
+typedef uint64_t as LLVMOrcJITTargetAddress;
+typedef uint64_t as LLVMOrcExecutorAddress;
+
+enum LLVMJITSymbolGenericFlags [
   LLVMJITSymbolGenericFlagsNone = 0,
   LLVMJITSymbolGenericFlagsExported = 1U << 0,
   LLVMJITSymbolGenericFlagsWeak = 1U << 1,
   LLVMJITSymbolGenericFlagsCallable = 1U << 2,
   LLVMJITSymbolGenericFlagsMaterializationSideEffectsOnly = 1U << 3
-} LLVMJITSymbolGenericFlags;
-typedef uint8_t LLVMJITSymbolTargetFlags;
-typedef struct {
+];
+
+typedef uint8_t as LLVMJITSymbolTargetFlags;
+
+class LLVMJITSymbolFlags {
   uint8_t GenericFlags;
   uint8_t TargetFlags;
-} LLVMJITSymbolFlags;
-typedef struct {
+}
+
+class LLVMJITEvaluatedSymbol {
   LLVMOrcExecutorAddress Address;
   LLVMJITSymbolFlags Flags;
-} LLVMJITEvaluatedSymbol;
-typedef struct LLVMOrcOpaqueExecutionSession *LLVMOrcExecutionSessionRef;
+}
+
+typedef LLVMOrcOpaqueExecutionSession as *LLVMOrcExecutionSessionRef;
+// llvm-cTODO how do I do with this shit
 typedef void (*LLVMOrcErrorReporterFunction)(void *Ctx, LLVMErrorRef Err);
-typedef struct LLVMOrcOpaqueSymbolStringPool *LLVMOrcSymbolStringPoolRef;
-typedef struct LLVMOrcOpaqueSymbolStringPoolEntry
-    *LLVMOrcSymbolStringPoolEntryRef;
-typedef struct {
+typedef LLVMOrcOpaqueSymbolStringPool as *LLVMOrcSymbolStringPoolRef;
+typedef LLVMOrcOpaqueSymbolStringPoolEntry as *LLVMOrcSymbolStringPoolEntryRef;
+
+class LLVMOrcCSymbolFlagsMapPair {
   LLVMOrcSymbolStringPoolEntryRef Name;
   LLVMJITSymbolFlags Flags;
-} LLVMOrcCSymbolFlagsMapPair;
-typedef LLVMOrcCSymbolFlagsMapPair *LLVMOrcCSymbolFlagsMapPairs;
+}
+
+typedef LLVMOrcCSymbolFlagsMapPair as *LLVMOrcCSymbolFlagsMapPairs;
 typedef struct {
   LLVMOrcSymbolStringPoolEntryRef Name;
   LLVMJITEvaluatedSymbol Sym;

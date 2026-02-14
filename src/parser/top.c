@@ -141,7 +141,11 @@ ASTNode* parse_typedef(Lexer *l) {
       VarType target = parse_type(l);
       
       while(1) {
+          // this means 
+          // typedef (exist) as (new)
           if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected new type name after 'typedef'");
+          
+          // else
           char *new_name = strdup(current_token.text);
           eat(l, TOKEN_IDENTIFIER);
           

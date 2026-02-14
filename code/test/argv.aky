@@ -1,5 +1,7 @@
+
 int main(int argc, char **argv) {
-  for i in argc {
-    print "%s\n", argv[i];
+  for i in argv {
+    print "%s\n", i;
   }
 }
+

@@ -26,6 +26,7 @@ typedef struct FuncSymbol {
     VarType *param_types; // Added: for overload resolution checks in codegen
     int param_count;      // Added
     int is_flux;          // Added: Track if this is a generator
+    VarType yield_type;   // Added: Stores the original yield type for Flux functions
     struct FuncSymbol *next;
 } FuncSymbol;
 
@@ -117,11 +118,24 @@ typedef struct {
   LLVMValueRef setjmp_func;
   LLVMValueRef longjmp_func;
 
-  // Flux / Generator Support
-  LLVMValueRef current_switch_inst; // Switch instruction for the current flux function
-  LLVMValueRef flux_ctx_val;        // Pointer to the flux context struct
-  LLVMTypeRef current_flux_struct_type; // The actual Struct Type of the flux context (prevents Segfaults with opaque pointers)
-  int next_flux_state;              // Counter for state labels
+  // Flux / Generator Support (LLVM Coroutines)
+  LLVMValueRef flux_promise_val; // Pointer to the Promise alloca in current flux func
+  LLVMValueRef flux_coro_hdl;    // Added: Current Coroutine Handle (i8*)
+  LLVMBasicBlockRef flux_return_block; // Cleanup block to jump to on return
+
+  // LLVM Coroutine Intrinsics
+  LLVMValueRef coro_id;
+  LLVMValueRef coro_size;
+  LLVMValueRef coro_begin;
+  LLVMValueRef coro_save;    // Added: llvm.coro.save
+  LLVMValueRef coro_suspend;
+  LLVMValueRef coro_end;
+  LLVMValueRef coro_free;
+  LLVMValueRef coro_resume;
+  LLVMValueRef coro_destroy;
+  LLVMValueRef coro_promise;
+  LLVMValueRef coro_done;
+
 } CodegenCtx;
 
 // --- Core API ---
