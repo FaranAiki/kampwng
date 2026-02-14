@@ -44,6 +44,18 @@ VarType check_expr_internal(SemCtx *ctx, ASTNode *node) {
                 count++;
             }
             VarType ret = first_t;
+            
+            // Nested Array Handling:
+            // If the element type is an array/pointer (e.g. from inner [1,2]),
+            // we promote the outer array to an array of pointers (increasing ptr_depth).
+            // This properly models [[1,2], [3,4]] as int** (or similar).
+            if (ret.array_size > 0) {
+                 ret.array_size = 0;
+                 ret.ptr_depth++;
+            } else if (first_t.base == TYPE_STRING) {
+                 // Strings are already pointers, so we handle them as elements of array
+            }
+            
             ret.array_size = count; 
             return ret;
         }
@@ -196,7 +208,9 @@ VarType check_expr_internal(SemCtx *ctx, ASTNode *node) {
                     int compatible = 0;
                     if (cost != -1) compatible = 1;
                     if (l_type.ptr_depth > 0 && r_type.array_size > 0 && l_type.base == r_type.base) compatible = 1;
-                    
+                    // Auto-decay for nested arrays
+                    if (l_type.ptr_depth == r_type.ptr_depth + 1 && r_type.array_size > 0) compatible = 1;
+
                     if (compatible) {
                          // Warn on implicit casting if cost > 0
                          if (cost > 0) {
@@ -464,8 +478,6 @@ VarType check_expr_internal(SemCtx *ctx, ASTNode *node) {
             
             // Check validity of cast
             int cost = get_conversion_cost(from, to);
-            // Also allow explicit casts for things that implicit doesn't allow (like double -> int cost 2)
-            // or pointer casts
             
             if (cost == -1) {
                 // Check pointer casts
@@ -571,6 +583,9 @@ void check_stmt(SemCtx *ctx, ASTNode *node) {
                      if (vd->var_type.base == TYPE_CHAR && vd->is_array && init_t.base == TYPE_STRING) ok = 1;
                      if (vd->var_type.base == TYPE_CHAR && vd->var_type.ptr_depth == 1 && init_t.base == TYPE_STRING) ok = 1;
                      
+                     // Allow array to pointer decay implicit
+                     if (vd->var_type.ptr_depth == init_t.ptr_depth + 1 && init_t.array_size > 0) ok = 1;
+
                      if (ok) {
                          // Print info for implicit conversion (widening or narrowing)
                          if (cost > 0) {
@@ -604,6 +619,13 @@ void check_stmt(SemCtx *ctx, ASTNode *node) {
                      ASTNode* el = ((ArrayLitNode*)vd->initializer)->elements;
                      while(el) { arr_size++; el = el->next; }
                 }
+            }
+            
+            // Apply inferred array/pointer nesting logic to the variable definition
+            if (inferred.array_size > 0 && !vd->is_array) {
+                // If initializing scalar with array literal (e.g. int** p = [[1]]), 
+                // inferred might have array_size. We should respect explicit decl, 
+                // but for AUTO we might keep it or decay.
             }
 
             add_symbol_semantic(ctx, vd->name, inferred, vd->is_mutable, vd->is_array, arr_size, node->line, node->col);

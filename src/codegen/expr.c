@@ -62,6 +62,25 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
 
     if (node->type == NODE_LITERAL) return ((LiteralNode*)node)->var_type;
     
+    // Add logic for ARRAY_LIT type calculation
+    if (node->type == NODE_ARRAY_LIT) {
+        ArrayLitNode *an = (ArrayLitNode*)node;
+        VarType t = {TYPE_INT, 0, NULL, 0, 0};
+        if (an->elements) t = codegen_calc_type(ctx, an->elements);
+        
+        // Count elements
+        int count = 0; ASTNode *el = an->elements; while(el){count++; el=el->next;}
+        
+        // Decay logic matching semantic analysis
+        if (t.array_size > 0) {
+            t.array_size = 0;
+            t.ptr_depth++;
+        }
+        
+        t.array_size = count;
+        return t;
+    }
+
     if (node->type == NODE_VAR_REF) {
         Symbol *s = find_symbol(ctx, ((VarRefNode*)node)->name);
         if (s) return s->vtype;
@@ -123,7 +142,7 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
                  if (get_member_index(ci, ma->member_name, NULL, &mvt) != -1) {
                      return mvt;
                  }
-            }
+             }
         }
     }
     
@@ -531,6 +550,57 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       LLVMValueRef trait_ptr = LLVMBuildGEP2(ctx->builder, ci->struct_type, obj_ptr, indices, 2, "trait_ptr");
       
       return LLVMBuildBitCast(ctx->builder, trait_ptr, LLVMPointerType(trait_type, 0), "trait_cast");
+  }
+  else if (node->type == NODE_ARRAY_LIT) {
+        // Implement Array Literals as expression (R-Values)
+        // Allocates a temporary array and returns a decayed pointer to it.
+        // This is crucial for nested arrays (e.g., [[1,2]]) where inner arrays must be pointers.
+        
+        ArrayLitNode *an = (ArrayLitNode*)node;
+        
+        // Count elements
+        int count = 0; ASTNode *el = an->elements; while(el){count++; el=el->next;}
+        
+        // Determine element type
+        VarType et = {TYPE_INT, 0, NULL, 0, 0};
+        if (an->elements) et = codegen_calc_type(ctx, an->elements);
+        
+        // If element is an array (nested), it should decay to pointer
+        if (et.array_size > 0) {
+            et.array_size = 0;
+            et.ptr_depth++;
+        }
+        
+        LLVMTypeRef llvm_et = get_llvm_type(ctx, et);
+        LLVMTypeRef arr_type = LLVMArrayType(llvm_et, count);
+        
+        LLVMValueRef alloca = LLVMBuildAlloca(ctx->builder, arr_type, "arr_lit_tmp");
+        
+        int idx = 0;
+        el = an->elements;
+        while(el) {
+            LLVMValueRef val = codegen_expr(ctx, el);
+            
+            // Basic Auto-cast for literals
+            if (LLVMGetTypeKind(llvm_et) == LLVMDoubleTypeKind && LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMIntegerTypeKind) {
+                val = LLVMBuildSIToFP(ctx->builder, val, llvm_et, "cast");
+            } else if (LLVMGetTypeKind(llvm_et) == LLVMIntegerTypeKind && LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMIntegerTypeKind) {
+                if (LLVMGetIntTypeWidth(llvm_et) > LLVMGetIntTypeWidth(LLVMTypeOf(val))) {
+                    val = LLVMBuildSExt(ctx->builder, val, llvm_et, "cast");
+                }
+            }
+
+            LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), LLVMConstInt(LLVMInt64Type(), idx, 0) };
+            LLVMValueRef ptr = LLVMBuildGEP2(ctx->builder, arr_type, alloca, indices, 2, "elem");
+            LLVMBuildStore(ctx->builder, val, ptr);
+            
+            el = el->next;
+            idx++;
+        }
+        
+        // Return pointer to start (decay)
+        LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), LLVMConstInt(LLVMInt64Type(), 0, 0) };
+        return LLVMBuildGEP2(ctx->builder, arr_type, alloca, indices, 2, "arr_decay");
   }
   else if (node->type == NODE_LITERAL) {
     LiteralNode *l = (LiteralNode*)node;
