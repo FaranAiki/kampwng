@@ -23,6 +23,9 @@ void parser_sync(Lexer *l);
 
 void eat(Lexer *l, TokenType type);
 VarType parse_type(Lexer *l); 
+// Parses "(*name)(params)" logic, returning the composite Type and filling out_name
+VarType parse_func_ptr_decl(Lexer *l, VarType ret_type, char **out_name);
+
 char* read_import_file(const char* filename);
 
 // Macro Registry

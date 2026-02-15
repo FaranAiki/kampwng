@@ -1,4 +1,7 @@
 #include "codegen.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 char* format_string(const char* input) {
   if (!input) return NULL;
@@ -9,8 +12,29 @@ char* format_string(const char* input) {
 }
 
 void get_type_name(VarType t, char *buf) {
-    char base_buf[64] = "";
+    char base_buf[128] = "";
     if (t.is_unsigned) strcpy(base_buf, "unsigned ");
+
+    if (t.is_func_ptr) {
+        // Recursively get return type name
+        char ret_buf[64];
+        get_type_name(*t.fp_ret_type, ret_buf);
+        sprintf(base_buf, "%s (*)(", ret_buf);
+        
+        for (int i=0; i<t.fp_param_count; i++) {
+            char p_buf[64];
+            get_type_name(t.fp_param_types[i], p_buf);
+            strcat(base_buf, p_buf);
+            if (i < t.fp_param_count - 1) strcat(base_buf, ", ");
+        }
+        if (t.fp_is_varargs) {
+            if (t.fp_param_count > 0) strcat(base_buf, ", ");
+            strcat(base_buf, "...");
+        }
+        strcat(base_buf, ")");
+        strcpy(buf, base_buf);
+        return;
+    }
 
     switch (t.base) {
         case TYPE_INT: strcat(base_buf, "int"); break;

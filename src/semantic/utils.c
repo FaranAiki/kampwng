@@ -1,6 +1,22 @@
 #include "semantic.h"
 
 void mangle_type(char *buf, VarType t) {
+    if (t.is_func_ptr) {
+        // Itanium ABI-style: P = pointer, F = function, E = end
+        // int (*)(int) -> PFiE
+        strcat(buf, "P"); 
+        strcat(buf, "F");
+        if (t.fp_ret_type) mangle_type(buf, *t.fp_ret_type);
+        else strcat(buf, "v"); // void return implicit?
+        
+        for(int i=0; i<t.fp_param_count; i++) {
+            mangle_type(buf, t.fp_param_types[i]);
+        }
+        if (t.fp_is_varargs) strcat(buf, "z"); // varargs
+        strcat(buf, "E");
+        return;
+    }
+
     if (t.array_size > 0) {
         sprintf(buf + strlen(buf), "A%d_", t.array_size);
     }
@@ -74,12 +90,42 @@ char* mangle_function(const char *name, Parameter *params) {
 }
 
 const char* type_to_str(VarType t) {
-    static char buffers[4][128];
+    static char buffers[8][256]; // Increased count/size for recursion
     static int idx = 0;
     char *buf = buffers[idx];
-    idx = (idx + 1) % 4;
+    idx = (idx + 1) % 8;
+    buf[0] = 0;
 
-    char base_buf[64] = "";
+    if (t.is_func_ptr) {
+        // Recursive formatting for function pointers
+        // e.g. "int (*)(int, char*)"
+        char ret_buf[64];
+        // Use a safe non-static call or just manual recursion carefully
+        // We will just do a simpler manual approach for base type to avoid buffer clobbering
+        strcpy(ret_buf, "void");
+        if (t.fp_ret_type) {
+            // This recursion is risky with static buffers, but depth is usually low.
+            // For safety, we trust the rotation or simplify.
+            // Let's rely on type_to_str returning a new buffer slot.
+            const char* s = type_to_str(*t.fp_ret_type);
+            strncpy(ret_buf, s, 63); ret_buf[63]=0;
+        }
+        
+        sprintf(buf, "%s (*)(", ret_buf);
+        for(int i=0; i<t.fp_param_count; i++) {
+            const char* p_str = type_to_str(t.fp_param_types[i]);
+            strcat(buf, p_str);
+            if (i < t.fp_param_count - 1) strcat(buf, ", ");
+        }
+        if (t.fp_is_varargs) {
+            if (t.fp_param_count > 0) strcat(buf, ", ");
+            strcat(buf, "...");
+        }
+        strcat(buf, ")");
+        return buf;
+    }
+
+    char base_buf[128] = "";
     if (t.is_unsigned) strcpy(base_buf, "unsigned ");
 
     switch (t.base) {
@@ -251,6 +297,23 @@ void sem_suggestion(SemCtx *ctx, ASTNode *node, const char *suggestion) {
 }
 
 int are_types_equal(VarType a, VarType b) {
+    // 1. Function Pointer Check
+    if (a.is_func_ptr != b.is_func_ptr) return 0;
+    if (a.is_func_ptr) {
+        // Compare Return Types
+        if (!are_types_equal(*a.fp_ret_type, *b.fp_ret_type)) return 0;
+        
+        // Compare Param Count and Varargs
+        if (a.fp_param_count != b.fp_param_count) return 0;
+        if (a.fp_is_varargs != b.fp_is_varargs) return 0;
+        
+        // Compare Param Types
+        for(int i=0; i<a.fp_param_count; i++) {
+            if (!are_types_equal(a.fp_param_types[i], b.fp_param_types[i])) return 0;
+        }
+        return 1;
+    }
+
     if (a.ptr_depth > 0 && b.ptr_depth > 0) {
         if (a.base == TYPE_VOID || b.base == TYPE_VOID) return 1;
     }
@@ -273,6 +336,9 @@ int are_types_equal(VarType a, VarType b) {
 int get_conversion_cost(VarType from, VarType to) {
     if (are_types_equal(from, to)) return 0;
     
+    // Strict Function Pointer Matching (no implicit casting allowed yet)
+    if (from.is_func_ptr || to.is_func_ptr) return -1;
+
     if (from.ptr_depth == 0 && to.ptr_depth == 0) {
         // Evaluate type rank for numeric conversions
         int from_rank = 0, to_rank = 0;

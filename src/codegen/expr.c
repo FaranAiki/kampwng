@@ -166,10 +166,17 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
         
         // FIX: Handle NULL name to prevent strcmp segfault
         if (!name) return vt;
-
+        
+        // First check standard functions
         FuncSymbol *fs = find_func_symbol(ctx, name);
         if (fs) return fs->ret_type;
         
+        // Check if it is a variable holding a function pointer
+        Symbol *var_sym = find_symbol(ctx, name);
+        if (var_sym && var_sym->vtype.is_func_ptr) {
+            return *var_sym->vtype.fp_ret_type;
+        }
+
         ClassInfo *ci = find_class(ctx, call->name); 
         if (ci) {
             vt.base = TYPE_CLASS;
@@ -374,7 +381,7 @@ LLVMValueRef codegen_addr(CodegenCtx *ctx, ASTNode *node) {
 LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
   if (!node) return LLVMConstInt(LLVMInt32Type(), 0, 0);
 
-  debug_flow("Enter: Node type for codegen expr: %s", node_type_to_string(node->type));
+  // debug_flow("Enter: Node type for codegen expr: %s", node_type_to_string(node->type));
 
   if (node->type == NODE_CALL) {
     CallNode *c = (CallNode*)node;
@@ -481,6 +488,31 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
         LLVMValueRef ptr = codegen_expr(ctx, c->args);
         LLVMValueRef args[] = { LLVMBuildBitCast(ctx->builder, ptr, LLVMPointerType(LLVMInt8Type(), 0), "free_cast") };
         return LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->free_func), ctx->free_func, args, 1, "");
+    }
+
+    // FUNCTION POINTER CALL SUPPORT
+    Symbol *var_sym = find_symbol(ctx, c->name);
+    if (var_sym && var_sym->vtype.is_func_ptr) {
+        // Load the function pointer
+        LLVMValueRef func_ptr = LLVMBuildLoad2(ctx->builder, var_sym->type, var_sym->value, "fp_load");
+        
+        int arg_count = 0; ASTNode *curr = c->args; while(curr) { arg_count++; curr = curr->next; }
+        LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * arg_count);
+        
+        curr = c->args; 
+        for(int i=0; i<arg_count; i++) { 
+            args[i] = codegen_expr(ctx, curr); 
+            curr = curr->next;
+        }
+        
+        // Use the function type from get_llvm_type to call it
+        LLVMTypeRef ftype = get_llvm_type(ctx, var_sym->vtype);
+        // Note: ftype is a pointer to function, LLVMBuildCall2 expects the function type (not pointer to it)
+        LLVMTypeRef func_sig = LLVMGetElementType(ftype);
+
+        LLVMValueRef ret = LLVMBuildCall2(ctx->builder, func_sig, func_ptr, args, arg_count, "");
+        free(args);
+        return ret;
     }
 
     const char *target_name = c->mangled_name ? c->mangled_name : c->name;
@@ -617,7 +649,7 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       LLVMTypeRef ftype = LLVMGlobalGetValueType(func);
       LLVMValueRef ret = LLVMBuildCall2(ctx->builder, ftype, func, args, arg_count + 1, "");
       free(args);
-  debug_flow("Enter: Node type for codegen expr: %s", node_type_to_string(node->type));
+  // debug_flow("Enter: Node type for codegen expr: %s", node_type_to_string(node->type));
 
       return ret;
   }

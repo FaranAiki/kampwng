@@ -254,6 +254,24 @@ int get_trait_offset(CodegenCtx *ctx, ClassInfo *ci, const char *trait_name) {
 }
 
 LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t) {
+  // Function Pointer Support
+  if (t.is_func_ptr) {
+      LLVMTypeRef ret_t = get_llvm_type(ctx, *t.fp_ret_type);
+      
+      LLVMTypeRef *param_types = NULL;
+      if (t.fp_param_count > 0) {
+          param_types = malloc(sizeof(LLVMTypeRef) * t.fp_param_count);
+          for(int i=0; i<t.fp_param_count; i++) {
+              param_types[i] = get_llvm_type(ctx, t.fp_param_types[i]);
+          }
+      }
+      
+      LLVMTypeRef func_type = LLVMFunctionType(ret_t, param_types, t.fp_param_count, t.fp_is_varargs);
+      if (param_types) free(param_types);
+      
+      return LLVMPointerType(func_type, 0); // Always returns a pointer to the function
+  }
+
   LLVMTypeRef base_type;
   switch (t.base) {
     case TYPE_INT: base_type = LLVMInt32Type(); break;
@@ -304,7 +322,7 @@ void get_type_size_align(CodegenCtx *ctx, VarType t, size_t *out_size, size_t *o
     size_t s = 0;
     size_t a = 1;
     
-    if (t.ptr_depth > 0) {
+    if (t.ptr_depth > 0 || t.is_func_ptr) {
         s = 8; a = 8;
     } else {
         switch (t.base) {

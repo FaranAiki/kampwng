@@ -164,6 +164,16 @@ ASTNode* parse_typedef(Lexer *l) {
       
       VarType target = parse_type(l);
       
+      // Handle typedef int (*CallBack)(int);
+      if (current_token.type == TOKEN_LPAREN) {
+          char *cb_name = NULL;
+          VarType fp_type = parse_func_ptr_decl(l, target, &cb_name);
+          register_alias(cb_name, fp_type);
+          free(cb_name);
+          eat(l, TOKEN_SEMICOLON);
+          return NULL;
+      }
+      
       // Allow optional 'as' for "typedef int as myint"
       if (current_token.type == TOKEN_AS) {
           eat(l, TOKEN_AS);
@@ -490,6 +500,35 @@ ASTNode* parse_class(Lexer *l) {
 
           VarType vt = parse_type(l);
           if (vt.base != TYPE_UNKNOWN) {
+              
+              // Handle Function Pointer Member: int (*Name)(...);
+              if (current_token.type == TOKEN_LPAREN) {
+                  char *mem_name = NULL;
+                  vt = parse_func_ptr_decl(l, vt, &mem_name);
+                  
+                  // Treated as a variable (field) that holds a pointer
+                  ASTNode *init = NULL;
+                  if (current_token.type == TOKEN_ASSIGN) {
+                      eat(l, TOKEN_ASSIGN);
+                      init = parse_expression(l);
+                  }
+                  eat(l, TOKEN_SEMICOLON);
+                  
+                  VarDeclNode *var = calloc(1, sizeof(VarDeclNode));
+                  var->base.type = NODE_VAR_DECL;
+                  var->base.line = line;
+                  var->base.col = col;
+                  var->name = mem_name;
+                  var->var_type = vt;
+                  var->initializer = init;
+                  var->is_mutable = 1; 
+                  var->is_open = member_open;
+                  
+                  *curr_member = (ASTNode*)var;
+                  curr_member = &var->base.next;
+                  continue;
+              }
+
               if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected member name in class body");
               char *mem_name = strdup(current_token.text);
               eat(l, TOKEN_IDENTIFIER);
@@ -736,6 +775,29 @@ ASTNode* parse_top_level(Lexer *l) {
   VarType vtype = parse_type(l);
   if (vtype.base == TYPE_UNKNOWN) {
       return parse_single_statement_or_block(l);
+  }
+
+  // Global Function Pointer Declaration: int (*name)(...)
+  if (current_token.type == TOKEN_LPAREN) {
+      char *name = NULL;
+      vtype = parse_func_ptr_decl(l, vtype, &name);
+      
+      ASTNode *init = NULL;
+      if (current_token.type == TOKEN_ASSIGN) {
+          eat(l, TOKEN_ASSIGN);
+          init = parse_expression(l);
+      }
+      eat(l, TOKEN_SEMICOLON);
+      
+      VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
+      node->base.type = NODE_VAR_DECL;
+      node->var_type = vtype;
+      node->name = name;
+      node->initializer = init;
+      node->is_mutable = 1; 
+      // Set location
+      node->base.line = line; node->base.col = col;
+      return (ASTNode*)node;
   }
 
   if (current_token.type != TOKEN_IDENTIFIER) { parser_fail(l, "Expected identifier definition after type"); }

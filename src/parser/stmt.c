@@ -221,6 +221,28 @@ ASTNode* parse_var_decl_internal(Lexer *l) {
   
   VarType vtype = parse_type(l);
 
+  // Check for Function Pointer Declaration: int (*name)(...)
+  if (current_token.type == TOKEN_LPAREN) {
+      char *name = NULL;
+      vtype = parse_func_ptr_decl(l, vtype, &name);
+      
+      ASTNode *init = NULL;
+      if (current_token.type == TOKEN_ASSIGN) {
+          eat(l, TOKEN_ASSIGN);
+          init = parse_expression(l);
+      }
+      eat(l, TOKEN_SEMICOLON);
+      
+      VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
+      node->base.type = NODE_VAR_DECL;
+      node->var_type = vtype;
+      node->name = name;
+      node->initializer = init;
+      node->is_mutable = is_mut;
+      set_loc((ASTNode*)node, line, col);
+      return (ASTNode*)node;
+  }
+
   if (current_token.type == TOKEN_KW_MUT) { is_mut = 1; eat(l, TOKEN_KW_MUT); }
   else if (current_token.type == TOKEN_KW_IMUT) { is_mut = 0; eat(l, TOKEN_KW_IMUT); }
 
@@ -302,6 +324,28 @@ ASTNode* parse_single_statement_or_block(Lexer *l) {
           eat(l, TOKEN_SEMICOLON);
           set_loc(call, line, col);
           return call;
+      }
+      
+      // Check for Function Pointer Declaration in stmt
+      if (current_token.type == TOKEN_LPAREN) {
+          char *name = NULL;
+          VarType fp_type = parse_func_ptr_decl(l, peek_t, &name);
+          
+          ASTNode *init = NULL;
+          if (current_token.type == TOKEN_ASSIGN) {
+              eat(l, TOKEN_ASSIGN);
+              init = parse_expression(l);
+          }
+          eat(l, TOKEN_SEMICOLON);
+          
+          VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
+          node->base.type = NODE_VAR_DECL;
+          node->var_type = fp_type;
+          node->name = name;
+          node->initializer = init;
+          node->is_mutable = 1; 
+          set_loc((ASTNode*)node, line, col);
+          return (ASTNode*)node;
       }
 
       int is_mut = 1;

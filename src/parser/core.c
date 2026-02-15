@@ -370,7 +370,7 @@ void eat(Lexer *l, TokenType type) {
 
 // Composite type parsing helper: handling sequences like `unsigned long long`
 VarType parse_type(Lexer *l) {
-  VarType t = {TYPE_UNKNOWN, 0, NULL, 0, 0}; 
+  VarType t = {TYPE_UNKNOWN, 0, NULL, 0, 0, 0, NULL, NULL, 0, 0}; 
 
   if (current_token.type == TOKEN_KW_UNSIGNED) {
       t.is_unsigned = 1;
@@ -458,6 +458,74 @@ VarType parse_type(Lexer *l) {
   }
   
   return t;
+}
+
+// Parses: (*Name)(Type, Type, ...)
+VarType parse_func_ptr_decl(Lexer *l, VarType ret_type, char **out_name) {
+    VarType vt = {0};
+    vt.is_func_ptr = 1;
+    vt.fp_ret_type = malloc(sizeof(VarType));
+    *vt.fp_ret_type = ret_type;
+    
+    eat(l, TOKEN_LPAREN);
+    eat(l, TOKEN_STAR);
+    
+    if (current_token.type != TOKEN_IDENTIFIER) {
+        parser_fail(l, "Expected identifier in function pointer declaration");
+    }
+    
+    if (out_name) *out_name = strdup(current_token.text);
+    eat(l, TOKEN_IDENTIFIER);
+    
+    eat(l, TOKEN_RPAREN);
+    eat(l, TOKEN_LPAREN);
+    
+    int cap = 4;
+    vt.fp_param_types = malloc(sizeof(VarType) * cap);
+    vt.fp_param_count = 0;
+    
+    if (current_token.type != TOKEN_RPAREN) {
+        while(1) {
+            if (current_token.type == TOKEN_ELLIPSIS) {
+                vt.fp_is_varargs = 1;
+                eat(l, TOKEN_ELLIPSIS);
+                break;
+            }
+            
+            VarType pt = parse_type(l);
+            if (pt.base == TYPE_UNKNOWN) parser_fail(l, "Expected type in function pointer params");
+            
+            // Optional parameter name (ignored in type signature but allowed syntax)
+            if (current_token.type == TOKEN_IDENTIFIER) {
+                eat(l, TOKEN_IDENTIFIER); 
+            }
+            
+            // Handle array params
+             if (current_token.type == TOKEN_LBRACKET) {
+                eat(l, TOKEN_LBRACKET);
+                if (current_token.type != TOKEN_RBRACKET) {
+                    // Ignore size expression for simple func ptr parsing
+                    // In a full implementation we'd parse expression
+                     ASTNode* tmp = parse_expression(l);
+                     free_ast(tmp);
+                }
+                eat(l, TOKEN_RBRACKET);
+                pt.ptr_depth++;
+            }
+            
+            if (vt.fp_param_count >= cap) {
+                cap *= 2;
+                vt.fp_param_types = realloc(vt.fp_param_types, sizeof(VarType) * cap);
+            }
+            vt.fp_param_types[vt.fp_param_count++] = pt;
+            
+            if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA);
+            else break;
+        }
+    }
+    eat(l, TOKEN_RPAREN);
+    
+    return vt;
 }
 
 // Helper to read file content

@@ -61,13 +61,21 @@ typedef enum {
   TYPE_UNKNOWN
 } BaseType;
 
-typedef struct {
+typedef struct VarType VarType;
+struct VarType {
   BaseType base;
   int ptr_depth; 
   char *class_name;
   int array_size; 
   int is_unsigned; // Indicates unsigned nature of types like int, long, char, etc.
-} VarType;
+  
+  // Function Pointer Support
+  int is_func_ptr;
+  struct VarType *fp_ret_type;   // Return type of the function
+  struct VarType *fp_param_types; // Array of parameter types
+  int fp_param_count;
+  int fp_is_varargs;
+};
 
 typedef struct ASTNode {
   NodeType type;

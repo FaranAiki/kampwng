@@ -1,7 +1,6 @@
 #ifndef COMPILER_DEBUG_H
 #define COMPILER_DEBUG_H
 
-
 #define DIAG_RED    "\033[1;31m"
 #define DIAG_GREEN  "\033[1;32m"
 #define DIAG_YELLOW "\033[1;33m"
@@ -26,4 +25,4 @@
   #define debug_step(msg, ...) 
 #endif
 
-#endif
+#endif // COMPILER_DEBUG_H
