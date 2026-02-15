@@ -254,6 +254,22 @@ VarType check_expr_internal(SemCtx *ctx, ASTNode *node) {
                     // Auto-decay for nested arrays
                     if (l_type.ptr_depth == r_type.ptr_depth + 1 && r_type.array_size > 0) compatible = 1;
 
+                    // FIX: Allow array assignment from compatible pointers/arrays (a[] = *a)
+                    if (l_type.array_size > 0) {
+                        // char[N] = string
+                        if (l_type.base == TYPE_CHAR && r_type.base == TYPE_STRING) compatible = 1;
+                        // T[N] = T*
+                        if (l_type.base == r_type.base && r_type.ptr_depth == l_type.ptr_depth + 1) compatible = 1;
+                        // T[N] = T[M]
+                        if (l_type.base == r_type.base && r_type.array_size > 0 && l_type.ptr_depth == r_type.ptr_depth) compatible = 1;
+                    }
+
+                    // FIX: Multidimensional array equivalence (a[][] == **a)
+                    // Normalize pointer depths (Array contributes +1 to effective ptr depth)
+                    int l_eff = l_type.ptr_depth + (l_type.array_size > 0 ? 1 : 0);
+                    int r_eff = r_type.ptr_depth + (r_type.array_size > 0 ? 1 : 0);
+                    if (l_type.base == r_type.base && l_eff == r_eff) compatible = 1;
+
                     if (compatible) {
                          // Warn on implicit casting if cost > 0
                          if (cost > 0) {
