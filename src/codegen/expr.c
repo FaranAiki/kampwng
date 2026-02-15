@@ -394,31 +394,67 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
         ASTNode *arg = c->args;
         ClassMember *m = ci->members;
         
-        // Constructor logic
-        while (arg && m) {
-            LLVMValueRef arg_val = codegen_expr(ctx, arg);
-            LLVMValueRef mem_ptr;
-            
-            if (ci->is_union) {
-                // Union: Bitcast to member pointer and store
-                mem_ptr = LLVMBuildBitCast(ctx->builder, obj, LLVMPointerType(m->type, 0), "union_init_ptr");
-            } else {
+        if (ci->is_union) {
+            // UNION CONSTRUCTOR Logic
+            if (arg) {
+                 VarType r_vt = codegen_calc_type(ctx, arg);
+                 LLVMValueRef arg_val = codegen_expr(ctx, arg);
+                 
+                 // Find matching member
+                 ClassMember *match = NULL;
+                 ClassMember *iter = ci->members;
+                 while(iter) {
+                      // Match logic similar to stmt.c
+                      if (iter->vtype.base == r_vt.base && iter->vtype.ptr_depth == r_vt.ptr_depth && iter->vtype.array_size == r_vt.array_size) {
+                          match = iter; break;
+                      }
+                      if (iter->vtype.base == TYPE_CHAR && iter->vtype.array_size > 0 && 
+                         (r_vt.base == TYPE_STRING || (r_vt.base == TYPE_CHAR && r_vt.ptr_depth == 1))) {
+                          match = iter; break;
+                      }
+                      if (iter->vtype.base == r_vt.base && iter->vtype.ptr_depth == r_vt.ptr_depth) {
+                          match = iter; break;
+                      }
+                      iter = iter->next;
+                 }
+                 
+                 if (match) {
+                      // Store logic
+                      if (match->vtype.base == TYPE_CHAR && match->vtype.array_size > 0 && 
+                         (r_vt.base == TYPE_STRING || (r_vt.base == TYPE_CHAR && r_vt.ptr_depth == 1))) {
+                           LLVMValueRef mem_ptr = LLVMBuildBitCast(ctx->builder, obj, LLVMPointerType(match->type, 0), "union_init_ptr");
+                           LLVMValueRef dest = LLVMBuildBitCast(ctx->builder, mem_ptr, LLVMPointerType(LLVMInt8Type(), 0), "dest_cast");
+                           LLVMValueRef args[] = { dest, arg_val };
+                           LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->strcpy_func), ctx->strcpy_func, args, 2, "");
+                      } else {
+                           LLVMValueRef mem_ptr = LLVMBuildBitCast(ctx->builder, obj, LLVMPointerType(match->type, 0), "union_init_ptr");
+                           LLVMBuildStore(ctx->builder, arg_val, mem_ptr);
+                      }
+                 }
+                 // Ignore subsequent args for union or handle them? Usually 1 arg.
+            }
+        } else {
+             // Constructor logic for Struct
+             while (arg && m) {
+                LLVMValueRef arg_val = codegen_expr(ctx, arg);
+                LLVMValueRef mem_ptr;
+                
                 // Struct: GEP to member index
                 LLVMValueRef indices[] = { LLVMConstInt(LLVMInt32Type(), 0, 0), LLVMConstInt(LLVMInt32Type(), m->index, 0) };
                 mem_ptr = LLVMBuildGEP2(ctx->builder, ci->struct_type, obj, indices, 2, "init_mem_ptr");
+                
+                if (m->vtype.array_size > 0 && m->vtype.base == TYPE_CHAR) {
+                     LLVMValueRef dest = LLVMBuildBitCast(ctx->builder, mem_ptr, LLVMPointerType(LLVMInt8Type(), 0), "dest_cast");
+                     LLVMValueRef src = arg_val;
+                     LLVMValueRef args[] = { dest, src };
+                     LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->strcpy_func), ctx->strcpy_func, args, 2, "");
+                } else {
+                     LLVMBuildStore(ctx->builder, arg_val, mem_ptr);
+                }
+                
+                arg = arg->next;
+                m = m->next;
             }
-            
-            if (m->vtype.array_size > 0 && m->vtype.base == TYPE_CHAR) {
-                 LLVMValueRef dest = LLVMBuildBitCast(ctx->builder, mem_ptr, LLVMPointerType(LLVMInt8Type(), 0), "dest_cast");
-                 LLVMValueRef src = arg_val;
-                 LLVMValueRef args[] = { dest, src };
-                 LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->strcpy_func), ctx->strcpy_func, args, 2, "");
-            } else {
-                 LLVMBuildStore(ctx->builder, arg_val, mem_ptr);
-            }
-            
-            arg = arg->next;
-            m = m->next;
         }
 
         return obj;

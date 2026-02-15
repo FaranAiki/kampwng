@@ -15,7 +15,7 @@ define static as shared;
 // define interface as contract;
 define protected as family;
 
-define ref, pointer as *;
+define ref, pointer, ptr as *;
 
 define hydrogen as int main();
 

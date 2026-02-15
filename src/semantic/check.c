@@ -203,6 +203,49 @@ VarType check_expr_internal(SemCtx *ctx, ASTNode *node) {
             VarType r_type = check_expr(ctx, a->value);
             
             if (l_type.base != TYPE_UNKNOWN && r_type.base != TYPE_UNKNOWN) {
+                
+                // IMPLICIT UNION ASSIGNMENT SUPPORT
+                // If l-value is a Union, and r-value matches ANY member type, allow it.
+                // FIX: use l_type.array_size > 0 instead of is_array which doesn't exist in VarType
+                if (l_type.base == TYPE_CLASS && l_type.class_name && l_type.ptr_depth == 0 && l_type.array_size == 0) {
+                    SemClass *cls = find_sem_class(ctx, l_type.class_name);
+                    if (cls && cls->is_union) {
+                        int union_match = 0;
+                        SemSymbol *mem = cls->members;
+                        while(mem) {
+                            if (are_types_equal(mem->type, r_type)) {
+                                union_match = 1; break;
+                            }
+                            // String literal to char array (char[N] = string/char*)
+                            if (mem->type.base == TYPE_CHAR && mem->type.array_size > 0 && 
+                                (r_type.base == TYPE_STRING || (r_type.base == TYPE_CHAR && r_type.ptr_depth == 1))) {
+                                union_match = 1; break;
+                            }
+                            // Int implicit casting
+                            if (get_conversion_cost(r_type, mem->type) != -1) {
+                                union_match = 1;
+                                // Inject cast if not exact match (for numeric promotions etc)
+                                if (!are_types_equal(mem->type, r_type)) {
+                                     CastNode *cast = calloc(1, sizeof(CastNode));
+                                     cast->base.type = NODE_CAST;
+                                     cast->base.line = a->value->line;
+                                     cast->base.col = a->value->col;
+                                     cast->base.expr_type = mem->type;
+                                     cast->var_type = mem->type;
+                                     cast->operand = a->value;
+                                     a->value = (ASTNode*)cast;
+                                }
+                                break;
+                            }
+                            mem = mem->next;
+                        }
+                        
+                        if (union_match) {
+                            return l_type; // Valid assignment for Union
+                        }
+                    }
+                }
+
                 if (!are_types_equal(l_type, r_type)) {
                     int cost = get_conversion_cost(r_type, l_type);
                     int compatible = 0;

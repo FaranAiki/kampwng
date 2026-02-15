@@ -299,6 +299,65 @@ ClassMember** append_member(CodegenCtx *ctx, ClassInfo *ci, ClassMember **tail, 
     return &cm->next;
 }
 
+// Helper to estimate size and alignment for union layout
+void get_type_size_align(CodegenCtx *ctx, VarType t, size_t *out_size, size_t *out_align) {
+    size_t s = 0;
+    size_t a = 1;
+    
+    if (t.ptr_depth > 0) {
+        s = 8; a = 8;
+    } else {
+        switch (t.base) {
+            case TYPE_INT: s = 4; a = 4; break;
+            case TYPE_SHORT: s = 2; a = 2; break;
+            case TYPE_LONG: s = 8; a = 8; break;
+            case TYPE_LONG_LONG: s = 8; a = 8; break;
+            case TYPE_CHAR: s = 1; a = 1; break;
+            case TYPE_BOOL: s = 1; a = 1; break;
+            case TYPE_FLOAT: s = 4; a = 4; break;
+            case TYPE_DOUBLE: s = 8; a = 8; break;
+            case TYPE_LONG_DOUBLE: s = 16; a = 16; break;
+            case TYPE_STRING: s = 8; a = 8; break;
+            case TYPE_CLASS: {
+                if(t.class_name) {
+                    ClassInfo *ci = find_class(ctx, t.class_name);
+                    if(ci) {
+                        // Estimate struct size roughly by summing members
+                        // Note: This ignores padding, so it is a lower bound estimate.
+                        // For Unions, this recursive call is critical.
+                        size_t struct_size = 0;
+                        size_t struct_align = 1;
+                        ClassMember *m = ci->members;
+                        while(m) {
+                            size_t ms, ma;
+                            get_type_size_align(ctx, m->vtype, &ms, &ma);
+                            if (ci->is_union) {
+                                if (ms > struct_size) struct_size = ms;
+                            } else {
+                                struct_size += ms; 
+                            }
+                            if (ma > struct_align) struct_align = ma;
+                            m = m->next;
+                        }
+                        s = struct_size;
+                        a = struct_align;
+                    }
+                }
+                break;
+            }
+            default: s = 4; a = 4; break;
+        }
+    }
+    
+    if (t.array_size > 0) {
+        s *= t.array_size;
+        // Alignment stays same as element alignment
+    }
+    
+    *out_size = s;
+    *out_align = a;
+}
+
 // --- Internal String Functions ---
 
 // Helper: Scan for Classes recursively
@@ -321,6 +380,7 @@ void scan_classes(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
             ci->parent_name = cn->parent_name ? strdup(cn->parent_name) : NULL;
             ci->struct_type = LLVMStructCreateNamed(LLVMGetGlobalContext(), ci->name);
             ci->is_extern = cn->is_extern;
+            ci->is_union = cn->is_union; // COPY UNION FLAG
             ci->members = NULL;
             ci->method_names = NULL;
             ci->method_count = 0;
@@ -423,6 +483,7 @@ void scan_class_bodies(CodegenCtx *ctx, ASTNode *node) {
             }
             ClassInfo *ci = find_class(ctx, cn->name);
             if (ci) {
+                // Collect Members First
                 int member_count = 0;
                 
                 // Inherited members
@@ -450,24 +511,23 @@ void scan_class_bodies(CodegenCtx *ctx, ASTNode *node) {
                     m = m->next;
                 }
                 
-                LLVMTypeRef *element_types = malloc(sizeof(LLVMTypeRef) * (member_count > 0 ? member_count : 1));
+                // Temporarily store member definitions to calculate union sizes if needed
                 int idx = 0;
                 ClassMember **tail = &ci->members;
+                
+                // We will populate ci->members list fully first, but NOT set the LLVM struct body yet if it's a union.
                 
                 // 1. Inherit Parent
                 if (ci->parent_name) {
                     ClassInfo *parent = find_class(ctx, ci->parent_name);
                     if (parent) {
-                        // Inherit offsets from parent
                         TraitOffset *pto = parent->trait_offsets;
                         while(pto) {
                             register_trait_offset(ci, pto->trait_name, pto->offset_index);
                             pto = pto->next;
                         }
-
                         ClassMember *pm = parent->members;
                         while(pm) {
-                            element_types[idx] = pm->type;
                             tail = append_member(ctx, ci, tail, &idx, pm->name, pm->vtype, pm->type, NULL);
                             pm = pm->next;
                         }
@@ -479,10 +539,8 @@ void scan_class_bodies(CodegenCtx *ctx, ASTNode *node) {
                     ClassInfo *trait = find_class(ctx, ci->trait_names[i]);
                     if (trait) {
                         register_trait_offset(ci, ci->trait_names[i], idx);
-                        
                         ClassMember *tm = trait->members;
                         while(tm) {
-                            element_types[idx] = tm->type;
                             tail = append_member(ctx, ci, tail, &idx, tm->name, tm->vtype, tm->type, NULL);
                             tm = tm->next;
                         }
@@ -494,17 +552,13 @@ void scan_class_bodies(CodegenCtx *ctx, ASTNode *node) {
                 while(m) {
                     if (m->type == NODE_VAR_DECL) {
                         VarDeclNode *vd = (VarDeclNode*)m;
-                        
                         LLVMTypeRef mt = LLVMInt32Type();
                         VarType mvt = vd->var_type;
                         
-                        // Prevent embedding opaque types by value in structs to avoid LLVM crash
                         if (vd->var_type.base == TYPE_CLASS && vd->var_type.ptr_depth == 0) {
                             ClassInfo *mem_ci = find_class(ctx, vd->var_type.class_name);
                             if (mem_ci && mem_ci->is_extern) {
-                                char err[256];
-                                snprintf(err, sizeof(err), "Cannot embed extern opaque type '%s' by value in class '%s'", vd->var_type.class_name, ci->name);
-                                codegen_error(ctx, m, err);
+                                codegen_error(ctx, m, "Cannot embed extern opaque type by value");
                             }
                         }
 
@@ -518,18 +572,82 @@ void scan_class_bodies(CodegenCtx *ctx, ASTNode *node) {
                              mt = get_llvm_type(ctx, vd->var_type);
                         }
                         
-                        element_types[idx] = mt;
                         tail = append_member(ctx, ci, tail, &idx, vd->name, mvt, mt, vd->initializer);
                     }
                     m = m->next;
                 }
                 
-                if (member_count > 0)
-                    LLVMStructSetBody(ci->struct_type, element_types, member_count, false);
-                else
-                    LLVMStructSetBody(ci->struct_type, NULL, 0, false); // Empty struct
+                // --- STRUCTURE BODY GENERATION ---
+                
+                if (ci->is_union) {
+                    // UNION LAYOUT: { LargestAlignedType, [Padding x i8] }
+                    // This ensures the struct is big enough and aligned enough.
+                    // All members effectively start at offset 0 (via bitcasts in expr.c).
+                    
+                    size_t max_size = 0;
+                    size_t max_align = 1;
+                    LLVMTypeRef best_align_type = LLVMInt8Type(); // Default fallback
+                    
+                    ClassMember *cm = ci->members;
+                    while(cm) {
+                        size_t s, a;
+                        get_type_size_align(ctx, cm->vtype, &s, &a);
+                        if (s > max_size) max_size = s;
+                        if (a > max_align) {
+                            max_align = a;
+                            // Pick a representative type for this alignment
+                            if (a == 8) best_align_type = LLVMInt64Type();
+                            else if (a == 4) best_align_type = LLVMInt32Type();
+                            else if (a == 2) best_align_type = LLVMInt16Type();
+                            else best_align_type = LLVMInt8Type();
+                        }
+                        cm = cm->next;
+                    }
+                    
+                    if (member_count > 0) {
+                        // Calculate padding needed
+                        // Size of best_align_type might be smaller than max_size
+                        // e.g. best_align=8 (i64), max_size=10 (char[10]).
+                        // Struct = { i64, [2 x i8] }
+                        
+                        size_t align_type_size = (max_align >= 8) ? 8 : max_align;
+                        
+                        LLVMTypeRef *union_elems = NULL;
+                        int union_elem_count = 1;
+                        
+                        if (max_size > align_type_size) {
+                            union_elem_count = 2;
+                            union_elems = malloc(sizeof(LLVMTypeRef) * 2);
+                            union_elems[0] = best_align_type;
+                            union_elems[1] = LLVMArrayType(LLVMInt8Type(), max_size - align_type_size);
+                        } else {
+                            union_elems = malloc(sizeof(LLVMTypeRef) * 1);
+                            union_elems[0] = best_align_type;
+                        }
+                        
+                        LLVMStructSetBody(ci->struct_type, union_elems, union_elem_count, false);
+                        free(union_elems);
+                    } else {
+                        LLVMStructSetBody(ci->struct_type, NULL, 0, false);
+                    }
+                    
+                } else {
+                    // STANDARD STRUCT LAYOUT
+                    LLVMTypeRef *element_types = malloc(sizeof(LLVMTypeRef) * (member_count > 0 ? member_count : 1));
+                    ClassMember *cm = ci->members;
+                    int i = 0;
+                    while(cm) {
+                        element_types[i++] = cm->type;
+                        cm = cm->next;
+                    }
+                    
+                    if (member_count > 0)
+                        LLVMStructSetBody(ci->struct_type, element_types, member_count, false);
+                    else
+                        LLVMStructSetBody(ci->struct_type, NULL, 0, false); 
 
-                free(element_types);
+                    free(element_types);
+                }
             }
         }
         else if (node->type == NODE_NAMESPACE) {

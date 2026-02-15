@@ -1,6 +1,6 @@
 union Registration {
   int id;
-  char *name;
+  char name[4];
   long idx;
 };
 
@@ -12,7 +12,7 @@ int main() {
   jablay.id = 10;
   printf "10 == %d\n", jablay;
 
-  jablay.name = c"bin"; // 4 
+  jablay = c"bin"; // 4 
   printf "bin == %s\n", jablay;
   printf "randm == %d\n", jablay;
 
