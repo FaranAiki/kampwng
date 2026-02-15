@@ -1,0 +1,10 @@
+int test(double t) {
+  return (t*t) as int;
+}
+
+int main() {
+  let t = test(5 as double);
+  let v = test(5.0);
+
+  print "%d, %d\n", t, v;
+}

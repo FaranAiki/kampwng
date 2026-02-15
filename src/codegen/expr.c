@@ -253,6 +253,38 @@ VarType codegen_calc_type(CodegenCtx *ctx, ASTNode *node) {
         if (u->op == TOKEN_NOT) { return (VarType){TYPE_BOOL, 0, NULL, 0, 0}; }
         return t; 
     }
+
+    // FIX: ADDED NODE_BINARY_OP TYPE CALCULATION TO SUPPORT CASTING RESULTS
+    if (node->type == NODE_BINARY_OP) {
+        BinaryOpNode *op = (BinaryOpNode*)node;
+        
+        // 1. Relational/Logical Ops -> Bool
+        if (op->op == TOKEN_EQ || op->op == TOKEN_NEQ ||
+            op->op == TOKEN_LT || op->op == TOKEN_GT ||
+            op->op == TOKEN_LTE || op->op == TOKEN_GTE) {
+            return (VarType){TYPE_BOOL, 0, NULL, 0, 0};
+        }
+
+        VarType l = codegen_calc_type(ctx, op->left);
+        VarType r = codegen_calc_type(ctx, op->right);
+        
+        // 2. String Concatenation
+        if (op->op == TOKEN_PLUS && (l.base == TYPE_STRING || r.base == TYPE_STRING)) {
+             return (VarType){TYPE_STRING, 0, NULL, 0, 0};
+        }
+        
+        // 3. Float/Double Promotion
+        if (l.base == TYPE_LONG_DOUBLE || r.base == TYPE_LONG_DOUBLE) return (VarType){TYPE_LONG_DOUBLE, 0, NULL, 0, 0};
+        if (l.base == TYPE_DOUBLE || r.base == TYPE_DOUBLE) return (VarType){TYPE_DOUBLE, 0, NULL, 0, 0};
+        if (l.base == TYPE_FLOAT || r.base == TYPE_FLOAT) return (VarType){TYPE_FLOAT, 0, NULL, 0, 0};
+        
+        // 4. Int Promotion
+        if (l.base == TYPE_LONG_LONG || r.base == TYPE_LONG_LONG) return (VarType){TYPE_LONG_LONG, 0, NULL, 0, 0};
+        if (l.base == TYPE_LONG || r.base == TYPE_LONG) return (VarType){TYPE_LONG, 0, NULL, 0, 0};
+        
+        // Default to left type (likely int)
+        return l;
+    }
     
     return vt;
 }
@@ -1138,48 +1170,56 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
       int to_is_float = (to.base == TYPE_FLOAT || to.base == TYPE_DOUBLE || to.base == TYPE_LONG_DOUBLE);
       int from_is_int = (from.base == TYPE_INT || from.base == TYPE_SHORT || from.base == TYPE_LONG || from.base == TYPE_LONG_LONG || from.base == TYPE_CHAR || from.base == TYPE_BOOL);
       int to_is_int = (to.base == TYPE_INT || to.base == TYPE_SHORT || to.base == TYPE_LONG || to.base == TYPE_LONG_LONG || to.base == TYPE_CHAR || to.base == TYPE_BOOL);
+      int from_is_bool = (from.base == TYPE_BOOL);
+      int to_is_bool = (to.base == TYPE_BOOL);
 
-      // Int -> Float
+      // Int/Bool -> Float
       if (from_is_int && to_is_float) {
-           if (from.is_unsigned) return LLVMBuildUIToFP(ctx->builder, val, to_type, "cast_ui_fp");
+           // Bools and Unsigned Ints use UIToFP
+           if (from.is_unsigned || from_is_bool) return LLVMBuildUIToFP(ctx->builder, val, to_type, "cast_ui_fp");
+           // Signed Ints use SIToFP
            return LLVMBuildSIToFP(ctx->builder, val, to_type, "cast_si_fp");
       }
       
-      // Float -> Int
+      // Float -> Int/Bool
       if (from_is_float && to_is_int) {
+           // Float -> Bool (Comparison against 0.0)
+           if (to_is_bool) {
+               return LLVMBuildFCmp(ctx->builder, LLVMRealONE, val, LLVMConstNull(LLVMTypeOf(val)), "cast_bool");
+           }
+           // Float -> Unsigned Int
            if (to.is_unsigned) return LLVMBuildFPToUI(ctx->builder, val, to_type, "cast_fp_ui");
+           // Float -> Signed Int
            return LLVMBuildFPToSI(ctx->builder, val, to_type, "cast_fp_si");
       }
       
-      // Int -> Int (width change)
+      // Int -> Int/Bool
       if (from_is_int && to_is_int) {
+           // Int -> Bool (Comparison against 0)
+           // Prevents truncation issues (e.g. 2 -> 0 in i1)
+           if (to_is_bool) {
+               return LLVMBuildICmp(ctx->builder, LLVMIntNE, val, LLVMConstNull(LLVMTypeOf(val)), "cast_bool");
+           }
+
            unsigned from_width = LLVMGetIntTypeWidth(LLVMTypeOf(val));
            unsigned to_width = LLVMGetIntTypeWidth(to_type);
+           
            if (from_width < to_width) {
-               if (from.is_unsigned) return LLVMBuildZExt(ctx->builder, val, to_type, "cast_zext");
+               // Extension: Bools and Unsigned Ints use ZExt
+               if (from.is_unsigned || from_is_bool) return LLVMBuildZExt(ctx->builder, val, to_type, "cast_zext");
+               // Signed Ints use SExt
                return LLVMBuildSExt(ctx->builder, val, to_type, "cast_sext");
            } else if (from_width > to_width) {
+               // Truncation
                return LLVMBuildTrunc(ctx->builder, val, to_type, "cast_trunc");
            }
-           return LLVMBuildBitCast(ctx->builder, val, to_type, "cast_bitcast");
+           // Same width
+           return val;
       }
       
       // Float -> Float (width change)
       if (from_is_float && to_is_float) {
-           LLVMTypeKind from_k = LLVMGetTypeKind(LLVMTypeOf(val));
-           LLVMTypeKind to_k = LLVMGetTypeKind(to_type);
-           if (from_k == LLVMFloatTypeKind && (to_k == LLVMDoubleTypeKind || to_k == LLVMFP128TypeKind)) {
-               return LLVMBuildFPExt(ctx->builder, val, to_type, "cast_fpext");
-           }
-           if (from_k == LLVMDoubleTypeKind && to_k == LLVMFP128TypeKind) {
-               return LLVMBuildFPExt(ctx->builder, val, to_type, "cast_fpext");
-           }
-           if ((from_k == LLVMDoubleTypeKind || from_k == LLVMFP128TypeKind) && to_k == LLVMFloatTypeKind) {
-               return LLVMBuildFPTrunc(ctx->builder, val, to_type, "cast_fptrunc");
-           }
-           if (from_k == LLVMFP128TypeKind && to_k == LLVMDoubleTypeKind) {
-               return LLVMBuildFPTrunc(ctx->builder, val, to_type, "cast_fptrunc");
-           }
+           return LLVMBuildFPCast(ctx->builder, val, to_type, "cast_fp");
       }
 
       // Ptr -> Ptr
@@ -1187,8 +1227,12 @@ LLVMValueRef codegen_expr(CodegenCtx *ctx, ASTNode *node) {
           return LLVMBuildBitCast(ctx->builder, val, to_type, "cast_ptr");
       }
       
-      // Ptr -> Int
+      // Ptr -> Int/Bool
       if (from.ptr_depth > 0 && to_is_int) {
+           // Ptr -> Bool (Comparison against null)
+           if (to_is_bool) {
+               return LLVMBuildICmp(ctx->builder, LLVMIntNE, val, LLVMConstPointerNull(LLVMTypeOf(val)), "cast_ptr_bool");
+           }
            return LLVMBuildPtrToInt(ctx->builder, val, to_type, "cast_ptr_int");
       }
 
