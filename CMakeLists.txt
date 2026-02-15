@@ -34,6 +34,7 @@ set(MUST_LLVM_SOURCES
     src/codegen/core.c
     src/codegen/expr.c
     src/codegen/builtin.c
+    src/codegen/utils.c
 )
 
 set(MUST_LANG_SOURCES 

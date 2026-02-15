@@ -7,14 +7,6 @@
 // Forward decl
 LLVMValueRef generate_enum_to_string_func(CodegenCtx *ctx, EnumInfo *ei);
 
-char* format_string(const char* input) {
-  if (!input) return NULL;
-  size_t len = strlen(input);
-  char *new_str = malloc(len + 1);
-  strcpy(new_str, input);
-  return new_str;
-}
-
 // Helper to stringify type for typeof
 static void get_type_name(VarType t, char *buf) {
     char base_buf[64] = "";

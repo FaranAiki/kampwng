@@ -156,4 +156,13 @@ void lexer_init(Lexer *l, const char *src);
 Token lexer_next(Lexer *l);
 void free_token(Token t);
 
+void skip_whitespace_and_comments(Lexer *l);
+char *consume_string_content(Lexer *l);
+
+int lex_symbol(Lexer *l, Token *t);
+int lex_number(Lexer *l, Token *t);
+int lex_char(Lexer *l, Token *t);
+int lex_string(Lexer *l, Token *t);
+int lex_word(Lexer *l, Token *t);
+
 #endif

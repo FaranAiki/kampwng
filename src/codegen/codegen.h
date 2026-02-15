@@ -202,4 +202,6 @@ LLVMValueRef generate_strdup(LLVMModuleRef module, LLVMValueRef malloc_func, LLV
 LLVMValueRef generate_input_func(LLVMModuleRef module, LLVMBuilderRef builder, LLVMValueRef malloc_func, LLVMValueRef getchar_func);
 LLVMValueRef generate_enum_to_string_func(CodegenCtx *ctx, EnumInfo *ei);
 
+char* format_string(const char* input);
+
 #endif
