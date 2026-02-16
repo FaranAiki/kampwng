@@ -540,11 +540,26 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
     
     int is_flux = 0;
     
-    if (col_type.base == TYPE_STRING || (col_type.base == TYPE_CHAR && col_type.ptr_depth == 1) || 
-       (col_type.base == TYPE_INT && col_type.array_size == 0 && col_type.ptr_depth == 0)) {
-        is_flux = 0;
-    } else {
-        is_flux = 1;
+    // Explicitly check for flux function call first
+    if (node->collection->type == NODE_CALL) {
+        CallNode *cn = (CallNode*)node->collection;
+        const char *fname = cn->mangled_name ? cn->mangled_name : cn->name;
+        FuncSymbol *fs = find_func_symbol(ctx, fname);
+        if (fs && fs->is_flux) {
+            is_flux = 1;
+        }
+    }
+    
+    // Fallback to type check if not explicitly a flux call
+    if (!is_flux) {
+        if (col_type.base == TYPE_STRING || 
+           (col_type.base == TYPE_CHAR && col_type.ptr_depth == 1) || 
+           (col_type.base == TYPE_INT && col_type.array_size == 0 && col_type.ptr_depth == 0)) {
+            is_flux = 0;
+        } else {
+            // Assume Flux for anything else (e.g. unknown handles)
+            is_flux = 1;
+        }
     }
     
     LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
@@ -610,6 +625,15 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
         current_val = LLVMBuildLoad2(ctx->builder, llvm_yield_type, val_addr, "val");
         
     } else {
+        // Fix for when parser didn't set iter_type (which is common for string/range loops)
+        if (yield_vt.base == TYPE_VOID || yield_vt.base == TYPE_UNKNOWN) {
+             if (col_type.base == TYPE_INT) {
+                 yield_vt = (VarType){TYPE_INT, 0, NULL, 0, 0};
+             } else {
+                 yield_vt = (VarType){TYPE_CHAR, 0, NULL, 0, 0};
+             }
+        }
+
         if (col_type.base == TYPE_INT) {
             LLVMValueRef idx = LLVMBuildLoad2(ctx->builder, LLVMInt64Type(), iter_ptr, "idx");
             LLVMValueRef limit = LLVMBuildIntCast(ctx->builder, col, LLVMInt64Type(), "limit");
