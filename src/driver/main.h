@@ -3,13 +3,11 @@
 
 #include <llvm-c/Core.h>
 #include <stdbool.h>
+#include "../semantic/semantic.h"
+#include "../parser/parser.h"
+#include "../codegen/codegen.h"
+#include "../compiler_debug/compiler_debug.h"
 
-// Import definitions from parser.h (which imports lexer.h)
-// This prevents redefinition errors and ensures all files use the same enums
-#include "parser.h"
-
-// --- CODEGEN PROTOTYPES ---
-
-LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name, const char *source);
+char* read_file(const char* filename);
 
 #endif

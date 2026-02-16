@@ -217,4 +217,6 @@ LLVMValueRef generate_enum_to_string_func(CodegenCtx *ctx, EnumInfo *ei);
 void push_loop_ctx(CodegenCtx *ctx, LLVMBasicBlockRef cont, LLVMBasicBlockRef brk);
 void pop_loop_ctx(CodegenCtx *ctx);
 
+LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name, const char *source);
+
 #endif
