@@ -175,13 +175,12 @@ void codegen_while(CodegenCtx *ctx, WhileNode *node) {
       LLVMPositionBuilderAtEnd(ctx->builder, cond_bb);
       LLVMValueRef cond = codegen_expr(ctx, node->condition);
       
-      // Robust boolean check
       if (LLVMGetTypeKind(LLVMTypeOf(cond)) != LLVMIntegerTypeKind || LLVMGetIntTypeWidth(LLVMTypeOf(cond)) != 1) {
           if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMIntegerTypeKind) {
               cond = LLVMBuildICmp(ctx->builder, LLVMIntNE, cond, LLVMConstNull(LLVMTypeOf(cond)), "to_bool");
           } else if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMPointerTypeKind) {
               cond = LLVMBuildICmp(ctx->builder, LLVMIntNE, cond, LLVMConstPointerNull(LLVMTypeOf(cond)), "to_bool");
-          } else { // Float
+          } else { 
               cond = LLVMBuildFCmp(ctx->builder, LLVMRealONE, cond, LLVMConstNull(LLVMTypeOf(cond)), "to_bool");
           }
       }
@@ -191,13 +190,12 @@ void codegen_while(CodegenCtx *ctx, WhileNode *node) {
       LLVMPositionBuilderAtEnd(ctx->builder, cond_bb);
       
       LLVMValueRef cond = codegen_expr(ctx, node->condition);
-      // Robust boolean check
       if (LLVMGetTypeKind(LLVMTypeOf(cond)) != LLVMIntegerTypeKind || LLVMGetIntTypeWidth(LLVMTypeOf(cond)) != 1) {
           if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMIntegerTypeKind) {
               cond = LLVMBuildICmp(ctx->builder, LLVMIntNE, cond, LLVMConstNull(LLVMTypeOf(cond)), "to_bool");
           } else if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMPointerTypeKind) {
               cond = LLVMBuildICmp(ctx->builder, LLVMIntNE, cond, LLVMConstPointerNull(LLVMTypeOf(cond)), "to_bool");
-          } else { // Float
+          } else { 
               cond = LLVMBuildFCmp(ctx->builder, LLVMRealONE, cond, LLVMConstNull(LLVMTypeOf(cond)), "to_bool");
           }
       }
