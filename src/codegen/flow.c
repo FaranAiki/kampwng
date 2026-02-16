@@ -195,14 +195,24 @@ void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
     LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
     LLVMValueRef cond = codegen_expr(ctx, node->condition);
     
-    // FIX: Explicitly promote to i32 if the condition is smaller (e.g. i8, i1)
+    // FIX: Safely promote small integers (i1, i8, i16) to i32 for the switch instruction.
+    // If the type is not integer (e.g. pointer/float), we attempt a safe cast or error out to avoid "promote operator" crash.
     if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMIntegerTypeKind) {
         unsigned width = LLVMGetIntTypeWidth(LLVMTypeOf(cond));
         if (width < 32) {
              cond = LLVMBuildZExt(ctx->builder, cond, LLVMInt32Type(), "switch_cond_prom");
         }
     } else {
-        cond = LLVMBuildIntCast(ctx->builder, cond, LLVMInt32Type(), "switch_cond_cast");
+        // Fallback for non-integers (e.g. if semantic analysis failed)
+        // Check if pointer or float to avoid blind IntCast crash
+        if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMPointerTypeKind) {
+             cond = LLVMBuildPtrToInt(ctx->builder, cond, LLVMInt32Type(), "switch_ptr_cast");
+        } else if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMFloatTypeKind || LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMDoubleTypeKind) {
+             cond = LLVMBuildFPToSI(ctx->builder, cond, LLVMInt32Type(), "switch_fp_cast");
+        } else {
+             // Blind cast only if we can't determine better
+             cond = LLVMBuildIntCast(ctx->builder, cond, LLVMInt32Type(), "switch_cond_cast");
+        }
     }
 
     LLVMBasicBlockRef end_bb = LLVMAppendBasicBlock(func, "switch_end");

@@ -224,6 +224,9 @@ LLVMValueRef gen_typeof(CodegenCtx *ctx, UnaryOpNode *node);
 LLVMValueRef gen_reflection(CodegenCtx *ctx, UnaryOpNode *node, int is_method);
 LLVMValueRef gen_cast(CodegenCtx *ctx, CastNode *node);
 
+// Helpers for binary ops (exposed for compound assignment)
+LLVMValueRef llvm_build_bin_op(CodegenCtx *ctx, LLVMValueRef l, LLVMValueRef r, int op, VarType lt, VarType rt);
+
 LLVMValueRef generate_enum_to_string_func(CodegenCtx *ctx, EnumInfo *ei);
 
 #endif

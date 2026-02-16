@@ -161,7 +161,26 @@ void codegen_assign(CodegenCtx *ctx, AssignNode *node) {
 
   if (node->op != TOKEN_ASSIGN) {
     LLVMValueRef lhs_val = LLVMBuildLoad2(ctx->builder, elem_type, ptr, "curr_val");
-    final_val = LLVMBuildAdd(ctx->builder, lhs_val, rhs, "compound_tmp");
+    VarType rhs_vt = codegen_calc_type(ctx, node->value);
+    
+    // Convert compound assignment tokens to binary operator tokens
+    int bin_op = 0;
+    switch(node->op) {
+        case TOKEN_PLUS_ASSIGN: bin_op = TOKEN_PLUS; break;
+        case TOKEN_MINUS_ASSIGN: bin_op = TOKEN_MINUS; break;
+        case TOKEN_STAR_ASSIGN: bin_op = TOKEN_STAR; break;
+        case TOKEN_SLASH_ASSIGN: bin_op = TOKEN_SLASH; break;
+        case TOKEN_MOD_ASSIGN: bin_op = TOKEN_MOD; break;
+        case TOKEN_AND_ASSIGN: bin_op = TOKEN_AND; break;
+        case TOKEN_OR_ASSIGN: bin_op = TOKEN_OR; break;
+        case TOKEN_XOR_ASSIGN: bin_op = TOKEN_XOR; break;
+        case TOKEN_LSHIFT_ASSIGN: bin_op = TOKEN_LSHIFT; break;
+        case TOKEN_RSHIFT_ASSIGN: bin_op = TOKEN_RSHIFT; break;
+        default: bin_op = TOKEN_PLUS; break; 
+    }
+    
+    // Safe binary operation building (handles float/int casting, string concat, etc.)
+    final_val = llvm_build_bin_op(ctx, lhs_val, rhs, bin_op, target_vt, rhs_vt);
   }
 
   // FIX: Array String Assignment (jablay.name = c"bin")

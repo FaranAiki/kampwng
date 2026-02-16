@@ -33,14 +33,9 @@ LLVMValueRef gen_inc_dec(CodegenCtx *ctx, IncDecNode *id) {
       return id->is_prefix ? new_val : old_val;
 }
 
-LLVMValueRef gen_binary_op(CodegenCtx *ctx, BinaryOpNode *op) {
-      LLVMValueRef l = codegen_expr(ctx, op->left);
-      LLVMValueRef r = codegen_expr(ctx, op->right);
-
-      VarType lt = codegen_calc_type(ctx, op->left);
-      VarType rt = codegen_calc_type(ctx, op->right);
-      
-      if (lt.base == TYPE_STRING && rt.base == TYPE_STRING && op->op == TOKEN_PLUS) {
+// Shared helper for Binary Ops (used by binary expression and compound assignment)
+LLVMValueRef llvm_build_bin_op(CodegenCtx *ctx, LLVMValueRef l, LLVMValueRef r, int op, VarType lt, VarType rt) {
+      if (lt.base == TYPE_STRING && rt.base == TYPE_STRING && op == TOKEN_PLUS) {
              LLVMValueRef len1 = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->strlen_func), ctx->strlen_func, &l, 1, "len1");
              LLVMValueRef len2 = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->strlen_func), ctx->strlen_func, &r, 1, "len2");
              LLVMValueRef sum = LLVMBuildAdd(ctx->builder, len1, len2, "len_sum");
@@ -59,11 +54,11 @@ LLVMValueRef gen_binary_op(CodegenCtx *ctx, BinaryOpNode *op) {
              return mem;
       }
       
-      if (lt.base == TYPE_STRING && rt.base == TYPE_STRING && (op->op == TOKEN_EQ || op->op == TOKEN_NEQ)) {
+      if (lt.base == TYPE_STRING && rt.base == TYPE_STRING && (op == TOKEN_EQ || op == TOKEN_NEQ)) {
              LLVMValueRef args[] = {l, r};
              LLVMValueRef cmp_res = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->strcmp_func), ctx->strcmp_func, args, 2, "cmp_res");
              
-             if (op->op == TOKEN_EQ) 
+             if (op == TOKEN_EQ) 
                  return LLVMBuildICmp(ctx->builder, LLVMIntEQ, cmp_res, LLVMConstInt(LLVMInt32Type(), 0, 0), "str_eq");
              else
                  return LLVMBuildICmp(ctx->builder, LLVMIntNE, cmp_res, LLVMConstInt(LLVMInt32Type(), 0, 0), "str_neq");
@@ -94,7 +89,11 @@ LLVMValueRef gen_binary_op(CodegenCtx *ctx, BinaryOpNode *op) {
           } else if ((lk == LLVMDoubleTypeKind || lk == LLVMFloatTypeKind) && rk == LLVMFP128TypeKind) {
               l = LLVMBuildFPExt(ctx->builder, l, LLVMTypeOf(r), "cast");
           } else {
-              r = LLVMBuildBitCast(ctx->builder, r, LLVMTypeOf(l), "cast");
+              // Fallback bitcast (dangerous if types mismatch in size)
+              if (LLVMGetTypeKind(LLVMTypeOf(l)) == LLVMGetTypeKind(LLVMTypeOf(r))) {
+                  // Only bitcast if kinds match (e.g. ptr to ptr)
+                   r = LLVMBuildBitCast(ctx->builder, r, LLVMTypeOf(l), "cast");
+              }
           }
       }
 
@@ -102,58 +101,84 @@ LLVMValueRef gen_binary_op(CodegenCtx *ctx, BinaryOpNode *op) {
                       rt.base == TYPE_FLOAT || rt.base == TYPE_DOUBLE || rt.base == TYPE_LONG_DOUBLE);
       int is_unsigned = (lt.is_unsigned || rt.is_unsigned);
 
-      if (op->op == TOKEN_PLUS) {
+      if (op == TOKEN_PLUS) {
           if (is_float) return LLVMBuildFAdd(ctx->builder, l, r, "fadd");
           return LLVMBuildAdd(ctx->builder, l, r, "add");
       }
-      if (op->op == TOKEN_MINUS) {
+      if (op == TOKEN_MINUS) {
           if (is_float) return LLVMBuildFSub(ctx->builder, l, r, "fsub");
           return LLVMBuildSub(ctx->builder, l, r, "sub");
       }
-      if (op->op == TOKEN_STAR) {
+      if (op == TOKEN_STAR) {
           if (is_float) return LLVMBuildFMul(ctx->builder, l, r, "fmul");
           return LLVMBuildMul(ctx->builder, l, r, "mul");
       }
-      if (op->op == TOKEN_SLASH) {
+      if (op == TOKEN_SLASH) {
           if (is_float) return LLVMBuildFDiv(ctx->builder, l, r, "fdiv");
           if (is_unsigned) return LLVMBuildUDiv(ctx->builder, l, r, "udiv");
           return LLVMBuildSDiv(ctx->builder, l, r, "sdiv");
       }
-      if (op->op == TOKEN_MOD) {
+      if (op == TOKEN_MOD) {
           if (is_float) return LLVMBuildFRem(ctx->builder, l, r, "frem");
           if (is_unsigned) return LLVMBuildURem(ctx->builder, l, r, "urem");
           return LLVMBuildSRem(ctx->builder, l, r, "srem");
       }
-      if (op->op == TOKEN_LT) {
+      if (op == TOKEN_LT) {
           if (is_float) return LLVMBuildFCmp(ctx->builder, LLVMRealOLT, l, r, "flt");
           if (is_unsigned) return LLVMBuildICmp(ctx->builder, LLVMIntULT, l, r, "ult");
           return LLVMBuildICmp(ctx->builder, LLVMIntSLT, l, r, "slt");
       }
-      if (op->op == TOKEN_GT) {
+      if (op == TOKEN_GT) {
           if (is_float) return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, l, r, "fgt");
           if (is_unsigned) return LLVMBuildICmp(ctx->builder, LLVMIntUGT, l, r, "ugt");
           return LLVMBuildICmp(ctx->builder, LLVMIntSGT, l, r, "sgt");
       }
-      if (op->op == TOKEN_LTE) {
+      if (op == TOKEN_LTE) {
           if (is_float) return LLVMBuildFCmp(ctx->builder, LLVMRealOLE, l, r, "flte");
           if (is_unsigned) return LLVMBuildICmp(ctx->builder, LLVMIntULE, l, r, "ulte");
           return LLVMBuildICmp(ctx->builder, LLVMIntSLE, l, r, "slte");
       }
-      if (op->op == TOKEN_GTE) {
+      if (op == TOKEN_GTE) {
           if (is_float) return LLVMBuildFCmp(ctx->builder, LLVMRealOGE, l, r, "fgte");
           if (is_unsigned) return LLVMBuildICmp(ctx->builder, LLVMIntUGE, l, r, "ugte");
           return LLVMBuildICmp(ctx->builder, LLVMIntSGE, l, r, "sgte");
       }
-      if (op->op == TOKEN_EQ) {
+      if (op == TOKEN_EQ) {
           if (is_float) return LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, l, r, "feq");
           return LLVMBuildICmp(ctx->builder, LLVMIntEQ, l, r, "eq");
       }
-      if (op->op == TOKEN_NEQ) {
+      if (op == TOKEN_NEQ) {
           if (is_float) return LLVMBuildFCmp(ctx->builder, LLVMRealONE, l, r, "fneq");
           return LLVMBuildICmp(ctx->builder, LLVMIntNE, l, r, "neq");
       }
+      if (op == TOKEN_AND) {
+          return LLVMBuildAnd(ctx->builder, l, r, "and");
+      }
+      if (op == TOKEN_OR) {
+          return LLVMBuildOr(ctx->builder, l, r, "or");
+      }
+      if (op == TOKEN_XOR) {
+          return LLVMBuildXor(ctx->builder, l, r, "xor");
+      }
+      if (op == TOKEN_LSHIFT) {
+          return LLVMBuildShl(ctx->builder, l, r, "shl");
+      }
+      if (op == TOKEN_RSHIFT) {
+          // Assume arithmetic shift right for signed types, logical for unsigned
+          if (lt.is_unsigned) return LLVMBuildLShr(ctx->builder, l, r, "lshr");
+          return LLVMBuildAShr(ctx->builder, l, r, "ashr");
+      }
 
       return LLVMConstInt(LLVMInt32Type(), 0, 0);
+}
+
+LLVMValueRef gen_binary_op(CodegenCtx *ctx, BinaryOpNode *op) {
+      LLVMValueRef l = codegen_expr(ctx, op->left);
+      LLVMValueRef r = codegen_expr(ctx, op->right);
+      VarType lt = codegen_calc_type(ctx, op->left);
+      VarType rt = codegen_calc_type(ctx, op->right);
+      
+      return llvm_build_bin_op(ctx, l, r, op->op, lt, rt);
 }
 
 LLVMValueRef gen_unary_op(CodegenCtx *ctx, UnaryOpNode *u) {
