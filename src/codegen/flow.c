@@ -427,9 +427,12 @@ void codegen_flux_def(CodegenCtx *ctx, FuncDefNode *node) {
     LLVMValueRef suspend_args[] = { save_tok, LLVMConstInt(LLVMInt1Type(), 0, 0) }; // false = final? no
     LLVMValueRef suspend_res = LLVMBuildCall2(ctx->builder, suspend_func_type, ctx->coro_suspend, suspend_args, 2, "initial_suspend");
     
-    LLVMValueRef sw = LLVMBuildSwitch(ctx->builder, suspend_res, suspend_bb, 2);
-    LLVMAddCase(sw, LLVMConstInt(LLVMInt8Type(), 0, 0), body_bb);
-    LLVMAddCase(sw, LLVMConstInt(LLVMInt8Type(), 1, 0), cleanup_bb);
+    // FIX: Promote i8 result to i32 for switch instruction (prevents crash on some backends)
+    LLVMValueRef suspend_res_32 = LLVMBuildZExt(ctx->builder, suspend_res, LLVMInt32Type(), "suspend_res_prom");
+
+    LLVMValueRef sw = LLVMBuildSwitch(ctx->builder, suspend_res_32, suspend_bb, 2);
+    LLVMAddCase(sw, LLVMConstInt(LLVMInt32Type(), 0, 0), body_bb);
+    LLVMAddCase(sw, LLVMConstInt(LLVMInt32Type(), 1, 0), cleanup_bb);
     
     // Suspend Path: Return handle
     LLVMPositionBuilderAtEnd(ctx->builder, suspend_bb);
@@ -453,10 +456,8 @@ void codegen_flux_def(CodegenCtx *ctx, FuncDefNode *node) {
     LLVMTypeRef end_arg_types[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMInt1Type(), LLVMTokenTypeInContext(LLVMGetGlobalContext()) };
     LLVMTypeRef end_func_type = LLVMFunctionType(LLVMInt1Type(), end_arg_types, 3, false);
     
-    // Create token none using ConstNull which maps to 'none' for tokens in many contexts or is accepted as placeholder
-    LLVMValueRef token_none = LLVMConstNull(LLVMTokenTypeInContext(LLVMGetGlobalContext()));
-
-    LLVMValueRef end_args_call[] = { hdl, LLVMConstInt(LLVMInt1Type(), 0, 0), token_none };
+    // CRITICAL FIX: Pass 'id' token instead of null token when inside coroutine
+    LLVMValueRef end_args_call[] = { hdl, LLVMConstInt(LLVMInt1Type(), 0, 0), id };
     LLVMBuildCall2(ctx->builder, end_func_type, ctx->coro_end, end_args_call, 3, "coro_end_val");
 
     LLVMBuildRet(ctx->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0))); 
@@ -484,10 +485,13 @@ void codegen_flux_def(CodegenCtx *ctx, FuncDefNode *node) {
         LLVMValueRef final_suspend_args[] = { final_save, LLVMConstInt(LLVMInt1Type(), 1, 0) }; // true = final
         LLVMValueRef final_res = LLVMBuildCall2(ctx->builder, suspend_func_type, ctx->coro_suspend, final_suspend_args, 2, "final_suspend");
         
+        // FIX: Promote to i32 for switch
+        LLVMValueRef final_res_32 = LLVMBuildZExt(ctx->builder, final_res, LLVMInt32Type(), "fin_res_prom");
+
         LLVMBasicBlockRef fin_suspend_bb = LLVMAppendBasicBlock(func, "fin_suspend");
-        LLVMValueRef final_sw = LLVMBuildSwitch(ctx->builder, final_res, fin_suspend_bb, 2);
-        LLVMAddCase(final_sw, LLVMConstInt(LLVMInt8Type(), 0, 0), cleanup_bb);
-        LLVMAddCase(final_sw, LLVMConstInt(LLVMInt8Type(), 1, 0), cleanup_bb);
+        LLVMValueRef final_sw = LLVMBuildSwitch(ctx->builder, final_res_32, fin_suspend_bb, 2);
+        LLVMAddCase(final_sw, LLVMConstInt(LLVMInt32Type(), 0, 0), cleanup_bb);
+        LLVMAddCase(final_sw, LLVMConstInt(LLVMInt32Type(), 1, 0), cleanup_bb);
         
         LLVMPositionBuilderAtEnd(ctx->builder, fin_suspend_bb);
         LLVMBuildRet(ctx->builder, hdl);
@@ -530,13 +534,16 @@ void codegen_emit(CodegenCtx *ctx, EmitNode *node) {
     LLVMValueRef suspend_args[] = { save_tok, LLVMConstInt(LLVMInt1Type(), 0, 0) };
     LLVMValueRef suspend_res = LLVMBuildCall2(ctx->builder, suspend_func_type, ctx->coro_suspend, suspend_args, 2, "yield_suspend");
     
+    // FIX: Promote to i32 for switch
+    LLVMValueRef suspend_res_32 = LLVMBuildZExt(ctx->builder, suspend_res, LLVMInt32Type(), "emit_res_prom");
+
     LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
     LLVMBasicBlockRef resume_bb = LLVMAppendBasicBlock(func, "after_yield");
     LLVMBasicBlockRef suspend_ret_bb = LLVMAppendBasicBlock(func, "suspend_ret");
 
-    LLVMValueRef sw = LLVMBuildSwitch(ctx->builder, suspend_res, suspend_ret_bb, 2);
-    LLVMAddCase(sw, LLVMConstInt(LLVMInt8Type(), 0, 0), resume_bb);
-    LLVMAddCase(sw, LLVMConstInt(LLVMInt8Type(), 1, 0), ctx->flux_return_block);
+    LLVMValueRef sw = LLVMBuildSwitch(ctx->builder, suspend_res_32, suspend_ret_bb, 2);
+    LLVMAddCase(sw, LLVMConstInt(LLVMInt32Type(), 0, 0), resume_bb);
+    LLVMAddCase(sw, LLVMConstInt(LLVMInt32Type(), 1, 0), ctx->flux_return_block);
 
     // Suspend Path: Return Handle
     LLVMPositionBuilderAtEnd(ctx->builder, suspend_ret_bb);
