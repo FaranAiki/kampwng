@@ -42,6 +42,11 @@ set(MUST_LLVM_SOURCES
     src/codegen/node/cast.c
 )
 
+set(ALIR_SOURCES
+    src/alir/core.c 
+    src/alir/generator.c
+)
+
 set(MUST_LANG_SOURCES 
     src/lexer/lexer.c
     src/lexer/emitter.c    
@@ -63,6 +68,7 @@ set(MUST_LANG_SOURCES
 set(COMMON_SOURCES
   ${MUST_LANG_SOURCES}
   ${MUST_LLVM_SOURCES}
+  ${ALIR_SOURCES}
 )
 
 add_executable(alkyl src/driver/main.c ${COMMON_SOURCES})
