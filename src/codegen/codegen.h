@@ -103,6 +103,8 @@ typedef struct {
   // For error reporting
   const char *source_code;
 
+  // these are builtins 
+  // as string compare need these
   LLVMTypeRef printf_type;
   LLVMValueRef printf_func;
   LLVMValueRef input_func;
@@ -204,5 +206,24 @@ LLVMValueRef generate_enum_to_string_func(CodegenCtx *ctx, EnumInfo *ei);
 
 char* format_string(const char* input);
 void get_type_name(VarType t, char *buf);
+
+LLVMTypeRef get_lvalue_struct_type(CodegenCtx *ctx, ASTNode *node); 
+
+LLVMValueRef gen_call(CodegenCtx *ctx, CallNode *node);
+LLVMValueRef gen_method_call(CodegenCtx *ctx, MethodCallNode *node);
+LLVMValueRef gen_trait_access(CodegenCtx *ctx, TraitAccessNode *node);
+LLVMValueRef gen_array_lit(CodegenCtx *ctx, ArrayLitNode *node);
+LLVMValueRef gen_literal(CodegenCtx *ctx, LiteralNode *node);
+LLVMValueRef gen_binary_op(CodegenCtx *ctx, BinaryOpNode *node);
+LLVMValueRef gen_unary_op(CodegenCtx *ctx, UnaryOpNode *node);
+LLVMValueRef gen_array_access(CodegenCtx *ctx, ArrayAccessNode *node);
+LLVMValueRef gen_member_access(CodegenCtx *ctx, MemberAccessNode *node);
+LLVMValueRef gen_inc_dec(CodegenCtx *ctx, IncDecNode *node);
+LLVMValueRef gen_var_ref(CodegenCtx *ctx, VarRefNode *node);
+LLVMValueRef gen_typeof(CodegenCtx *ctx, UnaryOpNode *node);
+LLVMValueRef gen_reflection(CodegenCtx *ctx, UnaryOpNode *node, int is_method);
+LLVMValueRef gen_cast(CodegenCtx *ctx, CastNode *node);
+
+LLVMValueRef generate_enum_to_string_func(CodegenCtx *ctx, EnumInfo *ei);
 
 #endif

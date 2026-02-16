@@ -249,4 +249,72 @@ LLVMValueRef generate_enum_to_string_func(CodegenCtx *ctx, EnumInfo *ei) {
     return func;
 }
 
+// gen node
+LLVMValueRef gen_typeof(CodegenCtx *ctx, UnaryOpNode *tn) {
+      VarType t = codegen_calc_type(ctx, tn->operand);
+      char buf[256];
+      get_type_name(t, buf);
+      return LLVMBuildGlobalStringPtr(ctx->builder, buf, "typeof_str");
+}
+
+LLVMValueRef gen_reflection(CodegenCtx *ctx, UnaryOpNode *u, int is_method) {
+      VarType t = codegen_calc_type(ctx, u->operand);
+      if (t.class_name) {
+          ClassInfo *ci = find_class(ctx, t.class_name);
+          if (!ci) codegen_error(ctx, (ASTNode*)u, "Unknown class for reflection");
+          
+          if (is_method) {
+               // hasmethod logic
+              int count = ci->method_count;
+              LLVMTypeRef str_type = LLVMPointerType(LLVMInt8Type(), 0);
+              LLVMTypeRef arr_type = LLVMArrayType(str_type, count + 1); 
+              
+              LLVMValueRef *vals = malloc(sizeof(LLVMValueRef) * (count + 1));
+              for(int i=0; i<count; i++) {
+                  vals[i] = LLVMBuildGlobalStringPtr(ctx->builder, ci->method_names[i], "method_name");
+              }
+              vals[count] = LLVMConstPointerNull(str_type);
+
+              LLVMValueRef const_arr = LLVMConstArray(str_type, vals, count + 1);
+              LLVMValueRef global_arr = LLVMAddGlobal(ctx->module, arr_type, "method_list");
+              LLVMSetInitializer(global_arr, const_arr);
+              LLVMSetGlobalConstant(global_arr, 1);
+              LLVMSetLinkage(global_arr, LLVMPrivateLinkage);
+              
+              free(vals);
+              
+              LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), LLVMConstInt(LLVMInt64Type(), 0, 0) };
+              return LLVMBuildGEP2(ctx->builder, arr_type, global_arr, indices, 2, "method_list_ptr");
+          } else {
+               // hasattribute logic
+              int count = 0;
+              ClassMember *m = ci->members;
+              while(m) { count++; m = m->next; }
+              
+              LLVMTypeRef str_type = LLVMPointerType(LLVMInt8Type(), 0);
+              LLVMTypeRef arr_type = LLVMArrayType(str_type, count + 1);
+              
+              LLVMValueRef *vals = malloc(sizeof(LLVMValueRef) * (count + 1));
+              m = ci->members;
+              int i = 0;
+              while(m) {
+                  vals[i++] = LLVMBuildGlobalStringPtr(ctx->builder, m->name, "attr_name");
+                  m = m->next;
+              }
+              vals[count] = LLVMConstPointerNull(str_type);
+
+              LLVMValueRef const_arr = LLVMConstArray(str_type, vals, count + 1);
+              LLVMValueRef global_arr = LLVMAddGlobal(ctx->module, arr_type, "attr_list");
+              LLVMSetInitializer(global_arr, const_arr);
+              LLVMSetGlobalConstant(global_arr, 1);
+              LLVMSetLinkage(global_arr, LLVMPrivateLinkage);
+              
+              free(vals);
+              
+              LLVMValueRef indices[] = { LLVMConstInt(LLVMInt64Type(), 0, 0), LLVMConstInt(LLVMInt64Type(), 0, 0) };
+              return LLVMBuildGEP2(ctx->builder, arr_type, global_arr, indices, 2, "attr_list_ptr");
+          }
+      }
+      return LLVMConstPointerNull(LLVMPointerType(LLVMPointerType(LLVMInt8Type(), 0), 0));
+}
 

@@ -1,7 +1,9 @@
 int main() {
-  let a = c"mama muda";
-  a[0] += 1;
-  print "%s\n", a;
+  // access using a[0] bug 
+  // this should be a stack string ok
+  let a = ['g','a','b',0 as char];
+  // a[0] += 1;
+  print "%s\n", a[0];
   let t = c"s";
   print "%s:%s\n", typeof(a), typeof(t);
   let t0 = "s";

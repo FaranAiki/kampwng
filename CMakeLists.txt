@@ -35,6 +35,9 @@ set(MUST_LLVM_SOURCES
     src/codegen/expr.c
     src/codegen/builtin.c
     src/codegen/utils.c
+
+    src/codegen/node/access.c
+    src/codegen/node/operator.c
 )
 
 set(MUST_LANG_SOURCES 

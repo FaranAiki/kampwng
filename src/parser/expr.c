@@ -351,7 +351,6 @@ ASTNode* parse_unary(Lexer *l) {
   return parse_factor(l);
 }
 
-// ... Binary Ops ...
 ASTNode* parse_binary_op(Lexer *l, ASTNode* (*sub_parser)(Lexer*), TokenType* ops, int num_ops) {
   ASTNode *left = sub_parser(l);
   while (1) {
