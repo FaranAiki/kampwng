@@ -29,17 +29,7 @@ include_directories(
 )
 
 set(MUST_LLVM_SOURCES
-    src/codegen/stmt.c
-    src/codegen/flow.c
-    src/codegen/flux.c
-    src/codegen/core.c
-    src/codegen/expr.c
-    src/codegen/builtin.c
-    src/codegen/utils.c
 
-    src/codegen/node/access.c
-    src/codegen/node/operator.c
-    src/codegen/node/cast.c
 )
 
 set(ALIR_SOURCES
@@ -47,7 +37,26 @@ set(ALIR_SOURCES
     src/alir/generator.c
 )
 
-set(MUST_LANG_SOURCES 
+set(DEPRECATED_SOURCES
+    src/.old/semantic/semantic.c    
+    src/.old/semantic/check.c    
+    src/.old/semantic/scope.c    
+    src/.old/semantic/utils.c 
+
+    src/.old/codegen/stmt.c
+    src/.old/codegen/flow.c
+    src/.old/codegen/flux.c
+    src/.old/codegen/core.c
+    src/.old/codegen/expr.c
+    src/.old/codegen/builtin.c
+    src/.old/codegen/utils.c
+
+    src/.old/codegen/node/access.c
+    src/.old/codegen/node/operator.c
+    src/.old/codegen/node/cast.c
+)
+
+set(FRONTEND_SOURCES 
     src/lexer/lexer.c
     src/lexer/emitter.c    
     
@@ -55,20 +64,20 @@ set(MUST_LANG_SOURCES
     src/parser/expr.c 
     src/parser/stmt.c 
     src/parser/top.c 
-    src/parser/emitter.c 
-
-    src/semantic/semantic.c    
-    src/semantic/check.c    
-    src/semantic/scope.c    
-    src/semantic/utils.c    
+    src/parser/emitter.c  
     
+)
+
+set(HELPER_SOURCES
     src/diagnostic/diagnostic.c
 )
 
 set(COMMON_SOURCES
-  ${MUST_LANG_SOURCES}
+  ${FRONTEND_SOURCES}
   ${MUST_LLVM_SOURCES}
   ${ALIR_SOURCES}
+  ${HELPER_SOURCES}
+  ${DEPRECATED_SOURCES}
 )
 
 add_executable(alkyl src/driver/main.c ${COMMON_SOURCES})

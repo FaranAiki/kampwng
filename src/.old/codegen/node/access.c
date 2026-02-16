@@ -1,4 +1,4 @@
-#include "codegen.h"
+#include "../codegen.h"
 
 LLVMValueRef gen_trait_access(CodegenCtx *ctx, TraitAccessNode *ta) {
       LLVMValueRef obj_ptr = NULL;

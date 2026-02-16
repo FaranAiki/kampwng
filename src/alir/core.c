@@ -39,6 +39,7 @@ void alir_func_add_param(AlirFunction *func, const char *name, VarType type) {
     func->param_count++;
 }
 
+// Add string to global pool
 AlirValue* alir_module_add_string_literal(AlirModule *mod, const char *content, int id_hint) {
     char label[64];
     sprintf(label, "str.%d", id_hint);
@@ -249,7 +250,6 @@ static char* escape_string(const char* input) {
 }
 
 static void alir_fprint_type(FILE *f, VarType t) {
-    // Simple type printer for IR legibility
     switch(t.base) {
         case TYPE_INT: fprintf(f, "i32"); break;
         case TYPE_LONG: fprintf(f, "i64"); break;
@@ -271,12 +271,6 @@ static void alir_fprint_val(FILE *f, AlirValue *v) {
         case ALIR_VAL_CONST:
             if (v->type.base == TYPE_FLOAT || v->type.base == TYPE_DOUBLE)
                 fprintf(f, "%.2f", v->float_val);
-            else if (v->type.base == TYPE_STRING) {
-                // Should not happen often if we move to globals, but for fallback:
-                char *esc = escape_string(v->str_val);
-                fprintf(f, "c\"%s\"", esc);
-                free(esc);
-            }
             else
                 fprintf(f, "%ld", v->int_val);
             break;
@@ -327,13 +321,13 @@ static void alir_emit_stream(AlirModule *mod, FILE *f) {
         AlirGlobal *g = mod->globals;
         while(g) {
             char *esc = escape_string(g->string_content);
-            fprintf(f, "@%s = constant string c\"%s\"\n", g->name, esc);
+            fprintf(f, "@%s = constant string \"%s\"\n", g->name, esc);
             free(esc);
             g = g->next;
         }
     }
     
-    // 3. Print Functions (Declarations vs Definitions)
+    // 3. Print Functions
     AlirFunction *func = mod->functions;
     while(func) {
         if (func->block_count == 0) {
@@ -378,32 +372,49 @@ static void alir_emit_stream(AlirModule *mod, FILE *f) {
                         fprintf(f, " = ");
                     }
                     
-                    fprintf(f, "%s ", alir_op_str(inst->op));
-                    
-                    if (inst->op1) alir_fprint_val(f, inst->op1);
-                    
-                    if (inst->op == ALIR_OP_SWITCH) {
-                        fprintf(f, " [");
-                        AlirSwitchCase *c = inst->cases;
-                        while(c) {
-                            fprintf(f, " %ld: %s ", c->value, c->label);
-                            c = c->next;
-                        }
-                        fprintf(f, "] else ");
-                        if (inst->op2) alir_fprint_val(f, inst->op2);
-                    } else {
-                        if (inst->op2) {
-                            fprintf(f, ", ");
-                            alir_fprint_val(f, inst->op2);
-                        }
+                    // Special handling for ALLOCA to print type
+                    if (inst->op == ALIR_OP_ALLOCA && inst->dest) {
+                        fprintf(f, "alloca ");
+                        // dest is assumed to be the variable type directly in current gen logic
+                        // If logic implies dest is pointer, we should handle that, but for now
+                        // we print the type stored in the temp info
+                        alir_fprint_type(f, inst->dest->type);
+                    } 
+                    else {
+                        fprintf(f, "%s ", alir_op_str(inst->op));
                         
-                        if (inst->args) {
-                            fprintf(f, " (");
-                            for(int k=0; k<inst->arg_count; k++) {
-                                if (k > 0) fprintf(f, ", ");
-                                alir_fprint_val(f, inst->args[k]);
+                        if (inst->op1) {
+                            alir_fprint_val(f, inst->op1);
+                        } else if (inst->op == ALIR_OP_STORE) {
+                             // Handle missing value in store (e.g. uninit var)
+                             fprintf(f, "undef"); 
+                        } else if (inst->op == ALIR_OP_RET && !inst->op1) {
+                            fprintf(f, "void");
+                        }
+
+                        if (inst->op == ALIR_OP_SWITCH) {
+                            fprintf(f, " [");
+                            AlirSwitchCase *c = inst->cases;
+                            while(c) {
+                                fprintf(f, " %ld: %s ", c->value, c->label);
+                                c = c->next;
                             }
-                            fprintf(f, ")");
+                            fprintf(f, "] else ");
+                            if (inst->op2) alir_fprint_val(f, inst->op2);
+                        } else {
+                            if (inst->op2) {
+                                fprintf(f, ", ");
+                                alir_fprint_val(f, inst->op2);
+                            }
+                            
+                            if (inst->args) {
+                                fprintf(f, " (");
+                                for(int k=0; k<inst->arg_count; k++) {
+                                    if (k > 0) fprintf(f, ", ");
+                                    alir_fprint_val(f, inst->args[k]);
+                                }
+                                fprintf(f, ")");
+                            }
                         }
                     }
                     

@@ -1,4 +1,4 @@
-#include "codegen.h"
+#include "../codegen.h"
 
 LLVMValueRef gen_inc_dec(CodegenCtx *ctx, IncDecNode *id) {
       LLVMValueRef addr = codegen_addr(ctx, id->target);

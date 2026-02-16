@@ -1,9 +1,6 @@
 // This still SUCK ASS
 
 #include "cli.h"
-#include "parser.h"
-#include "codegen.h"
-#include "parser_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>

@@ -1,4 +1,4 @@
-#include "codegen.h"
+#include "../codegen.h"
 
 LLVMValueRef gen_var_ref(CodegenCtx *ctx, VarRefNode *node) {
       const char *name = node->name;

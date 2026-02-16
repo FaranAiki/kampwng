@@ -78,17 +78,22 @@ VarType alir_calc_type(AlirCtx *ctx, ASTNode *node) {
     }
     // Attempt rudimentary inference for member access
     if (node->type == NODE_MEMBER_ACCESS) {
-         // This is weak, requires proper symbol table or type info from parser
          MemberAccessNode *ma = (MemberAccessNode*)node;
          VarType obj_t = alir_calc_type(ctx, ma->object);
+         // Lookup field type if possible (simplified here)
          if (obj_t.class_name) {
-              // We could look up field type in registry if we stored it
+             // In a full compiler, we'd look up the field type in AlirStruct
          }
+    }
+    // Trait access returns the Trait type (represented as class)
+    if (node->type == NODE_TRAIT_ACCESS) {
+        TraitAccessNode *ta = (TraitAccessNode*)node;
+        vt = (VarType){TYPE_CLASS, 1, strdup(ta->trait_name)};
     }
     return vt;
 }
 
-// --- LOWERING HELPER: Register Class Layout ---
+// --- LOWERING HELPER: Register Class Layout with Flattening ---
 void alir_scan_and_register_classes(AlirCtx *ctx, ASTNode *root) {
     ASTNode *curr = root;
     while(curr) {
@@ -99,7 +104,25 @@ void alir_scan_and_register_classes(AlirCtx *ctx, ASTNode *root) {
             AlirField **tail = &head;
             int idx = 0;
 
-            // Flatten inheritance if necessary, simplified scan local members
+            // 1. FLATTENING: Copy Parent Fields First
+            if (cn->parent_name) {
+                AlirStruct *parent = alir_find_struct(ctx->module, cn->parent_name);
+                if (parent) {
+                    AlirField *pf = parent->fields;
+                    while(pf) {
+                        AlirField *nf = calloc(1, sizeof(AlirField));
+                        nf->name = strdup(pf->name); // Copy name
+                        nf->type = pf->type;
+                        nf->index = idx++;
+                        
+                        *tail = nf;
+                        tail = &nf->next;
+                        pf = pf->next;
+                    }
+                }
+            }
+
+            // 2. Add Local Members
             ASTNode *mem = cn->members;
             while(mem) {
                 if (mem->type == NODE_VAR_DECL) {
@@ -117,15 +140,13 @@ void alir_scan_and_register_classes(AlirCtx *ctx, ASTNode *root) {
             
             alir_register_struct(ctx->module, cn->name, head);
         } else if (curr->type == NODE_NAMESPACE) {
-            // Recursive scan for namespaces if needed
              alir_scan_and_register_classes(ctx, ((NamespaceNode*)curr)->body);
         }
         curr = curr->next;
     }
 }
 
-// --- LOWERING CONSTRUCTOR (The Magic) ---
-// Transforms: new ClassName() -> sizeof, alloc, cast, init
+// --- LOWERING CONSTRUCTOR ---
 AlirValue* alir_lower_new_object(AlirCtx *ctx, const char *class_name, ASTNode *args) {
     AlirStruct *st = alir_find_struct(ctx->module, class_name);
     if (!st) return NULL; 
@@ -144,15 +165,9 @@ AlirValue* alir_lower_new_object(AlirCtx *ctx, const char *class_name, ASTNode *
     AlirValue *obj_ptr = new_temp(ctx, cls_ptr_type);
     emit(ctx, mk_inst(ALIR_OP_BITCAST, obj_ptr, raw_mem, NULL));
 
-    // 4. Call Constructor (Init)
-    // Assumption: Init function is named "ClassName" or "ClassName_init" 
-    // The parser/codegen usually mangles this. For ALIR, let's assume direct name match for now
-    // or assume the user calls "ClassName(...)".
-    
-    // We construct a call instruction to the initializer
+    // 4. Call Constructor
     AlirInst *call_init = mk_inst(ALIR_OP_CALL, NULL, alir_val_var(class_name), NULL);
     
-    // Count args + 1 (for 'this')
     int arg_count = 0; ASTNode *a = args; while(a) { arg_count++; a=a->next; }
     call_init->arg_count = arg_count + 1;
     call_init->args = malloc(sizeof(AlirValue*) * (arg_count + 1));
@@ -165,37 +180,33 @@ AlirValue* alir_lower_new_object(AlirCtx *ctx, const char *class_name, ASTNode *
         a = a->next;
     }
     
-    // The init function (constructor) typically returns void, but we return the object pointer
-    call_init->dest = new_temp(ctx, (VarType){TYPE_VOID, 0}); // Dummy dest for void call
+    call_init->dest = new_temp(ctx, (VarType){TYPE_VOID, 0});
     emit(ctx, call_init);
     
     return obj_ptr;
 }
 
 
-// --- L-VALUE GENERATION (Address Calculation) ---
+// --- L-VALUE GENERATION ---
 
 AlirValue* alir_gen_addr(AlirCtx *ctx, ASTNode *node) {
     if (node->type == NODE_VAR_REF) {
         VarRefNode *vn = (VarRefNode*)node;
         AlirSymbol *sym = alir_find_symbol(ctx, vn->name);
         if (sym) return sym->ptr;
-        return alir_val_var(vn->name); // Global fallback
+        return alir_val_var(vn->name);
     }
     
     if (node->type == NODE_MEMBER_ACCESS) {
         MemberAccessNode *ma = (MemberAccessNode*)node;
         AlirValue *base_ptr = alir_gen_addr(ctx, ma->object);
-        if (!base_ptr) base_ptr = alir_gen_expr(ctx, ma->object); // Handle pointer returns
+        if (!base_ptr) base_ptr = alir_gen_expr(ctx, ma->object);
 
         VarType obj_t = alir_calc_type(ctx, ma->object);
         
         if (obj_t.class_name) {
-            // SMART LOOKUP: Use Registry
             int idx = alir_get_field_index(ctx->module, obj_t.class_name, ma->member_name);
             if (idx != -1) {
-                // GEP: base + 0 (deref if pointer) + idx
-                // Result type is abstract pointer (int*) for ALIR
                 AlirValue *res = new_temp(ctx, (VarType){TYPE_INT, 1}); 
                 emit(ctx, mk_inst(ALIR_OP_GET_PTR, res, base_ptr, alir_const_int(idx)));
                 return res;
@@ -216,11 +227,39 @@ AlirValue* alir_gen_addr(AlirCtx *ctx, ASTNode *node) {
     return NULL;
 }
 
+// --- TRAIT ACCESS GEN ---
+// Calculates the pointer to the Trait part of an object.
+// Uses Struct Flattening assumption or looks for a field with Trait name.
+AlirValue* alir_gen_trait_access(AlirCtx *ctx, TraitAccessNode *ta) {
+    AlirValue *base_ptr = alir_gen_addr(ctx, ta->object);
+    if (!base_ptr) base_ptr = alir_gen_expr(ctx, ta->object);
+    
+    VarType obj_t = alir_calc_type(ctx, ta->object);
+    
+    // 1. Try to find a field named after the Trait (Mixin strategy)
+    if (obj_t.class_name) {
+        int idx = alir_get_field_index(ctx->module, obj_t.class_name, ta->trait_name);
+        if (idx != -1) {
+            // Found explicit field for trait
+            AlirValue *res = new_temp(ctx, (VarType){TYPE_CLASS, 1, strdup(ta->trait_name)});
+            emit(ctx, mk_inst(ALIR_OP_GET_PTR, res, base_ptr, alir_const_int(idx)));
+            return res;
+        }
+    }
+    
+    // 2. Fallback: Bitcast (Unsafe/Direct Cast)
+    // If the layout implies the object IS the trait (first position or phantom), cast it.
+    VarType trait_ptr_t = {TYPE_CLASS, 1, strdup(ta->trait_name)};
+    AlirValue *cast_res = new_temp(ctx, trait_ptr_t);
+    emit(ctx, mk_inst(ALIR_OP_BITCAST, cast_res, base_ptr, NULL));
+    return cast_res;
+}
+
 AlirValue* alir_gen_literal(AlirCtx *ctx, LiteralNode *ln) {
     if (ln->var_type.base == TYPE_INT) return alir_const_int(ln->val.int_val);
     if (ln->var_type.base == TYPE_FLOAT) return alir_const_float(ln->val.double_val);
     if (ln->var_type.base == TYPE_STRING) {
-        // Extract string to global constant pool
+        // Updated: Use Global String Pool
         return alir_module_add_string_literal(ctx->module, ln->val.str_val, ctx->str_counter++);
     }
     return alir_const_int(0);
@@ -238,7 +277,7 @@ AlirValue* alir_gen_var_ref(AlirCtx *ctx, VarRefNode *vn) {
 
 AlirValue* alir_gen_access(AlirCtx *ctx, ASTNode *node) {
     AlirValue *ptr = alir_gen_addr(ctx, node);
-    AlirValue *val = new_temp(ctx, (VarType){TYPE_INT, 0}); // Simplified type inference
+    AlirValue *val = new_temp(ctx, (VarType){TYPE_INT, 0}); 
     emit(ctx, mk_inst(ALIR_OP_LOAD, val, ptr, NULL));
     return val;
 }
@@ -247,7 +286,6 @@ AlirValue* alir_gen_binary_op(AlirCtx *ctx, BinaryOpNode *bn) {
     AlirValue *l = alir_gen_expr(ctx, bn->left);
     AlirValue *r = alir_gen_expr(ctx, bn->right);
     
-    // Auto-promote
     if (l->type.base == TYPE_FLOAT || r->type.base == TYPE_FLOAT) {
         l = promote(ctx, l, (VarType){TYPE_FLOAT, 0});
         r = promote(ctx, r, (VarType){TYPE_FLOAT, 0});
@@ -261,7 +299,6 @@ AlirValue* alir_gen_binary_op(AlirCtx *ctx, BinaryOpNode *bn) {
         case TOKEN_SLASH: op = ALIR_OP_DIV; break;
         case TOKEN_EQ: op = ALIR_OP_EQ; break;
         case TOKEN_LT: op = ALIR_OP_LT; break;
-        // ... (Others mapped similarly)
     }
     
     AlirValue *dest = new_temp(ctx, l->type);
@@ -269,11 +306,9 @@ AlirValue* alir_gen_binary_op(AlirCtx *ctx, BinaryOpNode *bn) {
     return dest;
 }
 
-// Standard call generation (exposed via forward decl if needed)
 AlirValue* alir_gen_call_std(AlirCtx *ctx, CallNode *cn) {
     AlirInst *call = mk_inst(ALIR_OP_CALL, NULL, alir_val_var(cn->name), NULL);
     
-    // Count args
     int count = 0; ASTNode *a = cn->args; while(a) { count++; a=a->next; }
     call->arg_count = count;
     call->args = malloc(sizeof(AlirValue*) * count);
@@ -290,9 +325,7 @@ AlirValue* alir_gen_call_std(AlirCtx *ctx, CallNode *cn) {
     return dest;
 }
 
-// Smart wrapper for call generation that detects Constructors
 AlirValue* alir_gen_call(AlirCtx *ctx, CallNode *cn) {
-    // Check if this is a class instantiation
     if (alir_find_struct(ctx->module, cn->name)) {
         return alir_lower_new_object(ctx, cn->name, cn->args);
     }
@@ -300,11 +333,10 @@ AlirValue* alir_gen_call(AlirCtx *ctx, CallNode *cn) {
 }
 
 AlirValue* alir_gen_method_call(AlirCtx *ctx, MethodCallNode *mc) {
-    // 1. Calculate 'this' pointer
     AlirValue *this_ptr = alir_gen_addr(ctx, mc->object);
     if (!this_ptr) this_ptr = alir_gen_expr(ctx, mc->object); 
 
-    // 2. Resolve Name (Mangle: Class_Method)
+    // Mangle: Class_Method
     VarType obj_t = alir_calc_type(ctx, mc->object);
     char func_name[256];
     if (obj_t.class_name) snprintf(func_name, 256, "%s_%s", obj_t.class_name, mc->method_name);
@@ -312,7 +344,6 @@ AlirValue* alir_gen_method_call(AlirCtx *ctx, MethodCallNode *mc) {
 
     AlirInst *call = mk_inst(ALIR_OP_CALL, NULL, alir_val_var(func_name), NULL);
     
-    // 3. Prepare Args (prepend 'this')
     int count = 0; ASTNode *a = mc->args; while(a) { count++; a=a->next; }
     call->arg_count = count + 1;
     call->args = malloc(sizeof(AlirValue*) * (count + 1));
@@ -340,7 +371,7 @@ AlirValue* alir_gen_expr(AlirCtx *ctx, ASTNode *node) {
         case NODE_ARRAY_ACCESS: return alir_gen_access(ctx, node);
         case NODE_CALL: return alir_gen_call(ctx, (CallNode*)node);
         case NODE_METHOD_CALL: return alir_gen_method_call(ctx, (MethodCallNode*)node);
-        // ... (Unary, Cast, etc)
+        case NODE_TRAIT_ACCESS: return alir_gen_trait_access(ctx, (TraitAccessNode*)node);
         default: return NULL;
     }
 }
@@ -352,18 +383,15 @@ void alir_gen_switch(AlirCtx *ctx, SwitchNode *sn) {
     
     if (sn->default_case) default_bb = alir_add_block(ctx->current_func, "switch_default");
 
-    // Create Switch Instruction
     AlirInst *sw = mk_inst(ALIR_OP_SWITCH, NULL, cond, alir_val_label(default_bb->label));
     sw->cases = NULL;
     AlirSwitchCase **tail = &sw->cases;
 
-    // Pre-scan cases to build jump table
     ASTNode *c = sn->cases;
     while(c) {
         CaseNode *cn = (CaseNode*)c;
         AlirBlock *case_bb = alir_add_block(ctx->current_func, "case");
         
-        // Add to instruction list
         AlirSwitchCase *sc = calloc(1, sizeof(AlirSwitchCase));
         sc->label = case_bb->label;
         if (cn->value->type == NODE_LITERAL) 
@@ -374,15 +402,12 @@ void alir_gen_switch(AlirCtx *ctx, SwitchNode *sn) {
         
         c = c->next;
     }
-    emit(ctx, sw); // Emit switch at end of current block
+    emit(ctx, sw); 
 
-    // Generate Bodies
     c = sn->cases;
     AlirSwitchCase *sc_iter = sw->cases;
     while(c) {
         CaseNode *cn = (CaseNode*)c;
-        
-        // Find the block we assigned
         AlirBlock *case_bb = NULL;
         AlirBlock *search = ctx->current_func->blocks;
         while(search) { 
@@ -391,7 +416,7 @@ void alir_gen_switch(AlirCtx *ctx, SwitchNode *sn) {
         }
         
         ctx->current_block = case_bb;
-        push_loop(ctx, NULL, end_bb); // Break inside switch goes to end
+        push_loop(ctx, NULL, end_bb);
         
         ASTNode *stmt = cn->body;
         while(stmt) { alir_gen_stmt(ctx, stmt); stmt = stmt->next; }
@@ -399,7 +424,6 @@ void alir_gen_switch(AlirCtx *ctx, SwitchNode *sn) {
         if (!cn->is_leak) emit(ctx, mk_inst(ALIR_OP_BR, NULL, alir_val_label(end_bb->label), NULL));
         
         pop_loop(ctx);
-        
         c = c->next;
         sc_iter = sc_iter->next;
     }
@@ -458,7 +482,6 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
         }
         case NODE_CALL: alir_gen_expr(ctx, node); break;
         case NODE_IF: {
-            // Basic If Implementation (re-implementation for completeness)
             IfNode *in = (IfNode*)node;
             AlirValue *cond = alir_gen_expr(ctx, in->condition);
             AlirBlock *then_bb = alir_add_block(ctx->current_func, "then");
@@ -494,7 +517,7 @@ AlirModule* alir_generate(ASTNode *root) {
     memset(&ctx, 0, sizeof(AlirCtx));
     ctx.module = alir_create_module("main_module");
     
-    // 1. SCAN AND REGISTER CLASSES (The new smart pass)
+    // 1. SCAN AND REGISTER CLASSES (Flattening included)
     alir_scan_and_register_classes(&ctx, root);
     
     // 2. GEN FUNCTIONS
@@ -511,7 +534,7 @@ AlirModule* alir_generate(ASTNode *root) {
                 p = p->next;
             }
 
-            // If function is external (no body), do not create entry blocks
+            // If function is external (no body), skip generation
             if (!fn->body) {
                 curr = curr->next;
                 continue;
@@ -521,8 +544,7 @@ AlirModule* alir_generate(ASTNode *root) {
             ctx.temp_counter = 0;
             ctx.symbols = NULL; 
             
-            // Setup Params allocation in ALIR logic
-            // Note: alir_add_symbol is for ALIR tracking, not just IR emission
+            // Setup Params allocation
             p = fn->params;
             while(p) {
                 AlirValue *ptr = new_temp(&ctx, p->type);
@@ -535,7 +557,6 @@ AlirModule* alir_generate(ASTNode *root) {
             while(stmt) { alir_gen_stmt(&ctx, stmt); stmt = stmt->next; }
         } else if (curr->type == NODE_NAMESPACE) {
              // Recursive scan for functions inside namespaces would go here
-             // simplified for flat list
         }
         curr = curr->next;
     }

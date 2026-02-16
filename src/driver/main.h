@@ -3,9 +3,9 @@
 
 #include <llvm-c/Core.h>
 #include <stdbool.h>
-#include "../semantic/semantic.h"
+#include "../.old/semantic/semantic.h"
+#include "../.old/codegen/codegen.h"
 #include "../parser/parser.h"
-#include "../codegen/codegen.h"
 #include "../compiler_debug/compiler_debug.h"
 #include "../alir/alir.h"
 
