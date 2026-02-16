@@ -23,10 +23,10 @@ typedef struct Symbol {
 typedef struct FuncSymbol {
     char *name;
     VarType ret_type;
-    VarType *param_types; // Added: for overload resolution checks in codegen
-    int param_count;      // Added
-    int is_flux;          // Added: Track if this is a generator
-    VarType yield_type;   // Added: Stores the original yield type for Flux functions
+    VarType *param_types; 
+    int param_count;      
+    int is_flux;          
+    VarType yield_type;   
     struct FuncSymbol *next;
 } FuncSymbol;
 
@@ -39,7 +39,6 @@ typedef struct ClassMember {
     struct ClassMember *next;
 } ClassMember;
 
-// Track where traits begin in the struct layout
 typedef struct TraitOffset {
     char *trait_name;
     int offset_index; 
@@ -51,19 +50,13 @@ typedef struct ClassInfo {
     char *parent_name; 
     LLVMTypeRef struct_type;
     ClassMember *members;
-    
-    // Trait Support
     char **trait_names;
     int trait_count;
     TraitOffset *trait_offsets;
-
-    // Metadata for reflection (hasmethod)
     char **method_names;
     int method_count;
-    
-    int is_extern; // Supports opaque types
-    int is_union;  // Support unions
-
+    int is_extern; 
+    int is_union;  
     struct ClassInfo *next;
 } ClassInfo;
 
@@ -86,6 +79,15 @@ typedef struct LoopContext {
   struct LoopContext *parent;
 } LoopContext;
 
+// FLUX STATE MACHINE STRUCTURES
+typedef struct FluxVar {
+    char *name;
+    LLVMTypeRef type;
+    VarType vtype;
+    int struct_index; // Index in the context struct
+    struct FluxVar *next;
+} FluxVar;
+
 typedef struct {
   LLVMModuleRef module;
   LLVMBuilderRef builder;
@@ -103,8 +105,7 @@ typedef struct {
   // For error reporting
   const char *source_code;
 
-  // these are builtins 
-  // as string compare need these
+  // Builtins 
   LLVMTypeRef printf_type;
   LLVMValueRef printf_func;
   LLVMValueRef input_func;
@@ -115,30 +116,17 @@ typedef struct {
   LLVMValueRef strlen_func;
   LLVMValueRef strcpy_func;
   LLVMValueRef strdup_func;
-  
-  // setjmp/longjmp support
   LLVMValueRef setjmp_func;
   LLVMValueRef longjmp_func;
 
-  // Flux / Generator Support (LLVM Coroutines)
-  LLVMValueRef flux_promise_val; // Pointer to the Promise alloca in current flux func
-  LLVMTypeRef flux_promise_type; // Explicit tracking of promise struct type (avoids opaque ptr issues)
-  LLVMValueRef flux_coro_hdl;    // Added: Current Coroutine Handle (i8*)
-  LLVMBasicBlockRef flux_return_block; // Cleanup block to jump to on return
-
-  // LLVM Coroutine Intrinsics
-  LLVMValueRef coro_id;
-  LLVMValueRef coro_size;
-  LLVMValueRef coro_begin;
-  LLVMValueRef coro_save;    // Added: llvm.coro.save
-  LLVMValueRef coro_suspend;
-  LLVMValueRef coro_end;
-  LLVMValueRef coro_free;
-  LLVMValueRef coro_resume;
-  LLVMValueRef coro_destroy;
-  LLVMValueRef coro_promise;
-  LLVMValueRef coro_done;
-
+  // --- FLUX / GENERATOR STATE MACHINE SUPPORT ---
+  int in_flux_resume;            // Flag: Are we currently generating the Resume body?
+  FluxVar *flux_vars;            // Linked list of lifted variables for current function
+  LLVMTypeRef flux_struct_type;  // The LLVM Struct Type for the context { state, finished, result, ... }
+  LLVMValueRef flux_ctx_ptr;     // Pointer to the context struct instance (this)
+  LLVMValueRef flux_resume_switch; // The main switch instruction for dispatching
+  int flux_yield_count;          // Counter to assign unique state IDs to yield points
+  
 } CodegenCtx;
 
 // --- Core API ---
@@ -162,8 +150,6 @@ int is_namespace(CodegenCtx *ctx, const char *name);
 void add_class_info(CodegenCtx *ctx, ClassInfo *ci);
 ClassInfo* find_class(CodegenCtx *ctx, const char *name);
 int get_member_index(ClassInfo *ci, const char *member, LLVMTypeRef *out_type, VarType *out_vtype);
-
-// FIX: Added ctx to signature to prevent NULL context crash during parent lookup
 int get_trait_offset(CodegenCtx *ctx, ClassInfo *ci, const char *trait_name);
 
 // Enum Helpers

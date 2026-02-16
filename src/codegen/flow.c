@@ -23,7 +23,6 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
   Parameter *p = node->params;
   while(p) { param_count++; p = p->next; }
   
-  // Method 'this' injection
   int total_params = param_count;
   if (node->class_name) total_params++;
   
@@ -44,7 +43,6 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
   LLVMTypeRef ret_type = get_llvm_type(ctx, node->ret_type);
   LLVMTypeRef func_type = LLVMFunctionType(ret_type, param_types, total_params, node->is_varargs);
   
-  // Use Mangled Name (if available) unless it is main
   const char *func_name = node->name;
   if (node->mangled_name && strcmp(node->name, "main") != 0) {
       func_name = node->mangled_name;
@@ -91,7 +89,6 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
     }
   } else {
      if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-      // Return Safe Zero Memory Representation for everything instead of just throwing i32 0. Fixes implicit fallback validation.
       LLVMBuildRet(ctx->builder, LLVMConstNull(ret_type));
     }
   }
@@ -100,7 +97,6 @@ void codegen_func_def(CodegenCtx *ctx, FuncDefNode *node) {
   if (prev_block) LLVMPositionBuilderAtEnd(ctx->builder, prev_block);
 }
 
-// loop [int] {}
 void codegen_loop(CodegenCtx *ctx, LoopNode *node) {
   LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
   LLVMBasicBlockRef cond_bb = LLVMAppendBasicBlock(func, "loop_cond");
@@ -143,7 +139,6 @@ void codegen_loop(CodegenCtx *ctx, LoopNode *node) {
   LLVMPositionBuilderAtEnd(ctx->builder, end_bb);
 }
 
-// while or while once
 void codegen_while(CodegenCtx *ctx, WhileNode *node) {
   LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
   LLVMBasicBlockRef cond_bb = LLVMAppendBasicBlock(func, "while_cond");
@@ -190,29 +185,17 @@ void codegen_while(CodegenCtx *ctx, WhileNode *node) {
   LLVMPositionBuilderAtEnd(ctx->builder, end_bb);
 }
 
-// switch ()
 void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
     LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
     LLVMValueRef cond = codegen_expr(ctx, node->condition);
     
-    // FIX: Safely promote small integers (i1, i8, i16) to i32 for the switch instruction.
-    // If the type is not integer (e.g. pointer/float), we attempt a safe cast or error out to avoid "promote operator" crash.
     if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMIntegerTypeKind) {
         unsigned width = LLVMGetIntTypeWidth(LLVMTypeOf(cond));
-        if (width < 32) {
-             cond = LLVMBuildZExt(ctx->builder, cond, LLVMInt32Type(), "switch_cond_prom");
-        }
+        if (width < 32) cond = LLVMBuildZExt(ctx->builder, cond, LLVMInt32Type(), "switch_cond_prom");
     } else {
-        // Fallback for non-integers (e.g. if semantic analysis failed)
-        // Check if pointer or float to avoid blind IntCast crash
-        if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMPointerTypeKind) {
-             cond = LLVMBuildPtrToInt(ctx->builder, cond, LLVMInt32Type(), "switch_ptr_cast");
-        } else if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMFloatTypeKind || LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMDoubleTypeKind) {
-             cond = LLVMBuildFPToSI(ctx->builder, cond, LLVMInt32Type(), "switch_fp_cast");
-        } else {
-             // Blind cast only if we can't determine better
-             cond = LLVMBuildIntCast(ctx->builder, cond, LLVMInt32Type(), "switch_cond_cast");
-        }
+        if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMPointerTypeKind) cond = LLVMBuildPtrToInt(ctx->builder, cond, LLVMInt32Type(), "switch_ptr_cast");
+        else if (LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMFloatTypeKind || LLVMGetTypeKind(LLVMTypeOf(cond)) == LLVMDoubleTypeKind) cond = LLVMBuildFPToSI(ctx->builder, cond, LLVMInt32Type(), "switch_fp_cast");
+        else cond = LLVMBuildIntCast(ctx->builder, cond, LLVMInt32Type(), "switch_cond_cast");
     }
 
     LLVMBasicBlockRef end_bb = LLVMAppendBasicBlock(func, "switch_end");
@@ -223,9 +206,7 @@ void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
     while(c) { case_count++; c = c->next; }
     
     LLVMBasicBlockRef *case_bbs = malloc(sizeof(LLVMBasicBlockRef) * case_count);
-    for(int i=0; i<case_count; i++) {
-        case_bbs[i] = LLVMAppendBasicBlock(func, "case_bb");
-    }
+    for(int i=0; i<case_count; i++) case_bbs[i] = LLVMAppendBasicBlock(func, "case_bb");
     
     LLVMValueRef switch_inst = LLVMBuildSwitch(ctx->builder, cond, default_bb, case_count);
     
@@ -234,25 +215,17 @@ void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
     while(c) {
         CaseNode *cn = (CaseNode*)c;
         LLVMValueRef val = codegen_expr(ctx, cn->value);
-        
-        // FIX: Ensure case values match the promoted condition type (i32)
         if (LLVMTypeOf(val) != LLVMTypeOf(cond)) {
-            // Case 1: Constant Integer (most common)
             if (LLVMIsConstant(val) && LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMIntegerTypeKind) {
                 unsigned long long raw_val = LLVMConstIntGetZExtValue(val);
                 val = LLVMConstInt(LLVMTypeOf(cond), raw_val, 0);
-            } 
-            // Case 2: BitCast fallback for non-constants or weird types.
-            // We removed explicit ConstZExt calls to avoid implicit declaration errors.
-            else {
+            } else {
                  if (LLVMGetIntTypeWidth(LLVMTypeOf(val)) == LLVMGetIntTypeWidth(LLVMTypeOf(cond))) {
                       val = LLVMConstBitCast(val, LLVMTypeOf(cond));
                  }
             }
         }
-        
         LLVMAddCase(switch_inst, val, case_bbs[i]);
-        
         LLVMPositionBuilderAtEnd(ctx->builder, case_bbs[i]);
         push_loop_ctx(ctx, NULL, end_bb); 
         codegen_node(ctx, cn->body);
@@ -260,18 +233,11 @@ void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
         
         if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
             if (cn->is_leak) {
-                if (i + 1 < case_count) {
-                    LLVMBuildBr(ctx->builder, case_bbs[i+1]);
-                } else {
-                    LLVMBuildBr(ctx->builder, default_bb);
-                }
-            } else {
-                LLVMBuildBr(ctx->builder, end_bb);
-            }
+                if (i + 1 < case_count) LLVMBuildBr(ctx->builder, case_bbs[i+1]);
+                else LLVMBuildBr(ctx->builder, default_bb);
+            } else LLVMBuildBr(ctx->builder, end_bb);
         }
-        
-        c = c->next;
-        i++;
+        c = c->next; i++;
     }
     free(case_bbs);
     
@@ -281,24 +247,18 @@ void codegen_switch(CodegenCtx *ctx, SwitchNode *node) {
         codegen_node(ctx, node->default_case);
         pop_loop_ctx(ctx);
     }
-    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        LLVMBuildBr(ctx->builder, end_bb);
-    }
+    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) LLVMBuildBr(ctx->builder, end_bb);
     
     LLVMPositionBuilderAtEnd(ctx->builder, end_bb);
 }
 
 void codegen_break(CodegenCtx *ctx) {
-    if (!ctx->current_loop) {
-        fprintf(stderr, "Error: 'break' outside of loop or switch\n");
-    }
+    if (!ctx->current_loop) { fprintf(stderr, "Error: 'break' outside of loop or switch\n"); exit(1); }
     LLVMBuildBr(ctx->builder, ctx->current_loop->break_target);
 }
 
 void codegen_continue(CodegenCtx *ctx) {
-    if (!ctx->current_loop || !ctx->current_loop->continue_target) {
-        fprintf(stderr, "Error: 'continue' outside of loop\n");
-    }
+    if (!ctx->current_loop || !ctx->current_loop->continue_target) { fprintf(stderr, "Error: 'continue' outside of loop\n"); exit(1); }
     LLVMBuildBr(ctx->builder, ctx->current_loop->continue_target);
 }
 
@@ -326,230 +286,256 @@ void codegen_if(CodegenCtx *ctx, IfNode *node) {
   LLVMPositionBuilderAtEnd(ctx->builder, merge_bb);
 }
 
-// --- FLUX (COROUTINE) CODE GENERATION ---
+// --- STATE MACHINE TRANSFORMATION (FLUX) ---
+
+void collect_flux_variables(CodegenCtx *ctx, ASTNode *node, int *struct_idx) {
+    if (!node) return;
+    
+    if (node->type == NODE_VAR_DECL) {
+        VarDeclNode *vd = (VarDeclNode*)node;
+        FluxVar *fv = malloc(sizeof(FluxVar));
+        fv->name = strdup(vd->name);
+        fv->vtype = vd->var_type;
+        
+        if (vd->is_array) {
+             LLVMTypeRef et = get_llvm_type(ctx, vd->var_type);
+             unsigned int sz = 10;
+             if (vd->array_size && vd->array_size->type == NODE_LITERAL) sz = ((LiteralNode*)vd->array_size)->val.int_val;
+             fv->type = LLVMArrayType(et, sz);
+             fv->vtype.array_size = sz;
+        } else {
+             if (vd->var_type.base == TYPE_AUTO && vd->initializer) {
+                 fv->vtype = codegen_calc_type(ctx, vd->initializer);
+                 fv->type = get_llvm_type(ctx, fv->vtype);
+             } else {
+                 fv->type = get_llvm_type(ctx, vd->var_type);
+             }
+        }
+        
+        fv->struct_index = (*struct_idx)++;
+        fv->next = ctx->flux_vars;
+        ctx->flux_vars = fv;
+    }
+    
+    if (node->type == NODE_IF) {
+        collect_flux_variables(ctx, ((IfNode*)node)->then_body, struct_idx);
+        collect_flux_variables(ctx, ((IfNode*)node)->else_body, struct_idx);
+    } else if (node->type == NODE_LOOP) {
+        collect_flux_variables(ctx, ((LoopNode*)node)->body, struct_idx);
+    } else if (node->type == NODE_WHILE) {
+        collect_flux_variables(ctx, ((WhileNode*)node)->body, struct_idx);
+    } else if (node->type == NODE_SWITCH) {
+         ASTNode *c = ((SwitchNode*)node)->cases;
+         while(c) {
+             collect_flux_variables(ctx, ((CaseNode*)c)->body, struct_idx);
+             c = c->next;
+         }
+         collect_flux_variables(ctx, ((SwitchNode*)node)->default_case, struct_idx);
+    } else if (node->type == NODE_FOR_IN) {
+        ForInNode *fin = (ForInNode*)node;
+        FluxVar *fv = malloc(sizeof(FluxVar));
+        fv->name = strdup(fin->var_name);
+        fv->vtype = fin->iter_type;
+        fv->type = get_llvm_type(ctx, fin->iter_type);
+        fv->struct_index = (*struct_idx)++;
+        fv->next = ctx->flux_vars;
+        ctx->flux_vars = fv;
+        collect_flux_variables(ctx, fin->body, struct_idx);
+    }
+    
+    // Always recurse into siblings to ensure we catch all declarations in a block
+    collect_flux_variables(ctx, node->next, struct_idx);
+}
 
 void codegen_flux_def(CodegenCtx *ctx, FuncDefNode *node) {
+    const char *func_name = node->mangled_name ? node->mangled_name : node->name;
+    
+    // --- STEP 1: PREPARE CONTEXT STRUCT ---
+    // Layout: { i32 state, i1 finished, YieldType value, Params..., Locals... }
+    
+    ctx->flux_vars = NULL;
+    int struct_idx = 3; 
+    
     int param_count = 0;
     Parameter *p = node->params;
     while(p) { param_count++; p = p->next; }
+    int total_params = param_count;
+    if (node->class_name) total_params++; 
     
-    // Create Promise Type: { i1 finished, YieldType val }
-    LLVMTypeRef yield_type = get_llvm_type(ctx, node->ret_type);
-    LLVMTypeRef promise_struct_elems[] = { LLVMInt1Type(), yield_type };
-    LLVMTypeRef promise_type = LLVMStructType(promise_struct_elems, 2, false);
+    int start_locals_idx = struct_idx + total_params;
+    int current_idx = start_locals_idx;
+    collect_flux_variables(ctx, node->body, &current_idx);
     
-    // Function signature: Returns i8* (coroutine handle)
-    LLVMTypeRef *param_types = malloc(sizeof(LLVMTypeRef) * param_count);
+    int field_count = current_idx;
+    LLVMTypeRef *elem_types = malloc(sizeof(LLVMTypeRef) * field_count);
+    
+    elem_types[0] = LLVMInt32Type(); // state
+    elem_types[1] = LLVMInt1Type();  // finished
+    elem_types[2] = get_llvm_type(ctx, node->ret_type); // yield result
+    
+    int p_idx = 3;
+    if (node->class_name) {
+        ClassInfo *ci = find_class(ctx, node->class_name);
+        elem_types[p_idx++] = LLVMPointerType(ci->struct_type, 0);
+    }
     p = node->params;
-    int idx = 0;
-    for(int i=0; i<param_count; i++) {
-        param_types[i] = get_llvm_type(ctx, p->type);
+    while(p) {
+        elem_types[p_idx++] = get_llvm_type(ctx, p->type);
         p = p->next;
     }
-    LLVMTypeRef func_type = LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), param_types, param_count, false);
     
-    const char *func_name = node->mangled_name ? node->mangled_name : node->name;
-    LLVMValueRef func = LLVMAddFunction(ctx->module, func_name, func_type);
-    free(param_types);
-
-    // Basic Blocks
-    LLVMBasicBlockRef entry = LLVMAppendBasicBlock(func, "entry");
-    LLVMBasicBlockRef begin_bb = LLVMAppendBasicBlock(func, "begin");
-    LLVMBasicBlockRef cleanup_bb = LLVMAppendBasicBlock(func, "cleanup");
-    LLVMBasicBlockRef suspend_bb = LLVMAppendBasicBlock(func, "suspend");
-    LLVMBasicBlockRef body_bb = LLVMAppendBasicBlock(func, "body");
+    FluxVar *fv = ctx->flux_vars;
+    while(fv) {
+        elem_types[fv->struct_index] = fv->type;
+        fv = fv->next;
+    }
     
-    LLVMPositionBuilderAtEnd(ctx->builder, entry);
+    // Create Unique Struct Name for this generator
+    char struct_name[256];
+    snprintf(struct_name, 256, "FluxCtx_%s", func_name);
+    LLVMTypeRef ctx_struct_type = LLVMStructCreateNamed(LLVMGetGlobalContext(), struct_name);
+    LLVMStructSetBody(ctx_struct_type, elem_types, field_count, false);
+    free(elem_types);
     
-    // 1. Setup Promise and Coro ID
-    LLVMValueRef promise = LLVMBuildAlloca(ctx->builder, promise_type, "promise");
-    LLVMValueRef null_ptr = LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0));
-    LLVMValueRef promise_ptr = LLVMBuildBitCast(ctx->builder, promise, LLVMPointerType(LLVMInt8Type(), 0), "promise_void");
-    
-    // llvm.coro.id(align, promise, null, null) -> token
-    LLVMTypeRef id_arg_types[] = { LLVMInt32Type(), LLVMPointerType(LLVMInt8Type(), 0), LLVMPointerType(LLVMInt8Type(), 0), LLVMPointerType(LLVMInt8Type(), 0) };
-    LLVMTypeRef id_func_type = LLVMFunctionType(LLVMTokenTypeInContext(LLVMGetGlobalContext()), id_arg_types, 4, false);
-    
-    LLVMValueRef id_args[] = { 
-        LLVMConstInt(LLVMInt32Type(), 0, 0), 
-        promise_ptr, 
-        null_ptr, 
-        null_ptr 
-    };
-    LLVMValueRef id = LLVMBuildCall2(ctx->builder, id_func_type, ctx->coro_id, id_args, 4, "id");
-    
-    // 2. Allocation Logic
-    // llvm.coro.size.i64() -> i64
-    LLVMTypeRef size_func_type = LLVMFunctionType(LLVMInt64Type(), NULL, 0, false);
-    LLVMValueRef size = LLVMBuildCall2(ctx->builder, size_func_type, ctx->coro_size, NULL, 0, "size");
-    
-    LLVMValueRef mem = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->malloc_func), ctx->malloc_func, &size, 1, "mem");
-    LLVMBuildBr(ctx->builder, begin_bb);
-    
-    LLVMPositionBuilderAtEnd(ctx->builder, begin_bb);
-    
-    // 3. Coro Begin
-    // llvm.coro.begin(token, i8*) -> i8*
-    LLVMTypeRef begin_arg_types[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMPointerType(LLVMInt8Type(), 0) };
-    LLVMTypeRef begin_func_type = LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), begin_arg_types, 2, false);
-    
-    LLVMValueRef begin_args[] = { id, mem };
-    LLVMValueRef hdl = LLVMBuildCall2(ctx->builder, begin_func_type, ctx->coro_begin, begin_args, 2, "hdl");
-    
-    // STORE HDL for emit/return/suspend
-    ctx->flux_coro_hdl = hdl;
-
-    // 4. Params to Locals
-    Symbol *saved_syms = ctx->symbols;
+    // --- STEP 2: GENERATE INIT FUNCTION ---
+    LLVMTypeRef *init_param_types = malloc(sizeof(LLVMTypeRef) * total_params);
+    p_idx = 0;
+    if (node->class_name) {
+         ClassInfo *ci = find_class(ctx, node->class_name);
+         init_param_types[p_idx++] = LLVMPointerType(ci->struct_type, 0);
+    }
     p = node->params;
-    for(int i=0; i<param_count; i++) {
-        LLVMValueRef arg = LLVMGetParam(func, i);
-        LLVMTypeRef pt = get_llvm_type(ctx, p->type);
-        LLVMValueRef alloca = LLVMBuildAlloca(ctx->builder, pt, p->name);
-        LLVMBuildStore(ctx->builder, arg, alloca);
-        add_symbol(ctx, p->name, alloca, pt, p->type, 0, 1);
+    while(p) {
+        init_param_types[p_idx++] = get_llvm_type(ctx, p->type);
         p = p->next;
     }
+    
+    LLVMTypeRef init_func_type = LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), init_param_types, total_params, false);
+    LLVMValueRef init_func = LLVMAddFunction(ctx->module, func_name, init_func_type);
+    
+    LLVMBasicBlockRef init_entry = LLVMAppendBasicBlock(init_func, "entry");
+    LLVMPositionBuilderAtEnd(ctx->builder, init_entry);
+    
+    LLVMValueRef size = LLVMSizeOf(ctx_struct_type);
+    LLVMValueRef mem = LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->malloc_func), ctx->malloc_func, &size, 1, "ctx_mem");
+    LLVMValueRef ctx_ptr = LLVMBuildBitCast(ctx->builder, mem, LLVMPointerType(ctx_struct_type, 0), "ctx_ptr");
+    
+    LLVMValueRef state_ptr = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, ctx_ptr, 0, "state_ptr");
+    LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt32Type(), 0, 0), state_ptr);
+    
+    LLVMValueRef fin_ptr = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, ctx_ptr, 1, "fin_ptr");
+    LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt1Type(), 0, 0), fin_ptr);
+    
+    p_idx = 3;
+    if (node->class_name) {
+        LLVMValueRef this_val = LLVMGetParam(init_func, 0);
+        LLVMValueRef p_ptr = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, ctx_ptr, p_idx++, "this_store");
+        LLVMBuildStore(ctx->builder, this_val, p_ptr);
+    }
+    p = node->params;
+    int arg_offset = node->class_name ? 1 : 0;
+    while(p) {
+        LLVMValueRef arg_val = LLVMGetParam(init_func, arg_offset++);
+        LLVMValueRef p_ptr = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, ctx_ptr, p_idx++, "param_store");
+        LLVMBuildStore(ctx->builder, arg_val, p_ptr);
+        p = p->next;
+    }
+    
+    LLVMBuildRet(ctx->builder, mem);
+    free(init_param_types);
+    
+    // --- STEP 3: GENERATE RESUME FUNCTION ---
+    char resume_name[512];
+    sprintf(resume_name, "%s_Resume", func_name);
+    
+    LLVMTypeRef resume_arg_types[] = { LLVMPointerType(LLVMInt8Type(), 0) };
+    LLVMTypeRef resume_func_type = LLVMFunctionType(LLVMVoidType(), resume_arg_types, 1, false);
+    LLVMValueRef resume_func = LLVMAddFunction(ctx->module, resume_name, resume_func_type);
+    
+    LLVMBasicBlockRef res_entry = LLVMAppendBasicBlock(resume_func, "entry");
+    LLVMPositionBuilderAtEnd(ctx->builder, res_entry);
+    
+    LLVMValueRef void_ctx = LLVMGetParam(resume_func, 0);
+    ctx->flux_ctx_ptr = LLVMBuildBitCast(ctx->builder, void_ctx, LLVMPointerType(ctx_struct_type, 0), "ctx");
+    ctx->flux_struct_type = ctx_struct_type;
+    
+    LLVMValueRef state_addr = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, ctx->flux_ctx_ptr, 0, "state_addr");
+    LLVMValueRef current_state = LLVMBuildLoad2(ctx->builder, LLVMInt32Type(), state_addr, "state");
+    
+    // Populate symbol table with GEPs *BEFORE* building the switch terminator
+    Symbol *saved_scope = ctx->symbols;
+    
+    p_idx = 3;
+    if (node->class_name) {
+        LLVMValueRef p_gep = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, ctx->flux_ctx_ptr, p_idx++, "this");
+        VarType this_vt = {TYPE_CLASS, 1, strdup(node->class_name)};
+        add_symbol(ctx, "this", p_gep, LLVMPointerType(find_class(ctx, node->class_name)->struct_type, 0), this_vt, 0, 0);
+    }
+    p = node->params;
+    while(p) {
+        LLVMValueRef p_gep = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, ctx->flux_ctx_ptr, p_idx++, p->name);
+        add_symbol(ctx, p->name, p_gep, get_llvm_type(ctx, p->type), p->type, 0, 1);
+        p = p->next;
+    }
+    
+    FluxVar *fv_iter = ctx->flux_vars;
+    while(fv_iter) {
+        LLVMValueRef l_gep = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, ctx->flux_ctx_ptr, fv_iter->struct_index, fv_iter->name);
+        add_symbol(ctx, fv_iter->name, l_gep, fv_iter->type, fv_iter->vtype, fv_iter->vtype.array_size > 0, 1);
+        fv_iter = fv_iter->next;
+    }
 
-    // 5. Initial Suspend
+    // NOW build the terminator
+    LLVMBasicBlockRef start_bb = LLVMAppendBasicBlock(resume_func, "start");
+    LLVMBasicBlockRef end_bb = LLVMAppendBasicBlock(resume_func, "end_flux"); 
     
-    // llvm.coro.save(i8*) -> token
-    LLVMTypeRef save_arg_types[] = { LLVMPointerType(LLVMInt8Type(), 0) };
-    LLVMTypeRef save_func_type = LLVMFunctionType(LLVMTokenTypeInContext(LLVMGetGlobalContext()), save_arg_types, 1, false);
-
-    LLVMValueRef save_hdl_args[] = { hdl };
-    LLVMValueRef save_tok = LLVMBuildCall2(ctx->builder, save_func_type, ctx->coro_save, save_hdl_args, 1, "save_tok");
+    ctx->flux_resume_switch = LLVMBuildSwitch(ctx->builder, current_state, end_bb, 10);
+    LLVMAddCase(ctx->flux_resume_switch, LLVMConstInt(LLVMInt32Type(), 0, 0), start_bb);
     
-    // llvm.coro.suspend(token, i1) -> i8
-    LLVMTypeRef suspend_arg_types[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMInt1Type() };
-    LLVMTypeRef suspend_func_type = LLVMFunctionType(LLVMInt8Type(), suspend_arg_types, 2, false);
-
-    LLVMValueRef suspend_args[] = { save_tok, LLVMConstInt(LLVMInt1Type(), 0, 0) }; // false = final? no
-    LLVMValueRef suspend_res = LLVMBuildCall2(ctx->builder, suspend_func_type, ctx->coro_suspend, suspend_args, 2, "initial_suspend");
+    LLVMPositionBuilderAtEnd(ctx->builder, start_bb);
+    ctx->in_flux_resume = 1;
+    ctx->flux_yield_count = 1; 
     
-    // FIX: Promote i8 result to i32 for switch instruction (prevents crash on some backends)
-    LLVMValueRef suspend_res_32 = LLVMBuildZExt(ctx->builder, suspend_res, LLVMInt32Type(), "suspend_res_prom");
-
-    LLVMValueRef sw = LLVMBuildSwitch(ctx->builder, suspend_res_32, suspend_bb, 2);
-    LLVMAddCase(sw, LLVMConstInt(LLVMInt32Type(), 0, 0), body_bb);
-    LLVMAddCase(sw, LLVMConstInt(LLVMInt32Type(), 1, 0), cleanup_bb);
-    
-    // Suspend Path: Return handle
-    LLVMPositionBuilderAtEnd(ctx->builder, suspend_bb);
-    LLVMBuildRet(ctx->builder, hdl);
-    
-    // Cleanup Path
-    LLVMPositionBuilderAtEnd(ctx->builder, cleanup_bb);
-    
-    // llvm.coro.free(token, i8*) -> i8*
-    LLVMTypeRef free_arg_types[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMPointerType(LLVMInt8Type(), 0) };
-    LLVMTypeRef free_func_type = LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), free_arg_types, 2, false);
-
-    LLVMValueRef free_args[] = { id, hdl };
-    LLVMValueRef mem_to_free = LLVMBuildCall2(ctx->builder, free_func_type, ctx->coro_free, free_args, 2, "mem_free");
-    
-    LLVMValueRef free_call_args[] = { mem_to_free };
-    LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->free_func), ctx->free_func, free_call_args, 1, "");
-
-    // llvm.coro.end(i8*, i1, token) -> i1
-    // FIX: Match the non-vararg 3-argument signature returning i1 (boolean)
-    LLVMTypeRef end_arg_types[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMInt1Type(), LLVMTokenTypeInContext(LLVMGetGlobalContext()) };
-    LLVMTypeRef end_func_type = LLVMFunctionType(LLVMInt1Type(), end_arg_types, 3, false);
-    
-    // CRITICAL FIX: Pass 'id' token instead of null token when inside coroutine
-    LLVMValueRef end_args_call[] = { hdl, LLVMConstInt(LLVMInt1Type(), 0, 0), id };
-    LLVMBuildCall2(ctx->builder, end_func_type, ctx->coro_end, end_args_call, 3, "coro_end_val");
-
-    LLVMBuildRet(ctx->builder, LLVMConstPointerNull(LLVMPointerType(LLVMInt8Type(), 0))); 
-    
-    // Body Path
-    LLVMPositionBuilderAtEnd(ctx->builder, body_bb);
-    
-    // Save Promise context for emit/return
-    ctx->flux_promise_val = promise;
-    ctx->flux_promise_type = promise_type; 
-    ctx->flux_return_block = cleanup_bb; 
-
     codegen_node(ctx, node->body);
     
-    // Fallthrough: Implicit Return
+    // Implicit return/finish
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        LLVMValueRef finished_ptr = LLVMBuildStructGEP2(ctx->builder, promise_type, promise, 0, "finished_ptr");
-        LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt1Type(), 1, 0), finished_ptr);
-        
-        // Final Suspend
-        // SAVE TOKEN
-        LLVMValueRef final_save_args[] = { hdl };
-        LLVMValueRef final_save = LLVMBuildCall2(ctx->builder, save_func_type, ctx->coro_save, final_save_args, 1, "final_save");
-
-        LLVMValueRef final_suspend_args[] = { final_save, LLVMConstInt(LLVMInt1Type(), 1, 0) }; // true = final
-        LLVMValueRef final_res = LLVMBuildCall2(ctx->builder, suspend_func_type, ctx->coro_suspend, final_suspend_args, 2, "final_suspend");
-        
-        // FIX: Promote to i32 for switch
-        LLVMValueRef final_res_32 = LLVMBuildZExt(ctx->builder, final_res, LLVMInt32Type(), "fin_res_prom");
-
-        LLVMBasicBlockRef fin_suspend_bb = LLVMAppendBasicBlock(func, "fin_suspend");
-        LLVMValueRef final_sw = LLVMBuildSwitch(ctx->builder, final_res_32, fin_suspend_bb, 2);
-        LLVMAddCase(final_sw, LLVMConstInt(LLVMInt32Type(), 0, 0), cleanup_bb);
-        LLVMAddCase(final_sw, LLVMConstInt(LLVMInt32Type(), 1, 0), cleanup_bb);
-        
-        LLVMPositionBuilderAtEnd(ctx->builder, fin_suspend_bb);
-        LLVMBuildRet(ctx->builder, hdl);
+        LLVMValueRef fin_addr = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, ctx->flux_ctx_ptr, 1, "fin_addr");
+        LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt1Type(), 1, 0), fin_addr);
+        LLVMBuildRetVoid(ctx->builder);
     }
-
-    ctx->symbols = saved_syms;
-    ctx->flux_promise_val = NULL;
-    ctx->flux_promise_type = NULL;
-    ctx->flux_return_block = NULL;
-    ctx->flux_coro_hdl = NULL;
+    
+    LLVMPositionBuilderAtEnd(ctx->builder, end_bb);
+    LLVMBuildRetVoid(ctx->builder);
+    
+    ctx->symbols = saved_scope;
+    ctx->in_flux_resume = 0;
+    ctx->flux_vars = NULL; 
+    ctx->flux_struct_type = NULL;
+    ctx->flux_ctx_ptr = NULL;
+    ctx->flux_resume_switch = NULL;
 }
 
 void codegen_emit(CodegenCtx *ctx, EmitNode *node) {
-    if (!ctx->flux_promise_val) {
-        codegen_error(ctx, (ASTNode*)node, "emit used outside of flux function");
+    if (!ctx->in_flux_resume) {
+        codegen_error(ctx, (ASTNode*)node, "emit used outside of flux context");
     }
 
     LLVMValueRef val = codegen_expr(ctx, node->value);
+    LLVMValueRef res_ptr = LLVMBuildStructGEP2(ctx->builder, ctx->flux_struct_type, ctx->flux_ctx_ptr, 2, "res_ptr");
+    LLVMBuildStore(ctx->builder, val, res_ptr);
     
-    // 1. Store value in promise
-    LLVMTypeRef promise_type = ctx->flux_promise_type; 
-    LLVMValueRef val_ptr = LLVMBuildStructGEP2(ctx->builder, promise_type, ctx->flux_promise_val, 1, "val_ptr");
-    LLVMBuildStore(ctx->builder, val, val_ptr);
+    int next_state = ctx->flux_yield_count++;
+    LLVMValueRef state_ptr = LLVMBuildStructGEP2(ctx->builder, ctx->flux_struct_type, ctx->flux_ctx_ptr, 0, "state_ptr");
+    LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt32Type(), next_state, 0), state_ptr);
     
-    // 2. Set finished = false
-    LLVMValueRef fin_ptr = LLVMBuildStructGEP2(ctx->builder, promise_type, ctx->flux_promise_val, 0, "fin_ptr");
-    LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt1Type(), 0, 0), fin_ptr);
+    LLVMBuildRetVoid(ctx->builder);
     
-    // 3. Suspend
-    // SAVE TOKEN from current hdl
-    LLVMTypeRef save_arg_types[] = { LLVMPointerType(LLVMInt8Type(), 0) };
-    LLVMTypeRef save_func_type = LLVMFunctionType(LLVMTokenTypeInContext(LLVMGetGlobalContext()), save_arg_types, 1, false);
-
-    LLVMValueRef save_args[] = { ctx->flux_coro_hdl };
-    LLVMValueRef save_tok = LLVMBuildCall2(ctx->builder, save_func_type, ctx->coro_save, save_args, 1, "emit_save");
-
-    LLVMTypeRef suspend_arg_types[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMInt1Type() };
-    LLVMTypeRef suspend_func_type = LLVMFunctionType(LLVMInt8Type(), suspend_arg_types, 2, false);
-
-    LLVMValueRef suspend_args[] = { save_tok, LLVMConstInt(LLVMInt1Type(), 0, 0) };
-    LLVMValueRef suspend_res = LLVMBuildCall2(ctx->builder, suspend_func_type, ctx->coro_suspend, suspend_args, 2, "yield_suspend");
-    
-    // FIX: Promote to i32 for switch
-    LLVMValueRef suspend_res_32 = LLVMBuildZExt(ctx->builder, suspend_res, LLVMInt32Type(), "emit_res_prom");
-
     LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
-    LLVMBasicBlockRef resume_bb = LLVMAppendBasicBlock(func, "after_yield");
-    LLVMBasicBlockRef suspend_ret_bb = LLVMAppendBasicBlock(func, "suspend_ret");
-
-    LLVMValueRef sw = LLVMBuildSwitch(ctx->builder, suspend_res_32, suspend_ret_bb, 2);
-    LLVMAddCase(sw, LLVMConstInt(LLVMInt32Type(), 0, 0), resume_bb);
-    LLVMAddCase(sw, LLVMConstInt(LLVMInt32Type(), 1, 0), ctx->flux_return_block);
-
-    // Suspend Path: Return Handle
-    LLVMPositionBuilderAtEnd(ctx->builder, suspend_ret_bb);
-    LLVMBuildRet(ctx->builder, ctx->flux_coro_hdl);
-
-    // Resume Path
+    char bb_name[32]; sprintf(bb_name, "resume_%d", next_state);
+    LLVMBasicBlockRef resume_bb = LLVMAppendBasicBlock(func, bb_name);
+    
+    LLVMAddCase(ctx->flux_resume_switch, LLVMConstInt(LLVMInt32Type(), next_state, 0), resume_bb);
     LLVMPositionBuilderAtEnd(ctx->builder, resume_bb);
 }
 
@@ -557,43 +543,30 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
     LLVMValueRef col = codegen_expr(ctx, node->collection);
     VarType col_type = codegen_calc_type(ctx, node->collection);
     
+    int is_flux = 0;
+    
+    // Check Primitive Types first to restore functionality
+    if (col_type.base == TYPE_STRING || (col_type.base == TYPE_CHAR && col_type.ptr_depth == 1) || 
+       (col_type.base == TYPE_INT && col_type.array_size == 0 && col_type.ptr_depth == 0)) {
+        is_flux = 0;
+    } else {
+        is_flux = 1;
+    }
+    
     LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
     LLVMBasicBlockRef cond_bb = LLVMAppendBasicBlock(func, "for_cond");
     LLVMBasicBlockRef body_bb = LLVMAppendBasicBlock(func, "for_body");
     LLVMBasicBlockRef end_bb = LLVMAppendBasicBlock(func, "for_end");
     
-    // Iterate Logic
-    int is_flux = 0;
-    
-    // Detect if collection is a flux generator call
     LLVMValueRef iter_ptr = NULL;
-    LLVMValueRef flux_hdl = NULL;
-
-    VarType iter_alk_type = node->iter_type;
-    
-    if (node->collection->type == NODE_CALL) {
-        CallNode *cn = (CallNode*)node->collection;
-        const char *fname = cn->mangled_name ? cn->mangled_name : cn->name;
-        FuncSymbol *fs = find_func_symbol(ctx, fname);
-        if (fs && fs->is_flux) {
-             is_flux = 1;
-             flux_hdl = col;
-             iter_alk_type = fs->yield_type;
-        }
-    }
     
     if (!is_flux) {
-        if (col_type.base == TYPE_STRING || (col_type.base == TYPE_CHAR && col_type.ptr_depth == 1)) {
-            iter_ptr = LLVMBuildAlloca(ctx->builder, LLVMPointerType(LLVMInt8Type(), 0), "str_iter");
-            LLVMBuildStore(ctx->builder, col, iter_ptr);
-        } else if (col_type.base == TYPE_INT && col_type.array_size == 0 && col_type.ptr_depth == 0) {
-            // Range
+        if (col_type.base == TYPE_INT) {
             iter_ptr = LLVMBuildAlloca(ctx->builder, LLVMInt64Type(), "range_i");
             LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt64Type(), 0, 0), iter_ptr);
         } else {
-            // Flux Generator Fallback (variable handle etc.)
-            is_flux = 1;
-            flux_hdl = col; // The handle
+            iter_ptr = LLVMBuildAlloca(ctx->builder, LLVMPointerType(LLVMInt8Type(), 0), "str_iter");
+            LLVMBuildStore(ctx->builder, col, iter_ptr);
         }
     }
     
@@ -602,54 +575,69 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
     
     LLVMValueRef current_val = NULL;
     LLVMValueRef condition = NULL;
-    
+    VarType yield_vt = node->iter_type; // Default to semantic type
+
     if (is_flux) {
-        // Resume
-        // llvm.coro.resume(i8*) -> void
-        LLVMTypeRef resume_arg_types[] = { LLVMPointerType(LLVMInt8Type(), 0) };
-        LLVMTypeRef resume_func_type = LLVMFunctionType(LLVMVoidType(), resume_arg_types, 1, false);
+        // --- FLUX ITERATION ---
+        
+        // 1. Identify Resume Function Name
+        char resume_name[512];
+        if (node->collection->type == NODE_CALL) {
+            CallNode *cn = (CallNode*)node->collection;
+            const char *fname = cn->mangled_name ? cn->mangled_name : cn->name;
+            sprintf(resume_name, "%s_Resume", fname);
+            
+            // Refine yield type from symbol
+            FuncSymbol *fs = find_func_symbol(ctx, fname);
+            if (fs && fs->is_flux) {
+                yield_vt = fs->yield_type;
+            }
+        } else {
+            codegen_error(ctx, (ASTNode*)node, "Direct iteration only supported on generator calls for now");
+        }
+        
+        LLVMValueRef resume_func = LLVMGetNamedFunction(ctx->module, resume_name);
+        if (!resume_func) {
+            char msg[512]; sprintf(msg, "Resume function '%s' not found", resume_name);
+            codegen_error(ctx, (ASTNode*)node, msg);
+        }
 
-        LLVMValueRef res_args[] = { flux_hdl };
-        LLVMBuildCall2(ctx->builder, resume_func_type, ctx->coro_resume, res_args, 1, "");
+        // 2. Call Resume(ctx)
+        LLVMValueRef void_ctx = LLVMBuildBitCast(ctx->builder, col, LLVMPointerType(LLVMInt8Type(), 0), "ctx_void");
+        LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(resume_func), resume_func, &void_ctx, 1, "");
         
-        // Access Promise
-        LLVMTypeRef val_type = get_llvm_type(ctx, iter_alk_type);
-        LLVMTypeRef prom_struct_elems[] = { LLVMInt1Type(), val_type };
-        LLVMTypeRef prom_type = LLVMStructType(prom_struct_elems, 2, false);
+        // 3. Inspect Status and Value manually (Bypass opaque FluxCtx)
+        // Construct Partial Struct: { i32, i1, YieldType }
         
-        // llvm.coro.promise(i8*, i32, i1) -> i8*
-        LLVMTypeRef prom_arg_types[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMInt32Type(), LLVMInt1Type() };
-        LLVMTypeRef prom_func_type = LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), prom_arg_types, 3, false);
-
-        LLVMValueRef align = LLVMConstInt(LLVMInt32Type(), 0, 0); // Alignment
-        LLVMValueRef from_hdl = LLVMConstInt(LLVMInt1Type(), 1, 0); // True
-        LLVMValueRef prom_args[] = { flux_hdl, align, from_hdl };
+        LLVMTypeRef llvm_yield_type = get_llvm_type(ctx, yield_vt);
         
-        LLVMValueRef prom_void_ptr = LLVMBuildCall2(ctx->builder, prom_func_type, ctx->coro_promise, prom_args, 3, "prom_ptr_void");
-        LLVMValueRef prom_ptr = LLVMBuildBitCast(ctx->builder, prom_void_ptr, LLVMPointerType(prom_type, 0), "prom_ptr");
+        LLVMTypeRef struct_elems[] = { LLVMInt32Type(), LLVMInt1Type(), llvm_yield_type };
+        LLVMTypeRef partial_struct = LLVMStructType(struct_elems, 3, false);
+        LLVMValueRef typed_ctx = LLVMBuildBitCast(ctx->builder, col, LLVMPointerType(partial_struct, 0), "typed_ctx");
         
         // Check Finished
-        LLVMValueRef fin_ptr = LLVMBuildStructGEP2(ctx->builder, prom_type, prom_ptr, 0, "fin_ptr");
-        LLVMValueRef is_finished = LLVMBuildLoad2(ctx->builder, LLVMInt1Type(), fin_ptr, "is_finished");
+        LLVMValueRef fin_addr = LLVMBuildStructGEP2(ctx->builder, partial_struct, typed_ctx, 1, "fin_addr");
+        LLVMValueRef finished = LLVMBuildLoad2(ctx->builder, LLVMInt1Type(), fin_addr, "finished");
         
-        // Loop condition: !finished
-        condition = LLVMBuildNot(ctx->builder, is_finished, "continue");
+        condition = LLVMBuildNot(ctx->builder, finished, "cont");
         
-        // Get Value
-        LLVMValueRef val_ptr = LLVMBuildStructGEP2(ctx->builder, prom_type, prom_ptr, 1, "val_ptr");
-        current_val = LLVMBuildLoad2(ctx->builder, val_type, val_ptr, "val");
-    } 
-    else if (col_type.base == TYPE_INT) {
-        LLVMValueRef idx = LLVMBuildLoad2(ctx->builder, LLVMInt64Type(), iter_ptr, "idx");
-        LLVMValueRef limit = LLVMBuildIntCast(ctx->builder, col, LLVMInt64Type(), "limit");
-        condition = LLVMBuildICmp(ctx->builder, LLVMIntSLT, idx, limit, "chk");
-        current_val = LLVMBuildIntCast(ctx->builder, idx, LLVMInt32Type(), "val");
-    }
-    else {
-        LLVMValueRef p = LLVMBuildLoad2(ctx->builder, LLVMPointerType(LLVMInt8Type(), 0), iter_ptr, "p");
-        LLVMValueRef c = LLVMBuildLoad2(ctx->builder, LLVMInt8Type(), p, "char");
-        condition = LLVMBuildICmp(ctx->builder, LLVMIntNE, c, LLVMConstInt(LLVMInt8Type(), 0, 0), "chk");
-        current_val = c;
+        // Load Value (only if continuing, but for CFG simplicity we load here or use phi, assuming safe)
+        LLVMValueRef val_addr = LLVMBuildStructGEP2(ctx->builder, partial_struct, typed_ctx, 2, "val_addr");
+        current_val = LLVMBuildLoad2(ctx->builder, llvm_yield_type, val_addr, "val");
+        
+    } else {
+        // --- PRIMITIVE ITERATION ---
+        if (col_type.base == TYPE_INT) {
+            LLVMValueRef idx = LLVMBuildLoad2(ctx->builder, LLVMInt64Type(), iter_ptr, "idx");
+            LLVMValueRef limit = LLVMBuildIntCast(ctx->builder, col, LLVMInt64Type(), "limit");
+            condition = LLVMBuildICmp(ctx->builder, LLVMIntSLT, idx, limit, "chk");
+            current_val = LLVMBuildIntCast(ctx->builder, idx, LLVMInt32Type(), "val");
+        } else {
+            LLVMValueRef p = LLVMBuildLoad2(ctx->builder, LLVMPointerType(LLVMInt8Type(), 0), iter_ptr, "p");
+            LLVMValueRef c = LLVMBuildLoad2(ctx->builder, LLVMInt8Type(), p, "char");
+            condition = LLVMBuildICmp(ctx->builder, LLVMIntNE, c, LLVMConstInt(LLVMInt8Type(), 0, 0), "chk");
+            current_val = c;
+        }
     }
     
     LLVMBuildCondBr(ctx->builder, condition, body_bb, end_bb);
@@ -657,19 +645,19 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
     LLVMPositionBuilderAtEnd(ctx->builder, body_bb);
     
     // Assign Loop Var
-    // Use corrected iter_alk_type
-    LLVMTypeRef var_type = get_llvm_type(ctx, iter_alk_type);
+    // USE REFINED YIELD TYPE FOR ALLOCA TO AVOID STRUCT MISMATCH
+    LLVMTypeRef var_type = get_llvm_type(ctx, yield_vt);
     LLVMValueRef var_alloca = LLVMBuildAlloca(ctx->builder, var_type, node->var_name);
     LLVMBuildStore(ctx->builder, current_val, var_alloca);
     
     Symbol *saved_syms = ctx->symbols;
-    add_symbol(ctx, node->var_name, var_alloca, var_type, iter_alk_type, 0, 0);
+    add_symbol(ctx, node->var_name, var_alloca, var_type, yield_vt, 0, 0);
     
     push_loop_ctx(ctx, cond_bb, end_bb);
     codegen_node(ctx, node->body);
     pop_loop_ctx(ctx);
     
-    // Step
+    // Step (Primitive Only)
     if (!is_flux) {
         if (col_type.base == TYPE_INT) {
             LLVMValueRef idx = LLVMBuildLoad2(ctx->builder, LLVMInt64Type(), iter_ptr, "idx");
@@ -689,13 +677,9 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
     ctx->symbols = saved_syms;
     LLVMPositionBuilderAtEnd(ctx->builder, end_bb);
     
-    // Cleanup Flux
     if (is_flux) {
-        // llvm.coro.destroy(i8*) -> void
-        LLVMTypeRef destroy_arg_types[] = { LLVMPointerType(LLVMInt8Type(), 0) };
-        LLVMTypeRef destroy_func_type = LLVMFunctionType(LLVMVoidType(), destroy_arg_types, 1, false);
-
-        LLVMValueRef des_args[] = { flux_hdl };
-        LLVMBuildCall2(ctx->builder, destroy_func_type, ctx->coro_destroy, des_args, 1, "");
+        LLVMValueRef void_ctx = LLVMBuildBitCast(ctx->builder, col, LLVMPointerType(LLVMInt8Type(), 0), "ctx_void");
+        LLVMValueRef free_args[] = { void_ctx };
+        LLVMBuildCall2(ctx->builder, LLVMGlobalGetValueType(ctx->free_func), ctx->free_func, free_args, 1, "");
     }
 }

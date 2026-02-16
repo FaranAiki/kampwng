@@ -19,13 +19,13 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
     ctx->known_namespaces = NULL;
     ctx->known_namespace_count = 0;
 
-    // Flux init
-    ctx->flux_promise_val = NULL;
-    ctx->flux_promise_type = NULL;
-    ctx->flux_coro_hdl = NULL; // Init handle
-    ctx->flux_return_block = NULL;
-
-    // TODO add open, fopen, .etc
+    // Flux init (State Machine)
+    ctx->in_flux_resume = 0;
+    ctx->flux_vars = NULL;
+    ctx->flux_struct_type = NULL;
+    ctx->flux_ctx_ptr = NULL;
+    ctx->flux_resume_switch = NULL;
+    ctx->flux_yield_count = 0;
 
     // Printf
     LLVMTypeRef printf_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };
@@ -47,12 +47,12 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
     LLVMTypeRef free_type = LLVMFunctionType(LLVMVoidType(), free_args, 1, false);
     ctx->free_func = LLVMAddFunction(module, "free", free_type);
     
-    // setjmp - returns i32, takes i8* (pointer to jmp_buf)
+    // setjmp
     LLVMTypeRef setjmp_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };
     LLVMTypeRef setjmp_type = LLVMFunctionType(LLVMInt32Type(), setjmp_args, 1, false);
     ctx->setjmp_func = LLVMAddFunction(module, "setjmp", setjmp_type);
     
-    // longjmp - returns void, takes i8* (pointer to jmp_buf) and i32
+    // longjmp
     LLVMTypeRef longjmp_args[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMInt32Type() };
     LLVMTypeRef longjmp_type = LLVMFunctionType(LLVMVoidType(), longjmp_args, 2, false);
     ctx->longjmp_func = LLVMAddFunction(module, "longjmp", longjmp_type);
@@ -73,50 +73,6 @@ void codegen_init_ctx(CodegenCtx *ctx, LLVMModuleRef module, LLVMBuilderRef buil
 
     // Input
     ctx->input_func = generate_input_func(module, builder, ctx->malloc_func, getchar_func);
-
-    // LLVM Coroutine Intrinsics
-    // llvm.coro.id
-    LLVMTypeRef id_args[] = { LLVMInt32Type(), LLVMPointerType(LLVMInt8Type(), 0), LLVMPointerType(LLVMInt8Type(), 0), LLVMPointerType(LLVMInt8Type(), 0) };
-    ctx->coro_id = LLVMAddFunction(module, "llvm.coro.id", LLVMFunctionType(LLVMTokenTypeInContext(LLVMGetGlobalContext()), id_args, 4, false));
-
-    // llvm.coro.size
-    ctx->coro_size = LLVMAddFunction(module, "llvm.coro.size.i64", LLVMFunctionType(LLVMInt64Type(), NULL, 0, false));
-
-    // llvm.coro.begin
-    LLVMTypeRef begin_args[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMPointerType(LLVMInt8Type(), 0) };
-    ctx->coro_begin = LLVMAddFunction(module, "llvm.coro.begin", LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), begin_args, 2, false));
-
-    // llvm.coro.save (Added)
-    LLVMTypeRef save_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };
-    ctx->coro_save = LLVMAddFunction(module, "llvm.coro.save", LLVMFunctionType(LLVMTokenTypeInContext(LLVMGetGlobalContext()), save_args, 1, false));
-
-    // llvm.coro.suspend
-    LLVMTypeRef suspend_args[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMInt1Type() };
-    ctx->coro_suspend = LLVMAddFunction(module, "llvm.coro.suspend", LLVMFunctionType(LLVMInt8Type(), suspend_args, 2, false));
-
-    // llvm.coro.end - FIX: Correct definition (ptr, i1, token) -> i1
-    // Must return i1 (boolean) for compatibility with most LLVM versions, not void
-    LLVMTypeRef end_args[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMInt1Type(), LLVMTokenTypeInContext(LLVMGetGlobalContext()) };
-    ctx->coro_end = LLVMAddFunction(module, "llvm.coro.end", LLVMFunctionType(LLVMInt1Type(), end_args, 3, false));
-
-    // llvm.coro.free
-    LLVMTypeRef cfree_args[] = { LLVMTokenTypeInContext(LLVMGetGlobalContext()), LLVMPointerType(LLVMInt8Type(), 0) };
-    ctx->coro_free = LLVMAddFunction(module, "llvm.coro.free", LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), cfree_args, 2, false));
-
-    // llvm.coro.resume
-    LLVMTypeRef resume_args[] = { LLVMPointerType(LLVMInt8Type(), 0) };
-    ctx->coro_resume = LLVMAddFunction(module, "llvm.coro.resume", LLVMFunctionType(LLVMVoidType(), resume_args, 1, false));
-
-    // llvm.coro.destroy
-    ctx->coro_destroy = LLVMAddFunction(module, "llvm.coro.destroy", LLVMFunctionType(LLVMVoidType(), resume_args, 1, false));
-
-    // llvm.coro.promise
-    LLVMTypeRef prom_args[] = { LLVMPointerType(LLVMInt8Type(), 0), LLVMInt32Type(), LLVMInt1Type() };
-    ctx->coro_promise = LLVMAddFunction(module, "llvm.coro.promise", LLVMFunctionType(LLVMPointerType(LLVMInt8Type(), 0), prom_args, 3, false));
-    
-    // llvm.coro.done
-    ctx->coro_done = LLVMAddFunction(module, "llvm.coro.done", LLVMFunctionType(LLVMInt1Type(), resume_args, 1, false));
-
 }
 
 void codegen_error(CodegenCtx *ctx, ASTNode *node, const char *msg) {
@@ -133,7 +89,6 @@ void codegen_error(CodegenCtx *ctx, ASTNode *node, const char *msg) {
     } else {
         fprintf(stderr, "Error: %s\n", msg);
     }
-    // TODO: if in repl, do not exit
     exit(1);
 }
 
@@ -167,7 +122,7 @@ void add_func_symbol(CodegenCtx *ctx, const char *name, VarType ret_type, VarTyp
     s->param_types = params;
     s->param_count = pcount;
     s->is_flux = is_flux;
-    s->yield_type = (VarType){0}; // Init to zero/unknown
+    s->yield_type = (VarType){0}; 
     s->next = ctx->functions;
     ctx->functions = s;
 }
@@ -187,7 +142,7 @@ void add_class_info(CodegenCtx *ctx, ClassInfo *ci) {
 }
 
 ClassInfo* find_class(CodegenCtx *ctx, const char *name) {
-    if (!ctx) return NULL; // Safety against null context
+    if (!ctx) return NULL; 
     ClassInfo *cur = ctx->classes;
     while(cur) {
         if (strcmp(cur->name, name) == 0) return cur;
@@ -237,16 +192,12 @@ int get_member_index(ClassInfo *ci, const char *member, LLVMTypeRef *out_type, V
     return -1;
 }
 
-// FIX: Added ctx to safely recursively lookup parents
 int get_trait_offset(CodegenCtx *ctx, ClassInfo *ci, const char *trait_name) {
-    // Check direct traits
     TraitOffset *to = ci->trait_offsets;
     while(to) {
         if (strcmp(to->trait_name, trait_name) == 0) return to->offset_index;
         to = to->next;
     }
-    
-    // Check parent
     if (ci->parent_name) {
         ClassInfo *parent = find_class(ctx, ci->parent_name); 
         if (parent) return get_trait_offset(ctx, parent, trait_name);
@@ -255,10 +206,8 @@ int get_trait_offset(CodegenCtx *ctx, ClassInfo *ci, const char *trait_name) {
 }
 
 LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t) {
-  // Function Pointer Support
   if (t.is_func_ptr) {
       LLVMTypeRef ret_t = get_llvm_type(ctx, *t.fp_ret_type);
-      
       LLVMTypeRef *param_types = NULL;
       if (t.fp_param_count > 0) {
           param_types = malloc(sizeof(LLVMTypeRef) * t.fp_param_count);
@@ -266,11 +215,9 @@ LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t) {
               param_types[i] = get_llvm_type(ctx, t.fp_param_types[i]);
           }
       }
-      
       LLVMTypeRef func_type = LLVMFunctionType(ret_t, param_types, t.fp_param_count, t.fp_is_varargs);
       if (param_types) free(param_types);
-      
-      return LLVMPointerType(func_type, 0); // Always returns a pointer to the function
+      return LLVMPointerType(func_type, 0); 
   }
 
   LLVMTypeRef base_type;
@@ -304,7 +251,8 @@ LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t) {
   return base_type;
 }
 
-// --- Helpers ---
+// ... Rest of core helpers (scan_classes, etc.) ...
+// Note: Keeping existing scan helpers, they are fine.
 
 ClassMember** append_member(CodegenCtx *ctx, ClassInfo *ci, ClassMember **tail, int *idx, const char *name, VarType vt, LLVMTypeRef lt, ASTNode *init) {
     ClassMember *cm = malloc(sizeof(ClassMember));
@@ -318,14 +266,10 @@ ClassMember** append_member(CodegenCtx *ctx, ClassInfo *ci, ClassMember **tail, 
     return &cm->next;
 }
 
-// Helper to estimate size and alignment for union layout
 void get_type_size_align(CodegenCtx *ctx, VarType t, size_t *out_size, size_t *out_align) {
-    size_t s = 0;
-    size_t a = 1;
-    
-    if (t.ptr_depth > 0 || t.is_func_ptr) {
-        s = 8; a = 8;
-    } else {
+    size_t s = 0, a = 1;
+    if (t.ptr_depth > 0 || t.is_func_ptr) { s = 8; a = 8; } 
+    else {
         switch (t.base) {
             case TYPE_INT: s = 4; a = 4; break;
             case TYPE_SHORT: s = 2; a = 2; break;
@@ -341,11 +285,7 @@ void get_type_size_align(CodegenCtx *ctx, VarType t, size_t *out_size, size_t *o
                 if(t.class_name) {
                     ClassInfo *ci = find_class(ctx, t.class_name);
                     if(ci) {
-                        // Estimate struct size roughly by summing members
-                        // Note: This ignores padding, so it is a lower bound estimate.
-                        // For Unions, this recursive call is critical.
-                        size_t struct_size = 0;
-                        size_t struct_align = 1;
+                        size_t struct_size = 0, struct_align = 1;
                         ClassMember *m = ci->members;
                         while(m) {
                             size_t ms, ma;
@@ -358,8 +298,7 @@ void get_type_size_align(CodegenCtx *ctx, VarType t, size_t *out_size, size_t *o
                             if (ma > struct_align) struct_align = ma;
                             m = m->next;
                         }
-                        s = struct_size;
-                        a = struct_align;
+                        s = struct_size; a = struct_align;
                     }
                 }
                 break;
@@ -367,19 +306,10 @@ void get_type_size_align(CodegenCtx *ctx, VarType t, size_t *out_size, size_t *o
             default: s = 4; a = 4; break;
         }
     }
-    
-    if (t.array_size > 0) {
-        s *= t.array_size;
-        // Alignment stays same as element alignment
-    }
-    
-    *out_size = s;
-    *out_align = a;
+    if (t.array_size > 0) s *= t.array_size;
+    *out_size = s; *out_align = a;
 }
 
-// --- Internal String Functions ---
-
-// Helper: Scan for Classes recursively
 void scan_classes(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
     while (node) {
         if (node->type == NODE_CLASS) {
@@ -390,8 +320,7 @@ void scan_classes(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
                 char mangled[256];
                 sprintf(mangled, "%s_%s", prefix, cn->name);
                 ci->name = strdup(mangled);
-                free(cn->name);
-                cn->name = strdup(mangled);
+                free(cn->name); cn->name = strdup(mangled);
             } else {
                 ci->name = strdup(cn->name);
             }
@@ -399,25 +328,19 @@ void scan_classes(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
             ci->parent_name = cn->parent_name ? strdup(cn->parent_name) : NULL;
             ci->struct_type = LLVMStructCreateNamed(LLVMGetGlobalContext(), ci->name);
             ci->is_extern = cn->is_extern;
-            ci->is_union = cn->is_union; // COPY UNION FLAG
+            ci->is_union = cn->is_union;
             ci->members = NULL;
             ci->method_names = NULL;
             ci->method_count = 0;
-            
-            // Capture Traits
             ci->trait_count = cn->traits.count;
             ci->trait_names = NULL;
             ci->trait_offsets = NULL;
             if (ci->trait_count > 0) {
                 ci->trait_names = malloc(sizeof(char*) * ci->trait_count);
-                for(int i=0; i<ci->trait_count; i++) {
-                    ci->trait_names[i] = strdup(cn->traits.names[i]);
-                }
+                for(int i=0; i<ci->trait_count; i++) ci->trait_names[i] = strdup(cn->traits.names[i]);
             }
-            
             add_class_info(ctx, ci);
-        }
-        else if (node->type == NODE_NAMESPACE) {
+        } else if (node->type == NODE_NAMESPACE) {
             NamespaceNode *ns = (NamespaceNode*)node;
             char new_prefix[256];
             if (prefix && strlen(prefix) > 0) sprintf(new_prefix, "%s_%s", prefix, ns->name);
@@ -429,13 +352,11 @@ void scan_classes(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
     }
 }
 
-// Helper: Scan for Enums recursively
 void scan_enums(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
     while (node) {
         if (node->type == NODE_ENUM) {
             EnumNode *en = (EnumNode*)node;
             EnumInfo *ei = malloc(sizeof(EnumInfo));
-            
             if (prefix && strlen(prefix) > 0) {
                 char mangled[256];
                 sprintf(mangled, "%s_%s", prefix, en->name);
@@ -443,10 +364,8 @@ void scan_enums(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
             } else {
                 ei->name = strdup(en->name);
             }
-            
             ei->entries = NULL;
             EnumEntryInfo **tail = &ei->entries;
-            
             EnumEntry *curr_ent = en->entries;
             while (curr_ent) {
                 EnumEntryInfo *eei = malloc(sizeof(EnumEntryInfo));
@@ -455,24 +374,15 @@ void scan_enums(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
                 eei->next = NULL;
                 *tail = eei;
                 tail = &eei->next;
-                
-                // REGISTER MEMBER AS CONSTANT SYMBOL
-                // This allows 'let x = EnumMember;' to work
                 LLVMValueRef const_val = LLVMConstInt(LLVMInt32Type(), curr_ent->value, 0);
                 VarType vt = {TYPE_INT, 0, NULL, 0, 0};
                 add_symbol(ctx, curr_ent->name, const_val, LLVMInt32Type(), vt, 0, 0);
-                // Mark as direct value so we don't try to load it from memory
                 if (ctx->symbols) ctx->symbols->is_direct_value = 1;
-
                 curr_ent = curr_ent->next;
             }
-            
-            // Generate to_string function
             ei->to_string_func = generate_enum_to_string_func(ctx, ei);
-            
             add_enum_info(ctx, ei);
-        }
-        else if (node->type == NODE_NAMESPACE) {
+        } else if (node->type == NODE_NAMESPACE) {
             NamespaceNode *ns = (NamespaceNode*)node;
             char new_prefix[256];
             if (prefix && strlen(prefix) > 0) sprintf(new_prefix, "%s_%s", prefix, ns->name);
@@ -491,96 +401,51 @@ void register_trait_offset(ClassInfo *ci, const char *trait_name, int offset) {
     ci->trait_offsets = to;
 }
 
-// Helper: Process Class Bodies recursively
 void scan_class_bodies(CodegenCtx *ctx, ASTNode *node) {
     while (node) {
         if (node->type == NODE_CLASS) {
             ClassNode *cn = (ClassNode*)node;
-            if (cn->is_extern) {
-                node = node->next;
-                continue; // Do not emit a body for opaque extern structs
-            }
+            if (cn->is_extern) { node = node->next; continue; }
             ClassInfo *ci = find_class(ctx, cn->name);
             if (ci) {
-                // Collect Members First
                 int member_count = 0;
-                
-                // Inherited members
                 if (ci->parent_name) {
                     ClassInfo *parent = find_class(ctx, ci->parent_name);
-                    if (parent) {
-                        ClassMember *pm = parent->members;
-                        while(pm) { member_count++; pm = pm->next; }
-                    }
+                    if (parent) { ClassMember *pm = parent->members; while(pm) { member_count++; pm = pm->next; } }
                 }
-                
-                // Trait members
                 for (int i=0; i<ci->trait_count; i++) {
                     ClassInfo *trait = find_class(ctx, ci->trait_names[i]);
-                    if (trait) {
-                        ClassMember *tm = trait->members;
-                        while(tm) { member_count++; tm = tm->next; }
-                    }
+                    if (trait) { ClassMember *tm = trait->members; while(tm) { member_count++; tm = tm->next; } }
                 }
-                
-                // Own members
                 ASTNode *m = cn->members;
-                while(m) {
-                    if (m->type == NODE_VAR_DECL) member_count++;
-                    m = m->next;
-                }
+                while(m) { if (m->type == NODE_VAR_DECL) member_count++; m = m->next; }
                 
-                // Temporarily store member definitions to calculate union sizes if needed
                 int idx = 0;
                 ClassMember **tail = &ci->members;
                 
-                // We will populate ci->members list fully first, but NOT set the LLVM struct body yet if it's a union.
-                
-                // 1. Inherit Parent
                 if (ci->parent_name) {
                     ClassInfo *parent = find_class(ctx, ci->parent_name);
                     if (parent) {
                         TraitOffset *pto = parent->trait_offsets;
-                        while(pto) {
-                            register_trait_offset(ci, pto->trait_name, pto->offset_index);
-                            pto = pto->next;
-                        }
+                        while(pto) { register_trait_offset(ci, pto->trait_name, pto->offset_index); pto = pto->next; }
                         ClassMember *pm = parent->members;
-                        while(pm) {
-                            tail = append_member(ctx, ci, tail, &idx, pm->name, pm->vtype, pm->type, NULL);
-                            pm = pm->next;
-                        }
+                        while(pm) { tail = append_member(ctx, ci, tail, &idx, pm->name, pm->vtype, pm->type, NULL); pm = pm->next; }
                     }
                 }
-                
-                // 2. Mixin Traits
                 for(int i=0; i<ci->trait_count; i++) {
                     ClassInfo *trait = find_class(ctx, ci->trait_names[i]);
                     if (trait) {
                         register_trait_offset(ci, ci->trait_names[i], idx);
                         ClassMember *tm = trait->members;
-                        while(tm) {
-                            tail = append_member(ctx, ci, tail, &idx, tm->name, tm->vtype, tm->type, NULL);
-                            tm = tm->next;
-                        }
+                        while(tm) { tail = append_member(ctx, ci, tail, &idx, tm->name, tm->vtype, tm->type, NULL); tm = tm->next; }
                     }
                 }
-                
-                // 3. Own Members
                 m = cn->members;
                 while(m) {
                     if (m->type == NODE_VAR_DECL) {
                         VarDeclNode *vd = (VarDeclNode*)m;
                         LLVMTypeRef mt = LLVMInt32Type();
                         VarType mvt = vd->var_type;
-                        
-                        if (vd->var_type.base == TYPE_CLASS && vd->var_type.ptr_depth == 0) {
-                            ClassInfo *mem_ci = find_class(ctx, vd->var_type.class_name);
-                            if (mem_ci && mem_ci->is_extern) {
-                                codegen_error(ctx, m, "Cannot embed extern opaque type by value");
-                            }
-                        }
-
                         if (vd->is_array) {
                              LLVMTypeRef et = get_llvm_type(ctx, vd->var_type);
                              unsigned int sz = 10;
@@ -590,23 +455,14 @@ void scan_class_bodies(CodegenCtx *ctx, ASTNode *node) {
                         } else {
                              mt = get_llvm_type(ctx, vd->var_type);
                         }
-                        
                         tail = append_member(ctx, ci, tail, &idx, vd->name, mvt, mt, vd->initializer);
                     }
                     m = m->next;
                 }
                 
-                // --- STRUCTURE BODY GENERATION ---
-                
                 if (ci->is_union) {
-                    // UNION LAYOUT: { LargestAlignedType, [Padding x i8] }
-                    // This ensures the struct is big enough and aligned enough.
-                    // All members effectively start at offset 0 (via bitcasts in expr.c).
-                    
-                    size_t max_size = 0;
-                    size_t max_align = 1;
-                    LLVMTypeRef best_align_type = LLVMInt8Type(); // Default fallback
-                    
+                    size_t max_size = 0, max_align = 1;
+                    LLVMTypeRef best_align_type = LLVMInt8Type();
                     ClassMember *cm = ci->members;
                     while(cm) {
                         size_t s, a;
@@ -614,26 +470,16 @@ void scan_class_bodies(CodegenCtx *ctx, ASTNode *node) {
                         if (s > max_size) max_size = s;
                         if (a > max_align) {
                             max_align = a;
-                            // Pick a representative type for this alignment
                             if (a == 8) best_align_type = LLVMInt64Type();
                             else if (a == 4) best_align_type = LLVMInt32Type();
                             else if (a == 2) best_align_type = LLVMInt16Type();
-                            else best_align_type = LLVMInt8Type();
                         }
                         cm = cm->next;
                     }
-                    
                     if (member_count > 0) {
-                        // Calculate padding needed
-                        // Size of best_align_type might be smaller than max_size
-                        // e.g. best_align=8 (i64), max_size=10 (char[10]).
-                        // Struct = { i64, [2 x i8] }
-                        
                         size_t align_type_size = (max_align >= 8) ? 8 : max_align;
-                        
                         LLVMTypeRef *union_elems = NULL;
                         int union_elem_count = 1;
-                        
                         if (max_size > align_type_size) {
                             union_elem_count = 2;
                             union_elems = malloc(sizeof(LLVMTypeRef) * 2);
@@ -643,48 +489,30 @@ void scan_class_bodies(CodegenCtx *ctx, ASTNode *node) {
                             union_elems = malloc(sizeof(LLVMTypeRef) * 1);
                             union_elems[0] = best_align_type;
                         }
-                        
                         LLVMStructSetBody(ci->struct_type, union_elems, union_elem_count, false);
                         free(union_elems);
-                    } else {
-                        LLVMStructSetBody(ci->struct_type, NULL, 0, false);
-                    }
-                    
+                    } else LLVMStructSetBody(ci->struct_type, NULL, 0, false);
                 } else {
-                    // STANDARD STRUCT LAYOUT
                     LLVMTypeRef *element_types = malloc(sizeof(LLVMTypeRef) * (member_count > 0 ? member_count : 1));
                     ClassMember *cm = ci->members;
                     int i = 0;
-                    while(cm) {
-                        element_types[i++] = cm->type;
-                        cm = cm->next;
-                    }
-                    
-                    if (member_count > 0)
-                        LLVMStructSetBody(ci->struct_type, element_types, member_count, false);
-                    else
-                        LLVMStructSetBody(ci->struct_type, NULL, 0, false); 
-
+                    while(cm) { element_types[i++] = cm->type; cm = cm->next; }
+                    LLVMStructSetBody(ci->struct_type, member_count > 0 ? element_types : NULL, member_count, false);
                     free(element_types);
                 }
             }
-        }
-        else if (node->type == NODE_NAMESPACE) {
+        } else if (node->type == NODE_NAMESPACE) {
             scan_class_bodies(ctx, ((NamespaceNode*)node)->body);
         }
         node = node->next;
     }
 }
 
-// Helper: Scan Functions recursively
 void scan_functions(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
     while(node) {
         if (node->type == NODE_FUNC_DEF) {
             FuncDefNode *fd = (FuncDefNode*)node;
-            
             char *sym_name = fd->mangled_name ? fd->mangled_name : fd->name;
-            
-            // Collect params
             int pcount = 0;
             Parameter *p = fd->params;
             while(p) { pcount++; p=p->next; }
@@ -693,43 +521,25 @@ void scan_functions(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
             int i = 0;
             while(p) { ptypes[i++] = p->type; p=p->next; }
             
-            // If flux, we change ret_type to i8* (coroutine handle)
             VarType rt = fd->ret_type;
             if (fd->is_flux) {
                 rt = (VarType){TYPE_CHAR, 1, NULL, 0, 0}; // char* (handle)
             }
 
             add_func_symbol(ctx, sym_name, rt, ptypes, pcount, fd->is_flux);
-            
-            // FIX: Store the original yield type in the symbol table for Flux functions
-            if (fd->is_flux) {
-                ctx->functions->yield_type = fd->ret_type;
-            }
-        }
-        else if (node->type == NODE_CLASS) {
+            if (fd->is_flux) ctx->functions->yield_type = fd->ret_type;
+        } else if (node->type == NODE_CLASS) {
             ClassNode *cn = (ClassNode*)node;
             ClassInfo *ci = find_class(ctx, cn->name);
-
             ASTNode *m = cn->members;
             while(m) {
                 if (m->type == NODE_FUNC_DEF) {
                     FuncDefNode *fd = (FuncDefNode*)m;
-                    // FIX: Use the mangled name generated by semantic analysis
-                    char *mangled;
-                    if (fd->mangled_name) {
-                        mangled = strdup(fd->mangled_name);
-                    } else {
-                        // Fallback (should not happen if semantic runs)
-                        char buf[256];
-                        sprintf(buf, "%s_%s", cn->name, fd->name);
-                        mangled = strdup(buf);
-                    }
-                    
-                    // FIX: Capture parameters correctly for method overload resolution
+                    char *mangled = fd->mangled_name ? strdup(fd->mangled_name) : NULL;
+                    if (!mangled) { char buf[256]; sprintf(buf, "%s_%s", cn->name, fd->name); mangled = strdup(buf); }
                     int pcount = 0;
                     Parameter *p = fd->params;
                     while(p) { pcount++; p=p->next; }
-                    
                     VarType *ptypes = NULL;
                     if (pcount > 0) {
                         ptypes = malloc(sizeof(VarType) * pcount);
@@ -737,34 +547,21 @@ void scan_functions(CodegenCtx *ctx, ASTNode *node, const char *prefix) {
                         int i = 0;
                         while(p) { ptypes[i++] = p->type; p=p->next; }
                     }
-
                     VarType rt = fd->ret_type;
-                    if (fd->is_flux) {
-                        rt = (VarType){TYPE_CHAR, 1, NULL, 0, 0}; // char*
-                    }
+                    if (fd->is_flux) rt = (VarType){TYPE_CHAR, 1, NULL, 0, 0}; 
 
                     add_func_symbol(ctx, mangled, rt, ptypes, pcount, fd->is_flux);
-
-                    // FIX: Store yield type for flux methods
-                    if (fd->is_flux) {
-                        ctx->functions->yield_type = fd->ret_type;
-                    }
-                    
-                    // Add method metadata to ClassInfo
+                    if (fd->is_flux) ctx->functions->yield_type = fd->ret_type;
                     if (ci) {
                         ci->method_count++;
                         ci->method_names = realloc(ci->method_names, sizeof(char*) * ci->method_count);
                         ci->method_names[ci->method_count-1] = strdup(fd->name);
                     }
-
-                    // Note: We don't free mangled here as add_func_symbol duplicates it? 
-                    // No, add_func_symbol strdups it. We must free if we allocated strdup.
                     free(mangled);
                 }
                 m = m->next;
             }
-        }
-        else if (node->type == NODE_NAMESPACE) {
+        } else if (node->type == NODE_NAMESPACE) {
              NamespaceNode *ns = (NamespaceNode*)node;
              char new_prefix[256];
              if (prefix && strlen(prefix) > 0) sprintf(new_prefix, "%s_%s", prefix, ns->name);
@@ -806,10 +603,8 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name, const cha
                 FuncDefNode *fd = (FuncDefNode*)m;
                 fd->class_name = cn->name;
                 if (fd->is_flux) {
-                    // Prepend Class Name for unique struct naming in flux
                     char flux_name[256];
                     snprintf(flux_name, 256, "%s_%s", cn->name, fd->name);
-                    // Temporarily swap name for generation logic
                     char *old_name = fd->name;
                     fd->name = flux_name; 
                     codegen_flux_def(&ctx, fd);
@@ -825,12 +620,6 @@ LLVMModuleRef codegen_generate(ASTNode *root, const char *module_name, const cha
         codegen_node(&ctx, curr);
     }
     curr = curr->next;
-  }
-
-  // Generate Main
-  FuncSymbol *main_sym = find_func_symbol(&ctx, "main");
-  if (main_sym) {
-    // Logic for main entry point already generated by codegen_func_def if it exists
   }
 
   LLVMDisposeBuilder(builder);
