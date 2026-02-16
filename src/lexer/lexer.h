@@ -39,7 +39,8 @@ typedef enum {
   TOKEN_RSHIFT_ASSIGN,// >>=
   
   TOKEN_IF,     
-  TOKEN_ELIF,   
+  TOKEN_ELIF, 
+  TOKEN_THEN, // Added THEN
   TOKEN_ELSE,   
   TOKEN_RETURN,
   TOKEN_BREAK,

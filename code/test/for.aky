@@ -1,7 +1,8 @@
 flux int gen(int max) {
   int t = 0;
   while ++t <= max {
-    emit t;
+    emit 5;
+    emit t * 2;
   }
 }
 
@@ -37,12 +38,7 @@ int main() {
 
   print "Emit!\n";
   
-  for i in 1000000 {
-    printf "%d\n", i;
-  }
-
-  /*
-  for emitted in gen(100) {
+  for emitted in gen(1U<<30) {
     print "%d\n", emitted;
-  }*/
+  }
 }

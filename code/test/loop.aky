@@ -1,0 +1,10 @@
+int main() {
+  let i = 0; let j = 0; let t = 0;
+  while ++i <= 100 {
+    while ++j <= 100 {
+      while ++t <= 100 {
+        print "tuple %d %d %d\n", i, j, t;
+      }
+    }
+  }
+}

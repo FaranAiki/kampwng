@@ -5,8 +5,13 @@ import "std";
 typedef int (*OperationFunc)(int, int);
 
 // 2. Define two simple functions that match that signature
-int add(int a, int b) { return a + b; }
-int multiply(int a, int b) { return a * b; }
+int add(int a, int b) { 
+  return a + b;
+}
+
+int multiply(int a, int b) { 
+  return a * b; 
+}
 
 // 3. The "Factory" function
 // It takes an integer 'type' and returns the appropriate function pointer

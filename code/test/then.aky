@@ -1,0 +1,19 @@
+int 
+main() {
+  if true then print "Hello!\n";
+ 
+  if false then print "False\n"
+  else print "True\n";
+
+  // check if multiple if are true
+  if true then
+    if false { 
+      print "from true to false\n";
+    } else {
+      print "from true to else\n";
+    }
+  else 
+    print "Complex";
+
+  return 0;
+}

@@ -3,6 +3,20 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+// Helper for implicit semicolons
+static void eat_semi(Lexer *l) {
+    if (current_token.type == TOKEN_SEMICOLON) {
+        eat(l, TOKEN_SEMICOLON);
+    } else if (current_token.type == TOKEN_ELSE || 
+               current_token.type == TOKEN_ELIF || 
+               current_token.type == TOKEN_RBRACE || 
+               current_token.type == TOKEN_EOF) {
+        // Implicit semicolon allowed
+    } else {
+        eat(l, TOKEN_SEMICOLON); // Trigger error
+    }
+}
+
 void set_loc(ASTNode *n, int line, int col) {
     if(n) { n->line = line; n->col = col; }
 }
@@ -11,10 +25,15 @@ ASTNode* parse_return(Lexer *l) {
   int line = current_token.line, col = current_token.col;
   eat(l, TOKEN_RETURN);
   ASTNode *val = NULL;
-  if (current_token.type != TOKEN_SEMICOLON) {
+  // Check if we are at a statement terminator
+  if (current_token.type != TOKEN_SEMICOLON && 
+      current_token.type != TOKEN_ELSE && 
+      current_token.type != TOKEN_ELIF && 
+      current_token.type != TOKEN_RBRACE && 
+      current_token.type != TOKEN_EOF) {
     val = parse_expression(l);
   }
-  eat(l, TOKEN_SEMICOLON);
+  eat_semi(l);
   ReturnNode *node = calloc(1, sizeof(ReturnNode));
   node->base.type = NODE_RETURN;
   node->value = val;
@@ -26,7 +45,7 @@ ASTNode* parse_emit(Lexer *l) {
     int line = current_token.line, col = current_token.col;
     eat(l, TOKEN_EMIT);
     ASTNode *val = parse_expression(l);
-    eat(l, TOKEN_SEMICOLON);
+    eat_semi(l);
     
     EmitNode *node = calloc(1, sizeof(EmitNode));
     node->base.type = NODE_EMIT;
@@ -61,7 +80,7 @@ ASTNode* parse_for_in(Lexer *l) {
 ASTNode* parse_break(Lexer *l) {
     int line = current_token.line, col = current_token.col;
     eat(l, TOKEN_BREAK);
-    eat(l, TOKEN_SEMICOLON);
+    eat_semi(l);
     BreakNode *node = calloc(1, sizeof(BreakNode));
     node->base.type = NODE_BREAK;
     set_loc((ASTNode*)node, line, col);
@@ -71,7 +90,7 @@ ASTNode* parse_break(Lexer *l) {
 ASTNode* parse_continue(Lexer *l) {
     int line = current_token.line, col = current_token.col;
     eat(l, TOKEN_CONTINUE);
-    eat(l, TOKEN_SEMICOLON);
+    eat_semi(l);
     ContinueNode *node = calloc(1, sizeof(ContinueNode));
     node->base.type = NODE_CONTINUE;
     set_loc((ASTNode*)node, line, col);
@@ -126,7 +145,7 @@ ASTNode* parse_assignment_or_call(Lexer *l) {
     int op = current_token.type;
     eat(l, op); 
     ASTNode *expr = parse_expression(l);
-    eat(l, TOKEN_SEMICOLON);
+    eat_semi(l); // Allow implicit semi after assignment
 
     AssignNode *an = calloc(1, sizeof(AssignNode));
     an->base.type = NODE_ASSIGN;
@@ -166,7 +185,7 @@ ASTNode* parse_assignment_or_call(Lexer *l) {
               *curr_arg = parse_expression(l);
               curr_arg = &(*curr_arg)->next;
           }
-          eat(l, TOKEN_SEMICOLON);
+          eat_semi(l); // Allow implicit semi after call
 
           CallNode *cn = calloc(1, sizeof(CallNode));
           cn->base.type = NODE_CALL;
@@ -178,8 +197,14 @@ ASTNode* parse_assignment_or_call(Lexer *l) {
       }
   }
 
-  if (current_token.type == TOKEN_SEMICOLON) {
-      eat(l, TOKEN_SEMICOLON);
+  // Handle standalone expressions ending with semi or implicit term
+  if (current_token.type == TOKEN_SEMICOLON || 
+      current_token.type == TOKEN_ELSE || 
+      current_token.type == TOKEN_ELIF || 
+      current_token.type == TOKEN_RBRACE || 
+      current_token.type == TOKEN_EOF) {
+      
+      eat_semi(l);
       if (start_token.text) free(start_token.text);
       return node; 
   }
@@ -231,7 +256,7 @@ ASTNode* parse_var_decl_internal(Lexer *l) {
           eat(l, TOKEN_ASSIGN);
           init = parse_expression(l);
       }
-      eat(l, TOKEN_SEMICOLON);
+      eat_semi(l);
       
       VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
       node->base.type = NODE_VAR_DECL;
@@ -282,7 +307,7 @@ ASTNode* parse_var_decl_internal(Lexer *l) {
     init = parse_expression(l);
   }
 
-  eat(l, TOKEN_SEMICOLON);
+  eat_semi(l);
   
   VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
   node->base.type = NODE_VAR_DECL;
@@ -336,7 +361,7 @@ ASTNode* parse_single_statement_or_block(Lexer *l) {
               eat(l, TOKEN_ASSIGN);
               init = parse_expression(l);
           }
-          eat(l, TOKEN_SEMICOLON);
+          eat_semi(l);
           
           VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
           node->base.type = NODE_VAR_DECL;
@@ -384,7 +409,7 @@ ASTNode* parse_single_statement_or_block(Lexer *l) {
         eat(l, TOKEN_ASSIGN);
         init = parse_expression(l);
       }
-      eat(l, TOKEN_SEMICOLON);
+      eat_semi(l);
       VarDeclNode *node = calloc(1, sizeof(VarDeclNode));
       node->base.type = NODE_VAR_DECL;
       node->var_type = peek_t;
@@ -404,7 +429,8 @@ ASTNode* parse_single_statement_or_block(Lexer *l) {
   if (current_token.type == TOKEN_IDENTIFIER) return parse_assignment_or_call(l);
   
   ASTNode *expr = parse_expression(l);
-  if (current_token.type == TOKEN_SEMICOLON) eat(l, TOKEN_SEMICOLON);
+  // Replaced manual check with eat_semi to support implicit semicolons
+  eat_semi(l); 
   return expr;
 }
 
@@ -443,6 +469,12 @@ ASTNode* parse_if(Lexer *l) {
   int line = current_token.line, col = current_token.col;
   eat(l, TOKEN_IF);
   ASTNode *cond = parse_expression(l);
+  
+  // Optional 'then'
+  if (current_token.type == TOKEN_THEN) {
+      eat(l, TOKEN_THEN);
+  }
+  
   ASTNode *then_body = parse_single_statement_or_block(l);
   ASTNode *else_body = NULL;
   if (current_token.type == TOKEN_ELIF) {

@@ -283,13 +283,21 @@ void codegen_if(CodegenCtx *ctx, IfNode *node) {
   
   LLVMBuildCondBr(ctx->builder, cond, then_bb, else_bb);
 
+  // THEN BLOCK
   LLVMPositionBuilderAtEnd(ctx->builder, then_bb);
   codegen_node(ctx, node->then_body);
-  if (!LLVMGetBasicBlockTerminator(then_bb)) LLVMBuildBr(ctx->builder, merge_bb);
+  // Checked terminator on current insert block instead of then_bb
+  if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+      LLVMBuildBr(ctx->builder, merge_bb);
+  }
 
+  // ELSE BLOCK
   LLVMPositionBuilderAtEnd(ctx->builder, else_bb);
   if (node->else_body) codegen_node(ctx, node->else_body);
-  if (!LLVMGetBasicBlockTerminator(else_bb)) LLVMBuildBr(ctx->builder, merge_bb);
+  // Checked terminator on current insert block instead of else_bb
+  if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+      LLVMBuildBr(ctx->builder, merge_bb);
+  }
 
   LLVMPositionBuilderAtEnd(ctx->builder, merge_bb);
 }

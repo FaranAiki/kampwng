@@ -371,6 +371,7 @@ int lex_word(Lexer *l, Token *t) {
   else if (strcmp(word, "once") == 0) t->type = TOKEN_ONCE;
   else if (strcmp(word, "if") == 0) t->type = TOKEN_IF;
   else if (strcmp(word, "elif") == 0) t->type = TOKEN_ELIF;
+  else if (strcmp(word, "then") == 0) t->type = TOKEN_THEN;
   else if (strcmp(word, "else") == 0) t->type = TOKEN_ELSE;
   else if (strcmp(word, "return") == 0) t->type = TOKEN_RETURN;
   else if (strcmp(word, "break") == 0) t->type = TOKEN_BREAK;
