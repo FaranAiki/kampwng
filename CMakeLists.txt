@@ -39,6 +39,7 @@ set(MUST_LLVM_SOURCES
 
     src/codegen/node/access.c
     src/codegen/node/operator.c
+    src/codegen/node/cast.c
 )
 
 set(MUST_LANG_SOURCES 
