@@ -75,10 +75,6 @@ void codegen_assign(CodegenCtx *ctx, AssignNode *node) {
 
 void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
   // FLUX TRANSFORMATION CHECK
-  // If we are in a flux resume function, variables are already lifted to the struct.
-  // We should NOT allocate stack memory. Instead, we use the pre-calculated GEP
-  // which is already inserted into the symbol table by codegen_flux_def.
-  
   if (ctx->in_flux_resume) {
       Symbol *sym = find_symbol(ctx, node->name);
       if (sym) {
@@ -98,6 +94,14 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
   LLVMTypeRef type = NULL;
   VarType symbol_vtype = node->var_type; 
   
+  // FIX: Lift alloca to entry block
+  LLVMValueRef func = LLVMGetBasicBlockParent(LLVMGetInsertBlock(ctx->builder));
+  LLVMBasicBlockRef entry_bb = LLVMGetEntryBasicBlock(func);
+  LLVMBuilderRef tmp_b = LLVMCreateBuilder();
+  LLVMValueRef first = LLVMGetFirstInstruction(entry_bb);
+  if (first) LLVMPositionBuilderBefore(tmp_b, first);
+  else LLVMPositionBuilderAtEnd(tmp_b, entry_bb);
+
   if (node->is_array) {
       LLVMTypeRef elem_type = (node->var_type.base == TYPE_AUTO) ? LLVMInt32Type() : get_llvm_type(ctx, node->var_type);
       unsigned int size = 10; 
@@ -105,7 +109,7 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
       
       symbol_vtype.array_size = size;
       type = LLVMArrayType(elem_type, size); 
-      alloca = LLVMBuildAlloca(ctx->builder, type, node->name);
+      alloca = LLVMBuildAlloca(tmp_b, type, node->name); // Use tmp_b
 
       if (node->initializer) {
           // ... (Existing array init logic) ...
@@ -131,10 +135,11 @@ void codegen_var_decl(CodegenCtx *ctx, VarDeclNode *node) {
     } else {
       type = get_llvm_type(ctx, node->var_type);
     }
-    alloca = LLVMBuildAlloca(ctx->builder, type, node->name);
+    alloca = LLVMBuildAlloca(tmp_b, type, node->name); // Use tmp_b
     LLVMBuildStore(ctx->builder, init_val, alloca);
   }
-
+  
+  LLVMDisposeBuilder(tmp_b);
   add_symbol(ctx, node->name, alloca, type, symbol_vtype, node->is_array, node->is_mutable);
 }
 

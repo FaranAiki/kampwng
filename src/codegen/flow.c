@@ -104,7 +104,15 @@ void codegen_loop(CodegenCtx *ctx, LoopNode *node) {
   LLVMBasicBlockRef step_bb = LLVMAppendBasicBlock(func, "loop_step");
   LLVMBasicBlockRef end_bb = LLVMAppendBasicBlock(func, "loop_end");
 
-  LLVMValueRef counter_ptr = LLVMBuildAlloca(ctx->builder, LLVMInt64Type(), "loop_i");
+  LLVMBasicBlockRef entry_bb = LLVMGetEntryBasicBlock(func);
+  LLVMBuilderRef tmp_b = LLVMCreateBuilder();
+  LLVMValueRef first = LLVMGetFirstInstruction(entry_bb);
+  if (first) LLVMPositionBuilderBefore(tmp_b, first);
+  else LLVMPositionBuilderAtEnd(tmp_b, entry_bb);
+
+  LLVMValueRef counter_ptr = LLVMBuildAlloca(tmp_b, LLVMInt64Type(), "loop_i");
+  LLVMDisposeBuilder(tmp_b);
+
   LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt64Type(), 0, 0), counter_ptr);
   LLVMBuildBr(ctx->builder, cond_bb);
 
@@ -570,13 +578,21 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
     LLVMValueRef iter_ptr = NULL;
     
     if (!is_flux) {
+        // FIX: Lift alloca to entry block
+        LLVMBasicBlockRef entry_bb = LLVMGetEntryBasicBlock(func);
+        LLVMBuilderRef tmp_b = LLVMCreateBuilder();
+        LLVMValueRef first = LLVMGetFirstInstruction(entry_bb);
+        if (first) LLVMPositionBuilderBefore(tmp_b, first);
+        else LLVMPositionBuilderAtEnd(tmp_b, entry_bb);
+
         if (col_type.base == TYPE_INT) {
-            iter_ptr = LLVMBuildAlloca(ctx->builder, LLVMInt64Type(), "range_i");
+            iter_ptr = LLVMBuildAlloca(tmp_b, LLVMInt64Type(), "range_i");
             LLVMBuildStore(ctx->builder, LLVMConstInt(LLVMInt64Type(), 0, 0), iter_ptr);
         } else {
-            iter_ptr = LLVMBuildAlloca(ctx->builder, LLVMPointerType(LLVMInt8Type(), 0), "str_iter");
+            iter_ptr = LLVMBuildAlloca(tmp_b, LLVMPointerType(LLVMInt8Type(), 0), "str_iter");
             LLVMBuildStore(ctx->builder, col, iter_ptr);
         }
+        LLVMDisposeBuilder(tmp_b);
     }
     
     LLVMBuildBr(ctx->builder, cond_bb);
@@ -588,10 +604,13 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
 
     if (is_flux) {
         char resume_name[512];
+        const char *fname_for_struct = "unknown";
+
         if (node->collection->type == NODE_CALL) {
             CallNode *cn = (CallNode*)node->collection;
             const char *fname = cn->mangled_name ? cn->mangled_name : cn->name;
             sprintf(resume_name, "%s_Resume", fname);
+            fname_for_struct = fname;
             
             FuncSymbol *fs = find_func_symbol(ctx, fname);
             if (fs && fs->is_flux) {
@@ -612,16 +631,24 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
         
         LLVMTypeRef llvm_yield_type = get_llvm_type(ctx, yield_vt);
         
-        LLVMTypeRef struct_elems[] = { LLVMInt32Type(), LLVMInt1Type(), llvm_yield_type };
-        LLVMTypeRef partial_struct = LLVMStructType(struct_elems, 3, false);
-        LLVMValueRef typed_ctx = LLVMBuildBitCast(ctx->builder, col, LLVMPointerType(partial_struct, 0), "typed_ctx");
+        // Try to find the exact named struct for perfect alignment
+        char struct_name[512];
+        snprintf(struct_name, 512, "FluxCtx_%s", fname_for_struct);
+        LLVMTypeRef ctx_struct_type = LLVMGetTypeByName(ctx->module, struct_name);
+
+        if (!ctx_struct_type) {
+            LLVMTypeRef struct_elems[] = { LLVMInt32Type(), LLVMInt1Type(), llvm_yield_type };
+            ctx_struct_type = LLVMStructType(struct_elems, 3, false);
+        }
         
-        LLVMValueRef fin_addr = LLVMBuildStructGEP2(ctx->builder, partial_struct, typed_ctx, 1, "fin_addr");
+        LLVMValueRef typed_ctx = LLVMBuildBitCast(ctx->builder, col, LLVMPointerType(ctx_struct_type, 0), "typed_ctx");
+        
+        LLVMValueRef fin_addr = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, typed_ctx, 1, "fin_addr");
         LLVMValueRef finished = LLVMBuildLoad2(ctx->builder, LLVMInt1Type(), fin_addr, "finished");
         
         condition = LLVMBuildNot(ctx->builder, finished, "cont");
         
-        LLVMValueRef val_addr = LLVMBuildStructGEP2(ctx->builder, partial_struct, typed_ctx, 2, "val_addr");
+        LLVMValueRef val_addr = LLVMBuildStructGEP2(ctx->builder, ctx_struct_type, typed_ctx, 2, "val_addr");
         current_val = LLVMBuildLoad2(ctx->builder, llvm_yield_type, val_addr, "val");
         
     } else {
@@ -665,7 +692,16 @@ void codegen_for_in(CodegenCtx *ctx, ForInNode *node) {
     
     // Fallback: allocate new if not found or not in flux
     if (!var_ptr) {
-        var_ptr = LLVMBuildAlloca(ctx->builder, var_type, node->var_name);
+        // FIX: Lift alloca to entry block to prevent stack overflow in loops!
+        LLVMBasicBlockRef entry_bb = LLVMGetEntryBasicBlock(func);
+        LLVMBuilderRef tmp_b = LLVMCreateBuilder();
+        LLVMValueRef first = LLVMGetFirstInstruction(entry_bb);
+        if (first) LLVMPositionBuilderBefore(tmp_b, first);
+        else LLVMPositionBuilderAtEnd(tmp_b, entry_bb);
+
+        var_ptr = LLVMBuildAlloca(tmp_b, var_type, node->var_name);
+        LLVMDisposeBuilder(tmp_b);
+        
         if (!ctx->in_flux_resume) {
              add_symbol(ctx, node->var_name, var_ptr, var_type, yield_vt, 0, 0);
         }
