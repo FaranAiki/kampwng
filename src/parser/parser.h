@@ -2,7 +2,7 @@
 #define PARSER_H
 
 #include "../lexer/lexer.h"
-#include "../compiler_debug/compiler_debug.h"
+#include "../common/compiler_debug.h"
 #include <setjmp.h>
 
 // --- TYPES ---

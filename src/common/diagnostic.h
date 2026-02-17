@@ -2,7 +2,6 @@
 #define DIAGNOSTIC_H
 
 #include "../lexer/lexer.h"
-#include "../parser/parser.h"
 
 // Context Tracking
 void diag_set_namespace(const char *ns);
@@ -25,9 +24,11 @@ void report_info(Lexer *l, Token t, const char *msg);
 // Used to provide context (e.g., "previous definition was here")
 void report_reason(Lexer *l, Token t, const char *msg);
 
+#include "../parser/parser.h"
+
 // Convert a token type to a human-readable string (e.g., TOKEN_SEMICOLON -> ";")
 const char* token_type_to_string(TokenType type);
-const char* node_type_to_string(NodeType type);
+// const char* node_type_to_string(NodeType type);
 
 // Helper to hint about missing delimiters
 const char* get_token_description(TokenType type);

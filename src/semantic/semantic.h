@@ -3,7 +3,7 @@
 
 #include "../parser/parser.h"
 #include "../common/common.h"
-#include "../diagnostic/diagnostic.h"
+#include "../common/diagnostic.h"
 
 // ==========================================
 // PART 1: SYMBOL TABLE (For Scoping)

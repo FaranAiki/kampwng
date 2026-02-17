@@ -1,5 +1,4 @@
 #include "parser_internal.h"
-#include "../diagnostic/diagnostic.h" 
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h> 

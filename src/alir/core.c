@@ -57,7 +57,7 @@ AlirValue* alir_module_add_string_literal(AlirModule *mod, const char *content, 
 
 AlirBlock* alir_add_block(AlirFunction *func, const char *label_hint) {
     AlirBlock *b = calloc(1, sizeof(AlirBlock));
-    static int global_id = 0;
+    int global_id = 0;
     b->id = global_id++;
     
     if (label_hint) b->label = strdup(label_hint);
@@ -237,9 +237,7 @@ const char* alir_op_str(AlirOpcode op) {
     }
 }
 
-// --- PRINTING UTILITIES ---
-
-static char* escape_string(const char* input) {
+char* escape_string(const char* input) {
     if (!input) return strdup("");
     int len = strlen(input);
     char* out = malloc(len * 2 + 1); // Worst case
@@ -255,7 +253,7 @@ static char* escape_string(const char* input) {
     return out;
 }
 
-static void alir_fprint_type(FILE *f, VarType t) {
+void alir_fprint_type(FILE *f, VarType t) {
     switch(t.base) {
         case TYPE_INT: fprintf(f, "i32"); break;
         case TYPE_LONG: fprintf(f, "i64"); break;
@@ -271,7 +269,7 @@ static void alir_fprint_type(FILE *f, VarType t) {
     for(int i=0; i<t.ptr_depth; i++) fprintf(f, "*");
 }
 
-static void alir_fprint_val(FILE *f, AlirValue *v) {
+void alir_fprint_val(FILE *f, AlirValue *v) {
     if (!v) { fprintf(f, "void"); return; }
     switch(v->kind) {
         case ALIR_VAL_CONST:
@@ -300,7 +298,7 @@ static void alir_fprint_val(FILE *f, AlirValue *v) {
 }
 
 // Internal stream emitter
-static void alir_emit_stream(AlirModule *mod, FILE *f) {
+void alir_emit_stream(AlirModule *mod, FILE *f) {
     fprintf(f, "; Module: %s\n", mod->name);
     
     // 1. Print Structs

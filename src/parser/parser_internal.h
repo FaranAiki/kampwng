@@ -2,7 +2,7 @@
 #define PARSER_INTERNAL_H
 
 #include "parser.h"
-#include "../diagnostic/diagnostic.h"
+#include "../common/diagnostic.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <setjmp.h>

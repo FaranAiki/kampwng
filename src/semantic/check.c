@@ -1,5 +1,4 @@
 #include "semantic.h"
-#include "../diagnostic/diagnostic.h" 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

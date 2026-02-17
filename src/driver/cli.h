@@ -5,7 +5,7 @@
 
 #include "../parser/parser.h"
 #include "../old/codegen/codegen.h"
-#include "../compiler_debug/compiler_debug.h"
+#include "../common/compiler_debug.h"
 
 // Entry point for the Interactive Shell
 int run_repl(void);

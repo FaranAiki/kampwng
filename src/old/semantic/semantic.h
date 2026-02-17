@@ -1,7 +1,6 @@
 #ifndef OLD_SEMANTIC_H
 #define OLD_SEMANTIC_H
 
-#include "../diagnostic/diagnostic.h"
 #include "../parser/parser.h"
 #include <stdio.h>
 #include <stdlib.h>

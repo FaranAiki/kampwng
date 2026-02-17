@@ -6,7 +6,7 @@
 #include "../old/codegen/codegen.h"
 #include "../parser/parser.h"
 #include "../semantic/semantic.h"
-#include "../compiler_debug/compiler_debug.h"
+#include "../common/compiler_debug.h"
 #include "../alir/alir.h"
 // #include "../alick/alick.h"
 
