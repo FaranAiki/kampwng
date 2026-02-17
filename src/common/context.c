@@ -7,7 +7,11 @@ void context_init(CompilerContext *ctx, Arena *arena) {
     ctx->arena = arena;
     ctx->has_recovery = 0;
     ctx->error_count = 0;
-    
+    ctx->lexer_error_count = 0;
+    ctx->parser_error_count = 0;
+    ctx->semantic_error_count = 0;
+    ctx->alir_error_count = 0;
+
     // Initialize diagnostic state
     // Default namespace is "main"
     strncpy(ctx->current_namespace, "main", 255);

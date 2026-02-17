@@ -2,6 +2,8 @@
 // if using gcc (which is pre-stage 1/2)
 // link c;
 
+import "c/stddef';
+
 namespace io {
 
 // definition of EOF is standard
@@ -42,5 +44,5 @@ File open(char *filename, char *mode) {
   let *file = fopen(filename, mode);
 }*/
 
-}
-
+};
+;

@@ -496,6 +496,7 @@ static ASTNode* parse_case_body_stmts(Parser *p) {
             current = &stmt->next;
         }
     }
+    // *current = NULL; // don't have to cut off
     return head;
 }
 

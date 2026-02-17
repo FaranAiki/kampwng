@@ -132,47 +132,6 @@ void alir_scan_and_register_classes(AlirCtx *ctx, ASTNode *root) {
     }
 }
 
-AlirValue* alir_lower_new_object(AlirCtx *ctx, const char *class_name, ASTNode *args) {
-    // Verify struct exists in IR
-    AlirStruct *st = alir_find_struct(ctx->module, class_name);
-    if (!st) return NULL; 
-
-    // 1. Sizeof
-    AlirValue *size_val = new_temp(ctx, (VarType){TYPE_INT, 0});
-    AlirInst *i_size = mk_inst(ctx->module, ALIR_OP_SIZEOF, size_val, alir_val_type(ctx->module, class_name), NULL);
-    emit(ctx, i_size);
-
-    // 2. Alloc Heap (Malloc)
-    AlirValue *raw_mem = new_temp(ctx, (VarType){TYPE_CHAR, 1}); // char*
-    emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOC_HEAP, raw_mem, size_val, NULL));
-
-    // 3. Bitcast to Class*
-    VarType cls_ptr_type = {TYPE_CLASS, 1, alir_strdup(ctx->module, class_name)};
-    AlirValue *obj_ptr = new_temp(ctx, cls_ptr_type);
-    emit(ctx, mk_inst(ctx->module, ALIR_OP_BITCAST, obj_ptr, raw_mem, NULL));
-
-    // 4. Call Constructor
-    // Note: In a real compiler, we'd mangle the constructor name properly or look it up via SemCtx
-    AlirInst *call_init = mk_inst(ctx->module, ALIR_OP_CALL, NULL, alir_val_var(ctx->module, class_name), NULL);
-    
-    int arg_count = 0; ASTNode *a = args; while(a) { arg_count++; a=a->next; }
-    call_init->arg_count = arg_count + 1;
-    call_init->args = alir_alloc(ctx->module, sizeof(AlirValue*) * (arg_count + 1));
-    
-    call_init->args[0] = obj_ptr; // THIS pointer
-    
-    int i = 1; a = args;
-    while(a) {
-        call_init->args[i++] = alir_gen_expr(ctx, a);
-        a = a->next;
-    }
-    
-    call_init->dest = new_temp(ctx, (VarType){TYPE_VOID, 0});
-    emit(ctx, call_init);
-    
-    return obj_ptr;
-}
-
 void alir_gen_switch(AlirCtx *ctx, SwitchNode *sn) {
     AlirValue *cond = alir_gen_expr(ctx, sn->condition);
     AlirBlock *end_bb = alir_add_block(ctx->module, ctx->current_func, "switch_end");

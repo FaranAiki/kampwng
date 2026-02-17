@@ -220,7 +220,6 @@ ASTNode* parse_typedef(Parser *p) {
       for (int i = 0; i < name_count; i++) {
           register_alias(p, names[i], target);
       }
-      // No free(names)
   }
   
   eat(p, TOKEN_SEMICOLON);

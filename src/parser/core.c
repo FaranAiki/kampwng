@@ -508,6 +508,7 @@ ASTNode* parse_program(Parser *p) {
   }
   
   p->recover_buf = NULL;
+  *current = NULL; // have to cut off
   return head;
 }
 
