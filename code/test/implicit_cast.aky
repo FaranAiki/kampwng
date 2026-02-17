@@ -3,7 +3,7 @@ int test(double t) {
 }
 
 int main() {
-  let t = test(5 as double);
+  let t = test(5);
   let v = test(5.0);
 
   print "%d, %d\n", t, v;

@@ -490,7 +490,7 @@ static void emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
                 sb_append(sb, "\"");
             }
             else if (ln->var_type.base == TYPE_CHAR) {
-                if (ln->val.str_val) {
+                if (ln->var_type.ptr_depth > 0) {
                     // C-String literal (c"...")
                     sb_append(sb, "c\"");
                     sb_append_escaped(sb, ln->val.str_val);
