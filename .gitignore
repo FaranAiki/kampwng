@@ -17,6 +17,9 @@ output
 *.alir
 *.semc
 
+# valgrind
+*.valgrind
+
 # files 
 kampwng-comp
 kampwng 

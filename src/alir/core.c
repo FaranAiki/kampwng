@@ -83,7 +83,6 @@ AlirValue* alir_module_add_string_literal(AlirModule *mod, const char *content, 
 
 AlirBlock* alir_add_block(AlirModule *mod, AlirFunction *func, const char *label_hint) {
     AlirBlock *b = alir_alloc(mod, sizeof(AlirBlock));
-    int global_id = 0; // In a real allocator this would be tracked, using block_count
     b->id = func->block_count; // Use block count as ID
     
     if (label_hint) b->label = alir_strdup(mod, label_hint);

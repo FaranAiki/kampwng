@@ -10,6 +10,8 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
+add_compile_options(-Wall -Wextra -g -g0)
+
 llvm_map_components_to_libnames(llvm_libs 
     core 
     executionengine 
@@ -93,7 +95,9 @@ set(DEPRECATED_LLVM_CODEGEN_SOURCES
     src/old/codegen/node/cast.c
 )
 
-
+set_source_files_properties(${DEPRECATED_LLVM_CODEGEN_SOURCES} 
+    PROPERTIES COMPILE_OPTIONS "-w"
+)
 
 set(COMMON_SOURCES
   ${FRONTEND_SOURCES}

@@ -459,7 +459,24 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
             }
             break;
         }
-        case NODE_CALL: alir_gen_expr(ctx, node); break;
+        case NODE_CALL: 
+        case NODE_METHOD_CALL:
+        case NODE_VAR_REF:
+        case NODE_BINARY_OP:
+        case NODE_UNARY_OP:
+        case NODE_LITERAL:
+        case NODE_ARRAY_LIT:
+        case NODE_ARRAY_ACCESS:
+        case NODE_MEMBER_ACCESS:
+        case NODE_TRAIT_ACCESS:
+        case NODE_TYPEOF:
+        case NODE_HAS_METHOD:
+        case NODE_HAS_ATTRIBUTE:
+        case NODE_CAST:
+        case NODE_INC_DEC:
+            alir_gen_expr(ctx, node); 
+            break;
+
         case NODE_IF: {
             IfNode *in = (IfNode*)node;
             AlirValue *cond = alir_gen_expr(ctx, in->condition);
@@ -488,6 +505,16 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
             ctx->current_block = merge_bb;
             break;
         }
+
+        // Structural Nodes / Top-Level Declaration placeholders that might appear in block but are handled elsewhere or ignored in gen pass
+        case NODE_ROOT:
+        case NODE_FUNC_DEF:
+        case NODE_CLASS:
+        case NODE_NAMESPACE:
+        case NODE_ENUM:
+        case NODE_LINK:
+        case NODE_CASE: // Handled inside SWITCH
+            break;
     }
 }
 

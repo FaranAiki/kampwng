@@ -44,27 +44,22 @@ void lexer_to_file(Lexer *l, const char *filename) {
             fputs(str, f);
             fclose(f);
         }
-        free(str); // str is allocated by StringBuilder (malloc), so we free it.
+        free(str); // str is allocated by StringBuilder (malloc), so we must free it
     }
 }
 
 char* lexer_string_to_string(const char *src) {
-    // 1. Setup temporary environment
     Arena arena;
     arena_init(&arena);
     
     CompilerContext ctx;
     context_init(&ctx, &arena);
 
-    // 2. Setup Lexer
     Lexer l;
     lexer_init(&l, &ctx, "", src);
     
-    // 3. Process
     char* result = lexer_to_string(&l);
     
-    // 4. Cleanup
-    // result is malloc'd by StringBuilder, so it survives arena_free
     arena_free(&arena);
     
     return result;

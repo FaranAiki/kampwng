@@ -9,9 +9,6 @@ static void set_loc(ASTNode *n, int line, int col) {
 ASTNode* parse_unary(Parser *p);
 
 ASTNode* parse_call(Parser *p, char *name) {
-  int line = p->current_token.line;
-  int col = p->current_token.col;
-  
   eat(p, TOKEN_LPAREN);
   ASTNode *args_head = NULL;
   ASTNode **curr_arg = &args_head;

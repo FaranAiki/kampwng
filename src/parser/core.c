@@ -136,7 +136,6 @@ Token get_next_token_expanded(Parser *p) {
         if (p->expansion_head->pos < p->expansion_head->count) {
             return token_clone(p, p->expansion_head->tokens[p->expansion_head->pos++]);
         } else {
-            Expansion *finished = p->expansion_head;
             p->expansion_head = p->expansion_head->next;
             // No need to free expansion tokens explicitly with arena
             return get_next_token_expanded(p);
