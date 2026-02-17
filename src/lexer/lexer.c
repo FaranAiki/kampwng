@@ -4,12 +4,13 @@
 #include <ctype.h>
 #include <string.h>
 
-void lexer_init(Lexer *l, const char *src) {
+void lexer_init(Lexer *l, CompilerContext *ctx, const char *filename, const char* src) {
   l->src = src;
-  l->filename = NULL; 
+  l->filename = filename; 
   l->pos = 0;
   l->line = 1;
   l->col = 1;
+  l->ctx = ctx;
 }
 
 static char peek(Lexer *l) { return l->src[l->pos]; }

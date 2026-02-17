@@ -3,6 +3,7 @@
 
 #include "../lexer/lexer.h"
 #include "../common/debug.h"
+#include "../common/context.h"
 #include <setjmp.h>
 
 // --- TYPES ---
@@ -39,7 +40,6 @@ typedef enum {
   NODE_HAS_METHOD,    
   NODE_HAS_ATTRIBUTE,  
   NODE_CAST,
-  // Flux Nodes
   NODE_EMIT,
   NODE_FOR_IN
 } NodeType;
@@ -58,7 +58,7 @@ typedef enum {
   TYPE_STRING,
   TYPE_AUTO,
   TYPE_CLASS, 
-  TYPE_ENUM, // Added TYPE_ENUM
+  TYPE_ENUM, 
   TYPE_UNKNOWN
 } BaseType;
 
@@ -70,7 +70,6 @@ struct VarType {
   int array_size; 
   int is_unsigned; 
   
-  // Function Pointer Support
   int is_func_ptr;
   struct VarType *fp_ret_type;   
   struct VarType *fp_param_types; 
@@ -78,12 +77,9 @@ struct VarType {
   int fp_is_varargs;
 };
 
-// The AST Node structure
-// PURE: No 'expr_type' here. Types live in the Side Table.
 typedef struct ASTNode {
   NodeType type;
   struct ASTNode *next; 
-  // Source Location
   int line;
   int col;
 } ASTNode;
@@ -226,7 +222,7 @@ typedef struct {
   ASTNode base;
   char *name;
   char *mangled_name;
-  int is_class_member; // New: Flags implicit 'this' access
+  int is_class_member; 
 } VarRefNode;
 
 typedef struct {
@@ -310,13 +306,38 @@ typedef struct {
   } val;
 } LiteralNode;
 
-ASTNode* parse_program(Lexer *l);
-ASTNode* parse_expression(Lexer *l);
-void free_ast(ASTNode *node);
-void safe_free_current_token(void);
+// --- PARSER CONTEXT ---
 
-void parser_reset(void);
-void parser_set_recovery(jmp_buf *env);
+// Forward declarations for internal state structures
+typedef struct Macro Macro;
+typedef struct TypeName TypeName;
+typedef struct TypeAlias TypeAlias;
+typedef struct Expansion Expansion;
+
+typedef struct Parser {
+    Lexer *l;
+    CompilerContext *ctx;
+    
+    Token current_token;
+    
+    // Error Recovery
+    jmp_buf *recover_buf;
+    
+    // Internal State (Lists)
+    Macro *macro_head;
+    TypeName *type_head;
+    TypeAlias *alias_head;
+    Expansion *expansion_head;
+    
+} Parser;
+
+// Initialize parser with an existing lexer (which holds the context)
+void parser_init(Parser *p, Lexer *l);
+
+// Parse the program using the provided parser instance
+ASTNode* parse_program(Parser *p);
+ASTNode* parse_expression(Parser *p);
+void free_ast(ASTNode *node);
 
 #include "emitter.h"
 

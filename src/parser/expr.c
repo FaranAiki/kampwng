@@ -2,32 +2,29 @@
 #include <string.h>
 #include <stdlib.h>
 
-// Forward declarations
-int is_typename(const char *name); // from core.c
-ASTNode* parse_unary(Lexer *l);
-
-// Local helper to set location
 static void set_loc(ASTNode *n, int line, int col) {
     if (n) { n->line = line; n->col = col; }
 }
 
-ASTNode* parse_call(Lexer *l, char *name) {
-  int line = current_token.line;
-  int col = current_token.col;
+ASTNode* parse_unary(Parser *p);
+
+ASTNode* parse_call(Parser *p, char *name) {
+  int line = p->current_token.line;
+  int col = p->current_token.col;
   
-  eat(l, TOKEN_LPAREN);
+  eat(p, TOKEN_LPAREN);
   ASTNode *args_head = NULL;
   ASTNode **curr_arg = &args_head;
-  if (current_token.type != TOKEN_RPAREN) {
-    *curr_arg = parse_expression(l);
+  if (p->current_token.type != TOKEN_RPAREN) {
+    *curr_arg = parse_expression(p);
     curr_arg = &(*curr_arg)->next;
-    while (current_token.type == TOKEN_COMMA) {
-      eat(l, TOKEN_COMMA);
-      *curr_arg = parse_expression(l);
+    while (p->current_token.type == TOKEN_COMMA) {
+      eat(p, TOKEN_COMMA);
+      *curr_arg = parse_expression(p);
       curr_arg = &(*curr_arg)->next;
     }
   }
-  eat(l, TOKEN_RPAREN);
+  eat(p, TOKEN_RPAREN);
   CallNode *node = calloc(1, sizeof(CallNode));
   node->base.type = NODE_CALL;
   node->name = name;
@@ -35,34 +32,32 @@ ASTNode* parse_call(Lexer *l, char *name) {
   return (ASTNode*)node;
 }
 
-// Parses postfix operations: [], ., ++, --, as
-ASTNode* parse_postfix(Lexer *l, ASTNode *node) {
+ASTNode* parse_postfix(Parser *p, ASTNode *node) {
     while (1) {
-        int line = current_token.line;
-        int col = current_token.col;
+        int line = p->current_token.line;
+        int col = p->current_token.col;
 
-        if (current_token.type == TOKEN_DOT) {
-            eat(l, TOKEN_DOT);
-            if (current_token.type != TOKEN_IDENTIFIER) parser_fail(l, "Expected member name after '.'");
-            char *member = current_token.text;
-            current_token.text = NULL;
-            eat(l, TOKEN_IDENTIFIER);
+        if (p->current_token.type == TOKEN_DOT) {
+            eat(p, TOKEN_DOT);
+            if (p->current_token.type != TOKEN_IDENTIFIER) parser_fail(p, "Expected member name after '.'");
+            char *member = p->current_token.text;
+            p->current_token.text = NULL;
+            eat(p, TOKEN_IDENTIFIER);
             
-            // Check for method call immediately: .method(
-            if (current_token.type == TOKEN_LPAREN) {
-                eat(l, TOKEN_LPAREN);
+            if (p->current_token.type == TOKEN_LPAREN) {
+                eat(p, TOKEN_LPAREN);
                 ASTNode *args_head = NULL;
                 ASTNode **curr_arg = &args_head;
-                if (current_token.type != TOKEN_RPAREN) {
-                    *curr_arg = parse_expression(l);
+                if (p->current_token.type != TOKEN_RPAREN) {
+                    *curr_arg = parse_expression(p);
                     curr_arg = &(*curr_arg)->next;
-                    while (current_token.type == TOKEN_COMMA) {
-                        eat(l, TOKEN_COMMA);
-                        *curr_arg = parse_expression(l);
+                    while (p->current_token.type == TOKEN_COMMA) {
+                        eat(p, TOKEN_COMMA);
+                        *curr_arg = parse_expression(p);
                         curr_arg = &(*curr_arg)->next;
                     }
                 }
-                eat(l, TOKEN_RPAREN);
+                eat(p, TOKEN_RPAREN);
                 
                 MethodCallNode *mc = calloc(1, sizeof(MethodCallNode));
                 mc->base.type = NODE_METHOD_CALL;
@@ -79,14 +74,13 @@ ASTNode* parse_postfix(Lexer *l, ASTNode *node) {
             }
             set_loc(node, line, col);
         } 
-        else if (current_token.type == TOKEN_LBRACKET) {
-            eat(l, TOKEN_LBRACKET);
+        else if (p->current_token.type == TOKEN_LBRACKET) {
+            eat(p, TOKEN_LBRACKET);
             
-            // Check for Trait Access: [ClassName]
-            if (current_token.type == TOKEN_IDENTIFIER && is_typename(current_token.text)) {
-                char *trait_name = strdup(current_token.text);
-                eat(l, TOKEN_IDENTIFIER);
-                eat(l, TOKEN_RBRACKET);
+            if (p->current_token.type == TOKEN_IDENTIFIER && is_typename(p, p->current_token.text)) {
+                char *trait_name = strdup(p->current_token.text);
+                eat(p, TOKEN_IDENTIFIER);
+                eat(p, TOKEN_RBRACKET);
                 
                 TraitAccessNode *ta = calloc(1, sizeof(TraitAccessNode));
                 ta->base.type = NODE_TRAIT_ACCESS;
@@ -94,21 +88,20 @@ ASTNode* parse_postfix(Lexer *l, ASTNode *node) {
                 ta->trait_name = trait_name;
                 node = (ASTNode*)ta;
             } else {
-                // Generic Array Access
-                ASTNode *index = parse_expression(l);
-                eat(l, TOKEN_RBRACKET);
+                ASTNode *index = parse_expression(p);
+                eat(p, TOKEN_RBRACKET);
                 
                 ArrayAccessNode *aa = calloc(1, sizeof(ArrayAccessNode));
                 aa->base.type = NODE_ARRAY_ACCESS;
-                aa->target = node; // Generic target (allows nesting)
+                aa->target = node; 
                 aa->index = index;
                 node = (ASTNode*)aa;
             }
             set_loc(node, line, col);
         }
-        else if (current_token.type == TOKEN_INCREMENT || current_token.type == TOKEN_DECREMENT) {
-            int op = current_token.type;
-            eat(l, op);
+        else if (p->current_token.type == TOKEN_INCREMENT || p->current_token.type == TOKEN_DECREMENT) {
+            int op = p->current_token.type;
+            eat(p, op);
             IncDecNode *id = calloc(1, sizeof(IncDecNode));
             id->base.type = NODE_INC_DEC;
             id->target = node;
@@ -117,10 +110,9 @@ ASTNode* parse_postfix(Lexer *l, ASTNode *node) {
             node = (ASTNode*)id;
             set_loc(node, line, col);
         }
-        else if (current_token.type == TOKEN_AS) {
-            // New "as" casting syntax
-            eat(l, TOKEN_AS);
-            VarType t = parse_type(l);
+        else if (p->current_token.type == TOKEN_AS) {
+            eat(p, TOKEN_AS);
+            VarType t = parse_type(p);
             
             CastNode *cn = calloc(1, sizeof(CastNode));
             cn->base.type = NODE_CAST;
@@ -136,21 +128,20 @@ ASTNode* parse_postfix(Lexer *l, ASTNode *node) {
     return node;
 }
 
-ASTNode* parse_factor(Lexer *l) {
+ASTNode* parse_factor(Parser *p) {
   ASTNode *node = NULL;
-  int line = current_token.line;
-  int col = current_token.col;
+  int line = p->current_token.line;
+  int col = p->current_token.col;
 
-  if (current_token.type == TOKEN_TYPEOF) {
-      eat(l, TOKEN_TYPEOF);
+  if (p->current_token.type == TOKEN_TYPEOF) {
+      eat(p, TOKEN_TYPEOF);
       ASTNode *expr;
-      // Allow optional parenthesis
-      if (current_token.type == TOKEN_LPAREN) {
-          eat(l, TOKEN_LPAREN);
-          expr = parse_expression(l);
-          eat(l, TOKEN_RPAREN);
+      if (p->current_token.type == TOKEN_LPAREN) {
+          eat(p, TOKEN_LPAREN);
+          expr = parse_expression(p);
+          eat(p, TOKEN_RPAREN);
       } else {
-          expr = parse_unary(l); // Parse unary to bind tightly to next factor
+          expr = parse_unary(p); 
       }
       UnaryOpNode *u = calloc(1, sizeof(UnaryOpNode));
       u->base.type = NODE_TYPEOF;
@@ -158,15 +149,15 @@ ASTNode* parse_factor(Lexer *l) {
       node = (ASTNode*)u;
       set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_HASMETHOD) {
-      eat(l, TOKEN_HASMETHOD);
+  else if (p->current_token.type == TOKEN_HASMETHOD) {
+      eat(p, TOKEN_HASMETHOD);
       ASTNode *expr;
-      if (current_token.type == TOKEN_LPAREN) {
-          eat(l, TOKEN_LPAREN);
-          expr = parse_expression(l);
-          eat(l, TOKEN_RPAREN);
+      if (p->current_token.type == TOKEN_LPAREN) {
+          eat(p, TOKEN_LPAREN);
+          expr = parse_expression(p);
+          eat(p, TOKEN_RPAREN);
       } else {
-          expr = parse_unary(l);
+          expr = parse_unary(p);
       }
       UnaryOpNode *u = calloc(1, sizeof(UnaryOpNode));
       u->base.type = NODE_HAS_METHOD;
@@ -174,15 +165,15 @@ ASTNode* parse_factor(Lexer *l) {
       node = (ASTNode*)u;
       set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_HASATTRIBUTE) {
-      eat(l, TOKEN_HASATTRIBUTE);
+  else if (p->current_token.type == TOKEN_HASATTRIBUTE) {
+      eat(p, TOKEN_HASATTRIBUTE);
       ASTNode *expr;
-      if (current_token.type == TOKEN_LPAREN) {
-          eat(l, TOKEN_LPAREN);
-          expr = parse_expression(l);
-          eat(l, TOKEN_RPAREN);
+      if (p->current_token.type == TOKEN_LPAREN) {
+          eat(p, TOKEN_LPAREN);
+          expr = parse_expression(p);
+          eat(p, TOKEN_RPAREN);
       } else {
-          expr = parse_unary(l);
+          expr = parse_unary(p);
       }
       UnaryOpNode *u = calloc(1, sizeof(UnaryOpNode));
       u->base.type = NODE_HAS_ATTRIBUTE;
@@ -190,103 +181,103 @@ ASTNode* parse_factor(Lexer *l) {
       node = (ASTNode*)u;
       set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_LBRACKET) {
-    eat(l, TOKEN_LBRACKET);
+  else if (p->current_token.type == TOKEN_LBRACKET) {
+    eat(p, TOKEN_LBRACKET);
     ASTNode *elems_head = NULL;
     ASTNode **curr_elem = &elems_head;
-    if (current_token.type != TOKEN_RBRACKET) {
-      *curr_elem = parse_expression(l);
+    if (p->current_token.type != TOKEN_RBRACKET) {
+      *curr_elem = parse_expression(p);
       curr_elem = &(*curr_elem)->next;
-      while (current_token.type == TOKEN_COMMA) {
-        eat(l, TOKEN_COMMA);
-        *curr_elem = parse_expression(l);
+      while (p->current_token.type == TOKEN_COMMA) {
+        eat(p, TOKEN_COMMA);
+        *curr_elem = parse_expression(p);
         curr_elem = &(*curr_elem)->next;
       }
     }
-    eat(l, TOKEN_RBRACKET);
+    eat(p, TOKEN_RBRACKET);
     ArrayLitNode *an = calloc(1, sizeof(ArrayLitNode));
     an->base.type = NODE_ARRAY_LIT;
     an->elements = elems_head;
     node = (ASTNode*)an;
     set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_NUMBER || 
-           current_token.type == TOKEN_UINT_LIT ||
-           current_token.type == TOKEN_LONG_LIT ||
-           current_token.type == TOKEN_ULONG_LIT ||
-           current_token.type == TOKEN_LONG_LONG_LIT ||
-           current_token.type == TOKEN_ULONG_LONG_LIT) {
+  else if (p->current_token.type == TOKEN_NUMBER || 
+           p->current_token.type == TOKEN_UINT_LIT ||
+           p->current_token.type == TOKEN_LONG_LIT ||
+           p->current_token.type == TOKEN_ULONG_LIT ||
+           p->current_token.type == TOKEN_LONG_LONG_LIT ||
+           p->current_token.type == TOKEN_ULONG_LONG_LIT) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;
     
-    if (current_token.type == TOKEN_UINT_LIT) { ln->var_type.base = TYPE_INT; ln->var_type.is_unsigned = 1; }
-    else if (current_token.type == TOKEN_LONG_LIT) { ln->var_type.base = TYPE_LONG; }
-    else if (current_token.type == TOKEN_ULONG_LIT) { ln->var_type.base = TYPE_LONG; ln->var_type.is_unsigned = 1; }
-    else if (current_token.type == TOKEN_LONG_LONG_LIT) { ln->var_type.base = TYPE_LONG_LONG; }
-    else if (current_token.type == TOKEN_ULONG_LONG_LIT) { ln->var_type.base = TYPE_LONG_LONG; ln->var_type.is_unsigned = 1; }
+    if (p->current_token.type == TOKEN_UINT_LIT) { ln->var_type.base = TYPE_INT; ln->var_type.is_unsigned = 1; }
+    else if (p->current_token.type == TOKEN_LONG_LIT) { ln->var_type.base = TYPE_LONG; }
+    else if (p->current_token.type == TOKEN_ULONG_LIT) { ln->var_type.base = TYPE_LONG; ln->var_type.is_unsigned = 1; }
+    else if (p->current_token.type == TOKEN_LONG_LONG_LIT) { ln->var_type.base = TYPE_LONG_LONG; }
+    else if (p->current_token.type == TOKEN_ULONG_LONG_LIT) { ln->var_type.base = TYPE_LONG_LONG; ln->var_type.is_unsigned = 1; }
     else { ln->var_type.base = TYPE_INT; }
 
-    ln->val.long_val = current_token.long_val;
-    eat(l, current_token.type);
+    ln->val.long_val = p->current_token.long_val;
+    eat(p, p->current_token.type);
     node = (ASTNode*)ln;
     set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_FLOAT || current_token.type == TOKEN_LONG_DOUBLE_LIT) {
+  else if (p->current_token.type == TOKEN_FLOAT || p->current_token.type == TOKEN_LONG_DOUBLE_LIT) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;
-    if (current_token.type == TOKEN_LONG_DOUBLE_LIT) ln->var_type.base = TYPE_LONG_DOUBLE;
+    if (p->current_token.type == TOKEN_LONG_DOUBLE_LIT) ln->var_type.base = TYPE_LONG_DOUBLE;
     else ln->var_type.base = TYPE_DOUBLE;
-    ln->val.double_val = current_token.double_val;
-    eat(l, current_token.type);
+    ln->val.double_val = p->current_token.double_val;
+    eat(p, p->current_token.type);
     node = (ASTNode*)ln;
     set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_CHAR_LIT) {
+  else if (p->current_token.type == TOKEN_CHAR_LIT) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;
     ln->var_type.base = TYPE_CHAR;
-    ln->val.long_val = current_token.int_val;
-    eat(l, TOKEN_CHAR_LIT);
+    ln->val.long_val = p->current_token.int_val;
+    eat(p, TOKEN_CHAR_LIT);
     node = (ASTNode*)ln;
     set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_STRING) {
+  else if (p->current_token.type == TOKEN_STRING) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;
     ln->var_type.base = TYPE_STRING;
-    ln->val.str_val = current_token.text;
-    current_token.text = NULL; 
-    eat(l, TOKEN_STRING);
+    ln->val.str_val = p->current_token.text;
+    p->current_token.text = NULL; 
+    eat(p, TOKEN_STRING);
     node = (ASTNode*)ln;
     set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_C_STRING) {
+  else if (p->current_token.type == TOKEN_C_STRING) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;
     ln->var_type.base = TYPE_CHAR;
-    ln->var_type.ptr_depth = 1; // char*
-    ln->val.str_val = current_token.text;
-    current_token.text = NULL; 
-    eat(l, TOKEN_C_STRING);
+    ln->var_type.ptr_depth = 1; 
+    ln->val.str_val = p->current_token.text;
+    p->current_token.text = NULL; 
+    eat(p, TOKEN_C_STRING);
     node = (ASTNode*)ln;
     set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_TRUE || current_token.type == TOKEN_FALSE) {
+  else if (p->current_token.type == TOKEN_TRUE || p->current_token.type == TOKEN_FALSE) {
     LiteralNode *ln = calloc(1, sizeof(LiteralNode));
     ln->base.type = NODE_LITERAL;
     ln->var_type.base = TYPE_BOOL;
-    ln->val.long_val = (current_token.type == TOKEN_TRUE) ? 1 : 0;
-    eat(l, current_token.type);
+    ln->val.long_val = (p->current_token.type == TOKEN_TRUE) ? 1 : 0;
+    eat(p, p->current_token.type);
     node = (ASTNode*)ln;
     set_loc(node, line, col);
   }
-  else if (current_token.type == TOKEN_IDENTIFIER) {
-    char *name = current_token.text;
-    current_token.text = NULL;
-    eat(l, TOKEN_IDENTIFIER);
+  else if (p->current_token.type == TOKEN_IDENTIFIER) {
+    char *name = p->current_token.text;
+    p->current_token.text = NULL;
+    eat(p, TOKEN_IDENTIFIER);
     
-    if (current_token.type == TOKEN_LPAREN) {
-      node = parse_call(l, name);
+    if (p->current_token.type == TOKEN_LPAREN) {
+      node = parse_call(p, name);
       set_loc(node, line, col);
     } 
     else {
@@ -299,23 +290,23 @@ ASTNode* parse_factor(Lexer *l) {
   }
   else {
     char msg[128];
-    const char *tok = current_token.text ? current_token.text : token_type_to_string(current_token.type);
+    const char *tok = p->current_token.text ? p->current_token.text : token_type_to_string(p->current_token.type);
     snprintf(msg, sizeof(msg), "Unexpected token in expression: '%s'", tok);
-    parser_fail(l, msg);
+    parser_fail(p, msg);
     return NULL; 
   }
   
-  return parse_postfix(l, node);
+  return parse_postfix(p, node);
 }
 
-ASTNode* parse_unary(Lexer *l) {
-  int line = current_token.line;
-  int col = current_token.col;
+ASTNode* parse_unary(Parser *p) {
+  int line = p->current_token.line;
+  int col = p->current_token.col;
   
-  if (current_token.type == TOKEN_INCREMENT || current_token.type == TOKEN_DECREMENT) {
-      int op = current_token.type;
-      eat(l, op);
-      ASTNode *operand = parse_unary(l);
+  if (p->current_token.type == TOKEN_INCREMENT || p->current_token.type == TOKEN_DECREMENT) {
+      int op = p->current_token.type;
+      eat(p, op);
+      ASTNode *operand = parse_unary(p);
       IncDecNode *node = calloc(1, sizeof(IncDecNode));
       node->base.type = NODE_INC_DEC;
       node->target = operand;
@@ -325,12 +316,12 @@ ASTNode* parse_unary(Lexer *l) {
       return (ASTNode*)node;
   }
   
-  if (current_token.type == TOKEN_NOT || current_token.type == TOKEN_MINUS || 
-      current_token.type == TOKEN_BIT_NOT || current_token.type == TOKEN_STAR || 
-      current_token.type == TOKEN_AND) {
-    int op = current_token.type;
-    eat(l, op);
-    ASTNode *operand = parse_unary(l);
+  if (p->current_token.type == TOKEN_NOT || p->current_token.type == TOKEN_MINUS || 
+      p->current_token.type == TOKEN_BIT_NOT || p->current_token.type == TOKEN_STAR || 
+      p->current_token.type == TOKEN_AND) {
+    int op = p->current_token.type;
+    eat(p, op);
+    ASTNode *operand = parse_unary(p);
     UnaryOpNode *node = calloc(1, sizeof(UnaryOpNode));
     node->base.type = NODE_UNARY_OP;
     node->op = op;
@@ -339,30 +330,28 @@ ASTNode* parse_unary(Lexer *l) {
     return (ASTNode*)node;
   }
 
-  // Handle Parenthesis: Grouping only. Casts are now handled via 'as'.
-  if (current_token.type == TOKEN_LPAREN) {
-      eat(l, TOKEN_LPAREN);
-      ASTNode *expr = parse_expression(l);
-      eat(l, TOKEN_RPAREN);
-      // Apply postfix ops (e.g. (a + b).method() or (a+b) as int)
-      return parse_postfix(l, expr);
+  if (p->current_token.type == TOKEN_LPAREN) {
+      eat(p, TOKEN_LPAREN);
+      ASTNode *expr = parse_expression(p);
+      eat(p, TOKEN_RPAREN);
+      return parse_postfix(p, expr);
   }
 
-  return parse_factor(l);
+  return parse_factor(p);
 }
 
-ASTNode* parse_binary_op(Lexer *l, ASTNode* (*sub_parser)(Lexer*), TokenType* ops, int num_ops) {
-  ASTNode *left = sub_parser(l);
+static ASTNode* parse_binary_op(Parser *p, ASTNode* (*sub_parser)(Parser*), TokenType* ops, int num_ops) {
+  ASTNode *left = sub_parser(p);
   while (1) {
     int found = 0;
-    int line = current_token.line;
-    int col = current_token.col;
+    int line = p->current_token.line;
+    int col = p->current_token.col;
     for (int i = 0; i < num_ops; i++) {
-      if (current_token.type == ops[i]) {
+      if (p->current_token.type == ops[i]) {
         found = 1;
-        TokenType op = current_token.type;
-        eat(l, op);
-        ASTNode *right = sub_parser(l);
+        TokenType op = p->current_token.type;
+        eat(p, op);
+        ASTNode *right = sub_parser(p);
         BinaryOpNode *node = calloc(1, sizeof(BinaryOpNode));
         node->base.type = NODE_BINARY_OP;
         node->op = op;
@@ -378,68 +367,68 @@ ASTNode* parse_binary_op(Lexer *l, ASTNode* (*sub_parser)(Lexer*), TokenType* op
   return left;
 }
 
-ASTNode* parse_term(Lexer *l) {
+ASTNode* parse_term(Parser *p) {
   TokenType ops[] = {TOKEN_STAR, TOKEN_SLASH, TOKEN_MOD};
-  return parse_binary_op(l, parse_unary, ops, 3);
+  return parse_binary_op(p, parse_unary, ops, 3);
 }
-ASTNode* parse_additive(Lexer *l) {
+ASTNode* parse_additive(Parser *p) {
   TokenType ops[] = {TOKEN_PLUS, TOKEN_MINUS};
-  return parse_binary_op(l, parse_term, ops, 2);
+  return parse_binary_op(p, parse_term, ops, 2);
 }
-ASTNode* parse_shift(Lexer *l) {
+ASTNode* parse_shift(Parser *p) {
   TokenType ops[] = {TOKEN_LSHIFT, TOKEN_RSHIFT};
-  return parse_binary_op(l, parse_additive, ops, 2);
+  return parse_binary_op(p, parse_additive, ops, 2);
 }
-ASTNode* parse_relational(Lexer *l) {
+ASTNode* parse_relational(Parser *p) {
   TokenType ops[] = {TOKEN_LT, TOKEN_GT, TOKEN_LTE, TOKEN_GTE};
-  return parse_binary_op(l, parse_shift, ops, 4);
+  return parse_binary_op(p, parse_shift, ops, 4);
 }
-ASTNode* parse_equality(Lexer *l) {
+ASTNode* parse_equality(Parser *p) {
   TokenType ops[] = {TOKEN_EQ, TOKEN_NEQ};
-  return parse_binary_op(l, parse_relational, ops, 2);
+  return parse_binary_op(p, parse_relational, ops, 2);
 }
-ASTNode* parse_bitwise_and(Lexer *l) {
+ASTNode* parse_bitwise_and(Parser *p) {
   TokenType ops[] = {TOKEN_AND};
-  return parse_binary_op(l, parse_equality, ops, 1);
+  return parse_binary_op(p, parse_equality, ops, 1);
 }
-ASTNode* parse_bitwise_xor(Lexer *l) {
+ASTNode* parse_bitwise_xor(Parser *p) {
   TokenType ops[] = {TOKEN_XOR};
-  return parse_binary_op(l, parse_bitwise_and, ops, 1);
+  return parse_binary_op(p, parse_bitwise_and, ops, 1);
 }
-ASTNode* parse_bitwise_or(Lexer *l) {
+ASTNode* parse_bitwise_or(Parser *p) {
   TokenType ops[] = {TOKEN_OR};
-  return parse_binary_op(l, parse_bitwise_xor, ops, 1);
+  return parse_binary_op(p, parse_bitwise_xor, ops, 1);
 }
-ASTNode* parse_logic_and(Lexer *l) {
+ASTNode* parse_logic_and(Parser *p) {
   TokenType ops[] = {TOKEN_AND_AND};
-  return parse_binary_op(l, parse_bitwise_or, ops, 1);
+  return parse_binary_op(p, parse_bitwise_or, ops, 1);
 }
-ASTNode* parse_logic_or(Lexer *l) {
+ASTNode* parse_logic_or(Parser *p) {
   TokenType ops[] = {TOKEN_OR_OR};
-  return parse_binary_op(l, parse_logic_and, ops, 1);
+  return parse_binary_op(p, parse_logic_and, ops, 1);
 }
 
-ASTNode* parse_assignment(Lexer *l) {
-  ASTNode *lhs = parse_logic_or(l); 
+ASTNode* parse_assignment(Parser *p) {
+  ASTNode *lhs = parse_logic_or(p); 
   
-  if (current_token.type == TOKEN_ASSIGN || 
-      current_token.type == TOKEN_PLUS_ASSIGN ||
-      current_token.type == TOKEN_MINUS_ASSIGN ||
-      current_token.type == TOKEN_STAR_ASSIGN ||
-      current_token.type == TOKEN_SLASH_ASSIGN ||
-      current_token.type == TOKEN_MOD_ASSIGN ||
-      current_token.type == TOKEN_AND_ASSIGN ||
-      current_token.type == TOKEN_OR_ASSIGN ||
-      current_token.type == TOKEN_XOR_ASSIGN ||
-      current_token.type == TOKEN_LSHIFT_ASSIGN ||
-      current_token.type == TOKEN_RSHIFT_ASSIGN) {
+  if (p->current_token.type == TOKEN_ASSIGN || 
+      p->current_token.type == TOKEN_PLUS_ASSIGN ||
+      p->current_token.type == TOKEN_MINUS_ASSIGN ||
+      p->current_token.type == TOKEN_STAR_ASSIGN ||
+      p->current_token.type == TOKEN_SLASH_ASSIGN ||
+      p->current_token.type == TOKEN_MOD_ASSIGN ||
+      p->current_token.type == TOKEN_AND_ASSIGN ||
+      p->current_token.type == TOKEN_OR_ASSIGN ||
+      p->current_token.type == TOKEN_XOR_ASSIGN ||
+      p->current_token.type == TOKEN_LSHIFT_ASSIGN ||
+      p->current_token.type == TOKEN_RSHIFT_ASSIGN) {
           
-      int line = current_token.line;
-      int col = current_token.col;
-      int op = current_token.type;
-      eat(l, op);
+      int line = p->current_token.line;
+      int col = p->current_token.col;
+      int op = p->current_token.type;
+      eat(p, op);
       
-      ASTNode *rhs = parse_assignment(l); 
+      ASTNode *rhs = parse_assignment(p); 
       
       AssignNode *node = calloc(1, sizeof(AssignNode));
       node->base.type = NODE_ASSIGN;
@@ -451,7 +440,6 @@ ASTNode* parse_assignment(Lexer *l) {
           ((VarRefNode*)lhs)->name = NULL; 
           free(lhs);
       } else {
-          // Generic target (MemberAccess, ArrayAccess, etc)
           node->target = lhs; 
       }
       set_loc((ASTNode*)node, line, col);
@@ -460,6 +448,6 @@ ASTNode* parse_assignment(Lexer *l) {
   return lhs;
 }
 
-ASTNode* parse_expression(Lexer *l) {
-  return parse_assignment(l);
+ASTNode* parse_expression(Parser *p) {
+  return parse_assignment(p);
 }

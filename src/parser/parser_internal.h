@@ -7,69 +7,84 @@
 #include <stdlib.h>
 #include <setjmp.h>
 
-// --- SHARED GLOBALS ---
-// TODO: make this non global so threads are easy to maintain
-extern Token current_token;
-extern jmp_buf *parser_env;      // For REPL recovery
-extern jmp_buf *parser_recover_buf; // For file parsing recovery
+// --- INTERNAL DATA STRUCTURES ---
+
+struct Macro {
+    char *name;
+    char **params;
+    int param_count;
+    Token *body;
+    int body_len;
+    struct Macro *next;
+};
+
+struct TypeName {
+    char *name;
+    int is_enum; 
+    struct TypeName *next;
+};
+
+struct TypeAlias {
+    char *name;
+    VarType target;
+    struct TypeAlias *next;
+};
+
+struct Expansion {
+    Token *tokens;
+    int count;
+    int pos;
+    struct Expansion *next;
+};
 
 // --- CORE FUNCTIONS (parser_core.c) ---
-// Report error at current token
-void parser_fail(Lexer *l, const char *msg);
-// Report error at specific token (fix for caret position)
-void parser_fail_at(Lexer *l, Token t, const char *msg);
-// Skip tokens until a sync point is found
-void parser_sync(Lexer *l);
+void parser_fail(Parser *p, const char *msg);
+void parser_fail_at(Parser *p, Token t, const char *msg);
+void parser_sync(Parser *p);
 
-void eat(Lexer *l, TokenType type);
-VarType parse_type(Lexer *l); 
-// Parses "(*name)(params)" logic, returning the composite Type and filling out_name
-VarType parse_func_ptr_decl(Lexer *l, VarType ret_type, char **out_name);
+void eat(Parser *p, TokenType type);
+VarType parse_type(Parser *p); 
+VarType parse_func_ptr_decl(Parser *p, VarType ret_type, char **out_name);
 
 char* read_import_file(const char* filename);
 
-// Macro Registry
-void register_macro(const char *name, char **params, int param_count, Token *body, int body_len);
+// Registry Functions (now operate on Parser state)
+void register_macro(Parser *p, const char *name, char **params, int param_count, Token *body, int body_len);
+void register_typename(Parser *p, const char *name, int is_enum);
+int is_typename(Parser *p, const char *name);
+void register_alias(Parser *p, const char *name, VarType target);
+VarType* get_alias(Parser *p, const char *name);
 
-// Type Registry (OOP)
-void register_typename(const char *name, int is_enum);
-int is_typename(const char *name);
+Token lexer_next_raw(Parser *p); 
 
-// Alias Registry (Typedef)
-void register_alias(const char *name, VarType target);
-VarType* get_alias(const char *name);
+// Expressions (parser/expr.c)
+ASTNode* parse_call(Parser *p, char *name);
+ASTNode* parse_postfix(Parser *p, ASTNode *node); 
+ASTNode* parse_expression(Parser *p);
 
-Token lexer_next_raw(Lexer *l); 
+// Statements (parser/stmt.c)
+ASTNode* parse_single_statement_or_block(Parser *p);
+ASTNode* parse_statements(Parser *p);
+ASTNode* parse_var_decl_internal(Parser *p);
+ASTNode* parse_assignment_or_call(Parser *p);
+ASTNode* parse_loop(Parser *p);
+ASTNode* parse_while(Parser *p);
+ASTNode* parse_if(Parser *p);
+ASTNode* parse_switch(Parser *p); 
+ASTNode* parse_return(Parser *p);
+ASTNode* parse_break(Parser *p);
+ASTNode* parse_continue(Parser *p);
+ASTNode* parse_emit(Parser *p);
+ASTNode* parse_for_in(Parser *p);
 
-// parse expr
-ASTNode* parse_call(Lexer *l, char *name);
-ASTNode* parse_postfix(Lexer *l, ASTNode *node); 
-
-// parse stmt
-ASTNode* parse_single_statement_or_block(Lexer *l);
-ASTNode* parse_statements(Lexer *l);
-ASTNode* parse_var_decl_internal(Lexer *l);
-ASTNode* parse_assignment_or_call(Lexer *l);
-ASTNode* parse_loop(Lexer *l);
-ASTNode* parse_while(Lexer *l);
-ASTNode* parse_if(Lexer *l);
-ASTNode* parse_switch(Lexer *l); 
-ASTNode* parse_return(Lexer *l);
-ASTNode* parse_break(Lexer *l);
-ASTNode* parse_continue(Lexer *l);
-
-// Flux Parsing
-ASTNode* parse_emit(Lexer *l);
-ASTNode* parse_for_in(Lexer *l);
-
-// parse top level 
-ASTNode* parse_top_level(Lexer *l); 
-
-ASTNode* parse_enum(Lexer *l);
-ASTNode* parse_class(Lexer *l);
-ASTNode* parse_define(Lexer *l);
-ASTNode* parse_typedef(Lexer *l);
-ASTNode* parse_import(Lexer *l);
-ASTNode* parse_link(Lexer *l);
+// Top Level (parser/top.c)
+ASTNode* parse_top_level(Parser *p); 
+ASTNode* parse_enum(Parser *p);
+ASTNode* parse_class(Parser *p);
+ASTNode* parse_define(Parser *p);
+ASTNode* parse_typedef(Parser *p);
+ASTNode* parse_import(Parser *p);
+ASTNode* parse_link(Parser *p);
+ASTNode* parse_extern(Parser *p);
 
 #endif // PARSER_INTERNAL_H

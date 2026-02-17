@@ -60,21 +60,20 @@ int main(int argc, char *argv[]) {
   if (!code) { fprintf(stderr, "Could not read file: %s\n", filename); return 1; }
 
   Lexer l;
-  l.ctx = &comp_ctx;
-  lexer_init(&l, code);
-  l.filename = filename; // Set filename for diagnostic context
+  lexer_init(&l, &comp_ctx, filename, code);
 
   debug_step("Finished lexing. Start parsing.");
 
   // generate for debugging 
   Lexer l_debug = l;
-  l_debug.ctx = &comp_ctx;
-  lexer_init(&l_debug, code);
+  lexer_init(&l_debug, &comp_ctx, filename, code);
   l.filename = filename;
 
   to_token_out(&l_debug, BASENAME ".tok");
 
-  ASTNode *root = parse_program(&l);
+  Parser p;
+  parser_init(&p, &l);
+  ASTNode *root = parse_program(&p);
   
   if (!root && comp_ctx.parser_error_count > 0) {
       free(code);

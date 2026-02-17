@@ -1,5 +1,7 @@
 #include "emitter.h"
 #include "../lexer/lexer.h"
+#include "../common/arena.h"
+#include "../common/context.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,7 +115,6 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
             sb_append_fmt(sb, " %s", vn->name);
             
             if (vn->is_array) {
-                // If explicit array size was parsed separately
                 sb_append(sb, "[");
                 if (vn->array_size) parser_emit_ast_node(sb, vn->array_size, 0);
                 sb_append(sb, "]");
@@ -367,7 +368,6 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
                 case TOKEN_AND: op = "&"; break;
             }
             sb_append(sb, op);
-            // Parenthesis for safety
             sb_append(sb, "(");
             parser_emit_ast_node(sb, un->operand, 0);
             sb_append(sb, ")");
@@ -414,12 +414,10 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
             }
             else if (ln->var_type.base == TYPE_CHAR) {
                 if (ln->var_type.ptr_depth > 0) {
-                    // C-String literal (c"...")
                     sb_append(sb, "c\"");
                     sb_append_escaped(sb, ln->val.str_val);
                     sb_append(sb, "\"");
                 } else {
-                    // Character literal
                     sb_append(sb, "'");
                     char c = (char)ln->val.long_val;
                     if (c == '\n') sb_append(sb, "\\n");
@@ -439,7 +437,6 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
                 sb_append(sb, ln->val.long_val ? "true" : "false");
             }
             else {
-                 // Fallback for types that might not have matched specific bases but are treated as int-likes
                  sb_append_fmt(sb, "%d", (int)ln->val.long_val);
             }
             break;
@@ -523,7 +520,6 @@ char* parser_to_string(ASTNode *root) {
     ASTNode *curr = root;
     while (curr) {
         parser_emit_ast_node(&sb, curr, 0);
-        // Only append semicolon for expression statements at top level (unlikely but possible)
         if (needs_semicolon(curr->type)) sb_append(&sb, ";");
         sb_append(&sb, "\n");
         curr = curr->next;
@@ -545,18 +541,42 @@ void parser_to_file(ASTNode *root, const char *filename) {
 }
 
 char* parser_string_to_string(const char *src) {
+    Arena arena;
+    arena_init(&arena);
+    
+    CompilerContext ctx;
+    context_init(&ctx, &arena);
+    
     Lexer l;
-    lexer_init(&l, src);
-    ASTNode *root = parse_program(&l);
+    lexer_init(&l, &ctx, src);
+    
+    Parser p;
+    parser_init(&p, &l);
+    
+    ASTNode *root = parse_program(&p);
     char *res = parser_to_string(root);
     free_ast(root);
+    
+    arena_free(&arena);
     return res;
 }
 
 void parser_string_to_file(const char *src, const char *filename) {
+    Arena arena;
+    arena_init(&arena);
+    
+    CompilerContext ctx;
+    context_init(&ctx, &arena);
+    
     Lexer l;
-    lexer_init(&l, src);
-    ASTNode *root = parse_program(&l);
+    lexer_init(&l, &ctx, src);
+    
+    Parser p;
+    parser_init(&p, &l);
+    
+    ASTNode *root = parse_program(&p);
     parser_to_file(root, filename);
     free_ast(root);
+    
+    arena_free(&arena);
 }

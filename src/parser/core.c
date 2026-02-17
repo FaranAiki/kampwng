@@ -3,41 +3,40 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-Token current_token = {TOKEN_UNKNOWN, NULL, 0, 0, 0.0};
-jmp_buf *parser_env = NULL;         // REPL
-jmp_buf *parser_recover_buf = NULL; // Compilation
+void parser_init(Parser *p, Lexer *l) {
+    if (!p) return;
+    p->l = l;
+    p->ctx = l ? l->ctx : NULL;
+    p->recover_buf = NULL;
+    
+    // Initialize lists
+    p->macro_head = NULL;
+    p->type_head = NULL;
+    p->alias_head = NULL;
+    p->expansion_head = NULL;
+    
+    // Prime the first token
+    if (l) {
+        // We can't safely call lexer_next here if we want to follow the old flow strictly,
+        // but typically init implies ready-to-start. 
+        // Note: parse_program usually fetches the first token.
+        // We'll set it to unknown so parse_program knows to fetch.
+        p->current_token.type = TOKEN_UNKNOWN;
+    }
+}
 
-// Why is the type of this shit looks like this lmaoo
+// --- TYPE REGISTRY ---
 
-typedef struct Macro {
-    char *name;
-    char **params;
-    int param_count;
-    Token *body;
-    int body_len;
-    struct Macro *next;
-} Macro;
-
-Macro *macro_head = NULL;
-
-typedef struct TypeName {
-    char *name;
-    int is_enum; 
-    struct TypeName *next;
-} TypeName;
-
-TypeName *type_head = NULL;
-
-void register_typename(const char *name, int is_enum) {
+void register_typename(Parser *p, const char *name, int is_enum) {
     TypeName *t = malloc(sizeof(TypeName));
     t->name = strdup(name);
     t->is_enum = is_enum;
-    t->next = type_head;
-    type_head = t;
+    t->next = p->type_head;
+    p->type_head = t;
 }
 
-int is_typename(const char *name) {
-    TypeName *cur = type_head;
+int is_typename(Parser *p, const char *name) {
+    TypeName *cur = p->type_head;
     while(cur) {
         if (strcmp(cur->name, name) == 0) return 1;
         cur = cur->next;
@@ -45,8 +44,8 @@ int is_typename(const char *name) {
     return 0;
 }
 
-int get_typename_kind(const char *name) {
-    TypeName *cur = type_head;
+static int get_typename_kind(Parser *p, const char *name) {
+    TypeName *cur = p->type_head;
     while(cur) {
         if (strcmp(cur->name, name) == 0) return cur->is_enum ? 2 : 1;
         cur = cur->next;
@@ -54,18 +53,10 @@ int get_typename_kind(const char *name) {
     return 0;
 }
 
-typedef struct TypeAlias {
-    char *name;
-    VarType target;
-    struct TypeAlias *next;
-} TypeAlias;
+// --- ALIAS REGISTRY ---
 
-TypeAlias *alias_head = NULL;
-
-void register_alias(const char *name, VarType target) {
-    // Overwrite if exists, or push new
-    // TODO give info/warning
-    TypeAlias *curr = alias_head;
+void register_alias(Parser *p, const char *name, VarType target) {
+    TypeAlias *curr = p->alias_head;
     while(curr) {
         if (strcmp(curr->name, name) == 0) {
             curr->target = target;
@@ -79,12 +70,12 @@ void register_alias(const char *name, VarType target) {
     a->target = target;
     if (target.class_name) a->target.class_name = strdup(target.class_name);
     
-    a->next = alias_head;
-    alias_head = a;
+    a->next = p->alias_head;
+    p->alias_head = a;
 }
 
-VarType* get_alias(const char *name) {
-    TypeAlias *curr = alias_head;
+VarType* get_alias(Parser *p, const char *name) {
+    TypeAlias *curr = p->alias_head;
     while(curr) {
         if (strcmp(curr->name, name) == 0) return &curr->target;
         curr = curr->next;
@@ -92,22 +83,20 @@ VarType* get_alias(const char *name) {
     return NULL;
 }
 
-typedef struct Expansion {
-    Token *tokens;
-    int count;
-    int pos;
-    struct Expansion *next;
-} Expansion;
-
-Expansion *expansion_head = NULL;
+// --- MACROS ---
 
 Token token_clone(Token t) {
     Token new_t = t;
+    // Note: We are now using Arena, so strdup calls here should conceptually duplicate 
+    // to heap if macros are long-lived across parsing stages, 
+    // OR we can rely on them being in Arena.
+    // For now, let's keep standard strdup since macros might manipulate text 
+    // and we haven't fully switched parser internal data to arena yet (only Lexer outputs).
     if (t.text) new_t.text = strdup(t.text);
     return new_t;
 }
 
-void register_macro(const char *name, char **params, int param_count, Token *body, int body_len) {
+void register_macro(Parser *p, const char *name, char **params, int param_count, Token *body, int body_len) {
     Macro *m = malloc(sizeof(Macro));
     m->name = strdup(name);
     m->params = params; 
@@ -117,12 +106,12 @@ void register_macro(const char *name, char **params, int param_count, Token *bod
         m->body[i] = token_clone(body[i]);
     }
     m->body_len = body_len;
-    m->next = macro_head;
-    macro_head = m;
+    m->next = p->macro_head;
+    p->macro_head = m;
 }
 
-Macro* find_macro(const char *name) {
-    Macro *curr = macro_head;
+static Macro* find_macro(Parser *p, const char *name) {
+    Macro *curr = p->macro_head;
     while(curr) {
         if (strcmp(curr->name, name) == 0) return curr;
         curr = curr->next;
@@ -130,7 +119,7 @@ Macro* find_macro(const char *name) {
     return NULL;
 }
 
-void free_token_seq(Token *tokens, int count) {
+static void free_token_seq(Token *tokens, int count) {
     for(int i=0; i<count; i++) {
         if (tokens[i].text) free(tokens[i].text);
     }
@@ -139,80 +128,58 @@ void free_token_seq(Token *tokens, int count) {
 
 // --- TOKEN STREAM MANAGEMENT ---
 
-Token lexer_next_raw(Lexer *l) {
-    return lexer_next(l);
+Token lexer_next_raw(Parser *p) {
+    return lexer_next(p->l);
 }
 
-Token get_next_token_expanded(Lexer *l) {
-    if (expansion_head) {
-        if (expansion_head->pos < expansion_head->count) {
-            return token_clone(expansion_head->tokens[expansion_head->pos++]);
+Token get_next_token_expanded(Parser *p) {
+    if (p->expansion_head) {
+        if (p->expansion_head->pos < p->expansion_head->count) {
+            return token_clone(p->expansion_head->tokens[p->expansion_head->pos++]);
         } else {
-            Expansion *finished = expansion_head;
-            expansion_head = expansion_head->next;
+            Expansion *finished = p->expansion_head;
+            p->expansion_head = p->expansion_head->next;
             free_token_seq(finished->tokens, finished->count); 
             free(finished);
-            return get_next_token_expanded(l);
+            return get_next_token_expanded(p);
         }
     }
-    return lexer_next(l);
+    return lexer_next(p->l);
 }
 
-Token fetch_safe(Lexer *l) { return get_next_token_expanded(l); }
+static Token fetch_safe(Parser *p) { return get_next_token_expanded(p); }
 
-void parser_set_recovery(jmp_buf *env) { parser_env = env; }
-
-void safe_free_current_token() {
-  if (current_token.text) { free(current_token.text); current_token.text = NULL; }
-}
-
-void parser_fail_at(Lexer *l, Token t, const char *msg) {
-    report_error(l, t, msg);
-    l->ctx->parser_error_count++;
-    safe_free_current_token();
+void parser_fail_at(Parser *p, Token t, const char *msg) {
+    report_error(p->l, t, msg); // Use stored lexer for diagnostic context
+    if (p->ctx) p->ctx->error_count++;
     
-    if (parser_recover_buf) {
-        longjmp(*parser_recover_buf, 1);
-    } else if (parser_env) {
-        longjmp(*parser_env, 1);
+    // Attempt recovery
+    if (p->recover_buf) {
+        longjmp(*p->recover_buf, 1);
     } else {
-        // TODO make this not die
+        // Fallback if no recovery set (e.g. fatal init error)
         exit(1);
     }
 }
 
-void parser_fail(Lexer *l, const char *msg) {
-    parser_fail_at(l, current_token, msg);
+void parser_fail(Parser *p, const char *msg) {
+    parser_fail_at(p, p->current_token, msg);
 }
 
-void parser_reset(void) {
-    safe_free_current_token();
-    current_token.type = TOKEN_UNKNOWN;
-    current_token.int_val = 0; 
-    current_token.long_val = 0;
-    current_token.double_val = 0.0;
-    current_token.line = 0; current_token.col = 0;
-    parser_env = NULL;
-    parser_recover_buf = NULL;
-    // parser_error_count = 0;
-}
-
-// use algo to not automatically crash 
-void parser_sync(Lexer *l) {
-    while (current_token.type != TOKEN_EOF) {
-        if (current_token.type == TOKEN_SEMICOLON) {
-            eat(l, TOKEN_SEMICOLON);
+void parser_sync(Parser *p) {
+    while (p->current_token.type != TOKEN_EOF) {
+        if (p->current_token.type == TOKEN_SEMICOLON) {
+            eat(p, TOKEN_SEMICOLON);
             return;
         }
-        if (current_token.type == TOKEN_RBRACE) {
-            eat(l, TOKEN_RBRACE);
+        if (p->current_token.type == TOKEN_RBRACE) {
+            eat(p, TOKEN_RBRACE);
             return;
         }
-        switch (current_token.type) {
-            // skip all case
+        switch (p->current_token.type) {
             case TOKEN_CLASS:
             case TOKEN_STRUCT:
-            case TOKEN_UNION: // Skip union
+            case TOKEN_UNION: 
             case TOKEN_NAMESPACE:
             case TOKEN_KW_INT:
             case TOKEN_KW_VOID:
@@ -226,27 +193,29 @@ void parser_sync(Lexer *l) {
             case TOKEN_DEFINE:
                 return;
             default:
-                eat(l, current_token.type); 
+                eat(p, p->current_token.type); 
         }
     }
 }
 
-void eat(Lexer *l, TokenType type) {
-  if (current_token.type == type) {
-    safe_free_current_token();
-    Token t = fetch_safe(l);
+void eat(Parser *p, TokenType type) {
+  if (p->current_token.type == type) {
+    // Current token logic is simpler now, we don't manually free arena strings here
+    // as they are lifetime-bound to context/lexer.
+    
+    Token t = fetch_safe(p);
     
     while (t.type == TOKEN_IDENTIFIER) {
-        Macro *m = find_macro(t.text);
+        Macro *m = find_macro(p, t.text);
         if (!m) break; 
         
         Token **args = NULL;
         int *arg_lens = NULL;
         
         if (m->param_count > 0) {
-            Token peek = fetch_safe(l);
+            Token peek = fetch_safe(p);
             if (peek.type != TOKEN_LPAREN) {
-                parser_fail(l, "Function-like macro requires arguments list '('.");
+                parser_fail(p, "Function-like macro requires arguments list '('.");
             }
             if(peek.text) free(peek.text);
 
@@ -258,8 +227,8 @@ void eat(Lexer *l, TokenType type) {
                 args[i] = malloc(sizeof(Token) * cap);
                 int depth = 0;
                 while(1) {
-                    Token arg_t = fetch_safe(l);
-                    if (arg_t.type == TOKEN_EOF) parser_fail(l, "Unexpected EOF in macro arguments");
+                    Token arg_t = fetch_safe(p);
+                    if (arg_t.type == TOKEN_EOF) parser_fail(p, "Unexpected EOF in macro arguments");
                     
                     if (arg_t.type == TOKEN_LPAREN) depth++;
                     else if (arg_t.type == TOKEN_RPAREN) {
@@ -328,186 +297,155 @@ void eat(Lexer *l, TokenType type) {
         ex->tokens = res;
         ex->count = res_len;
         ex->pos = 0;
-        ex->next = expansion_head;
-        expansion_head = ex;
+        ex->next = p->expansion_head;
+        p->expansion_head = ex;
         
-        t = fetch_safe(l);
+        t = fetch_safe(p);
     }
     
-    current_token = t;
+    p->current_token = t;
 
   } else {
     char msg[256];
     const char *expected = get_token_description(type);
-    const char *found = current_token.type == TOKEN_EOF ? "end of file" : 
-                        (current_token.text ? current_token.text : token_type_to_string(current_token.type));
+    const char *found = p->current_token.type == TOKEN_EOF ? "end of file" : 
+                        (p->current_token.text ? p->current_token.text : token_type_to_string(p->current_token.type));
     
-    // TODO add more token casing
-    // TODO use switch statement
-    if (type == TOKEN_SEMICOLON) {
-        snprintf(msg, sizeof(msg), "Expected ';' after statement, but found '%s'", found);
-    } else if (type == TOKEN_RPAREN) {
-        snprintf(msg, sizeof(msg), "Expected ')' to close expression, but found '%s'", found);
-    } else if (type == TOKEN_RBRACE) {
-        snprintf(msg, sizeof(msg), "Expected '}' to close block, but found '%s'", found);
-    } else if (type == TOKEN_RBRACKET) {
-        snprintf(msg, sizeof(msg), "Expected ']' to close array/enum, but found '%s'", found);
-    } else if (type == TOKEN_LPAREN) {
-        snprintf(msg, sizeof(msg), "Expected '(' to start expression, but found '%s'", found);
-    } else if (type == TOKEN_LBRACE) {
-        snprintf(msg, sizeof(msg), "Expected '{' to start block, but found '%s'", found);
-    } else if (type == TOKEN_LBRACKET) {
-        snprintf(msg, sizeof(msg), "Expected '[' to start array/enum, but found '%s'", found);
-    } else {
-        snprintf(msg, sizeof(msg), "Expected '%s' but found '%s'", expected, found);
-    } 
-    parser_fail(l, msg);
+    snprintf(msg, sizeof(msg), "Expected '%s' but found '%s'", expected, found);
+    parser_fail(p, msg);
   }
 }
 
-// Composite type parsing helper: handling sequences like `unsigned long long`
-VarType parse_type(Lexer *l) {
+// Composite type parsing helper
+VarType parse_type(Parser *p) {
   VarType t = {TYPE_UNKNOWN, 0, NULL, 0, 0, 0, NULL, NULL, 0, 0}; 
 
-  if (current_token.type == TOKEN_KW_UNSIGNED) {
+  if (p->current_token.type == TOKEN_KW_UNSIGNED) {
       t.is_unsigned = 1;
-      eat(l, TOKEN_KW_UNSIGNED);
+      eat(p, TOKEN_KW_UNSIGNED);
   }
 
-  if (current_token.type == TOKEN_IDENTIFIER) {
-      // Check Alias First
-      VarType *alias = get_alias(current_token.text);
+  if (p->current_token.type == TOKEN_IDENTIFIER) {
+      VarType *alias = get_alias(p, p->current_token.text);
       if (alias) {
-          t = *alias; // Copy alias definition
+          t = *alias; 
           if (t.class_name) t.class_name = strdup(t.class_name);
-          eat(l, TOKEN_IDENTIFIER);
+          eat(p, TOKEN_IDENTIFIER);
       }
       else {
-          int kind = get_typename_kind(current_token.text);
+          int kind = get_typename_kind(p, p->current_token.text);
           if (kind != 0) {
               if (kind == 2) { 
-                  // Enum - treat as TYPE_ENUM so Semantic Analysis knows it's an Enum
                   t.base = TYPE_ENUM;
-                  t.class_name = strdup(current_token.text);
+                  t.class_name = strdup(p->current_token.text);
               } else {
-                  // Class
                   t.base = TYPE_CLASS;
-                  t.class_name = strdup(current_token.text);
+                  t.class_name = strdup(p->current_token.text);
               }
-              eat(l, TOKEN_IDENTIFIER);
+              eat(p, TOKEN_IDENTIFIER);
           } else {
-              return t; // Unknown
+              return t; 
           }
       }
   } else {
-      if (current_token.type == TOKEN_KW_INT) { t.base = TYPE_INT; eat(l, TOKEN_KW_INT); }
-      else if (current_token.type == TOKEN_KW_SHORT) { t.base = TYPE_SHORT; eat(l, TOKEN_KW_SHORT); }
-      else if (current_token.type == TOKEN_KW_LONG) {
-          eat(l, TOKEN_KW_LONG);
-          if (current_token.type == TOKEN_KW_LONG) {
-              eat(l, TOKEN_KW_LONG);
-              if (current_token.type == TOKEN_KW_DOUBLE) {
-                  eat(l, TOKEN_KW_DOUBLE);
+      TokenType ct = p->current_token.type;
+      if (ct == TOKEN_KW_INT) { t.base = TYPE_INT; eat(p, TOKEN_KW_INT); }
+      else if (ct == TOKEN_KW_SHORT) { t.base = TYPE_SHORT; eat(p, TOKEN_KW_SHORT); }
+      else if (ct == TOKEN_KW_LONG) {
+          eat(p, TOKEN_KW_LONG);
+          if (p->current_token.type == TOKEN_KW_LONG) {
+              eat(p, TOKEN_KW_LONG);
+              if (p->current_token.type == TOKEN_KW_DOUBLE) {
+                  eat(p, TOKEN_KW_DOUBLE);
                   t.base = TYPE_LONG_DOUBLE;
               } else {
                   t.base = TYPE_LONG_LONG;
               }
-          } else if (current_token.type == TOKEN_KW_DOUBLE) {
-              eat(l, TOKEN_KW_DOUBLE);
+          } else if (p->current_token.type == TOKEN_KW_DOUBLE) {
+              eat(p, TOKEN_KW_DOUBLE);
               t.base = TYPE_LONG_DOUBLE;
-          } else if (current_token.type == TOKEN_KW_INT) {
-              eat(l, TOKEN_KW_INT);
+          } else if (p->current_token.type == TOKEN_KW_INT) {
+              eat(p, TOKEN_KW_INT);
               t.base = TYPE_LONG;
           } else {
               t.base = TYPE_LONG;
           }
       }
-      else if (current_token.type == TOKEN_KW_DOUBLE) {
-          eat(l, TOKEN_KW_DOUBLE);
-          if (current_token.type == TOKEN_KW_LONG) {
-              eat(l, TOKEN_KW_LONG);
-              if (current_token.type == TOKEN_KW_LONG) {
-                   eat(l, TOKEN_KW_LONG); // double long long
-              }
+      else if (ct == TOKEN_KW_DOUBLE) {
+          eat(p, TOKEN_KW_DOUBLE);
+          if (p->current_token.type == TOKEN_KW_LONG) {
+              eat(p, TOKEN_KW_LONG);
+              if (p->current_token.type == TOKEN_KW_LONG) eat(p, TOKEN_KW_LONG); 
               t.base = TYPE_LONG_DOUBLE;
           } else {
               t.base = TYPE_DOUBLE;
           }
       }
-      else if (current_token.type == TOKEN_KW_CHAR) { t.base = TYPE_CHAR; eat(l, TOKEN_KW_CHAR); }
-      else if (current_token.type == TOKEN_KW_BOOL) { t.base = TYPE_BOOL; eat(l, TOKEN_KW_BOOL); }
-      else if (current_token.type == TOKEN_KW_SINGLE) { t.base = TYPE_FLOAT; eat(l, TOKEN_KW_SINGLE); }
-      else if (current_token.type == TOKEN_KW_STRING) { t.base = TYPE_STRING; eat(l, TOKEN_KW_STRING); }
-      else if (current_token.type == TOKEN_KW_VOID) { t.base = TYPE_VOID; eat(l, TOKEN_KW_VOID); }
-      else if (current_token.type == TOKEN_KW_LET) { t.base = TYPE_AUTO; eat(l, TOKEN_KW_LET); }
+      else if (ct == TOKEN_KW_CHAR) { t.base = TYPE_CHAR; eat(p, TOKEN_KW_CHAR); }
+      else if (ct == TOKEN_KW_BOOL) { t.base = TYPE_BOOL; eat(p, TOKEN_KW_BOOL); }
+      else if (ct == TOKEN_KW_SINGLE) { t.base = TYPE_FLOAT; eat(p, TOKEN_KW_SINGLE); }
+      else if (ct == TOKEN_KW_STRING) { t.base = TYPE_STRING; eat(p, TOKEN_KW_STRING); }
+      else if (ct == TOKEN_KW_VOID) { t.base = TYPE_VOID; eat(p, TOKEN_KW_VOID); }
+      else if (ct == TOKEN_KW_LET) { t.base = TYPE_AUTO; eat(p, TOKEN_KW_LET); }
       else {
-          if (t.is_unsigned) {
-              // If just `unsigned`, defaults to `unsigned int`
-              t.base = TYPE_INT; 
-          } else {
-              return t; // Unknown
-          }
+          if (t.is_unsigned) t.base = TYPE_INT; 
+          else return t; 
       }
   }
 
-  while (current_token.type == TOKEN_STAR) {
+  while (p->current_token.type == TOKEN_STAR) {
     t.ptr_depth++;
-    eat(l, TOKEN_STAR);
+    eat(p, TOKEN_STAR);
   }
   
   return t;
 }
 
-// Parses: (*Name)(Type, Type, ...)
-VarType parse_func_ptr_decl(Lexer *l, VarType ret_type, char **out_name) {
+VarType parse_func_ptr_decl(Parser *p, VarType ret_type, char **out_name) {
     VarType vt = {0};
     vt.is_func_ptr = 1;
     vt.fp_ret_type = malloc(sizeof(VarType));
     *vt.fp_ret_type = ret_type;
     
-    eat(l, TOKEN_LPAREN);
-    eat(l, TOKEN_STAR);
+    eat(p, TOKEN_LPAREN);
+    eat(p, TOKEN_STAR);
     
-    if (current_token.type != TOKEN_IDENTIFIER) {
-        parser_fail(l, "Expected identifier in function pointer declaration");
+    if (p->current_token.type != TOKEN_IDENTIFIER) {
+        parser_fail(p, "Expected identifier in function pointer declaration");
     }
     
-    if (out_name) *out_name = strdup(current_token.text);
-    eat(l, TOKEN_IDENTIFIER);
+    if (out_name) *out_name = strdup(p->current_token.text);
+    eat(p, TOKEN_IDENTIFIER);
     
-    eat(l, TOKEN_RPAREN);
-    eat(l, TOKEN_LPAREN);
+    eat(p, TOKEN_RPAREN);
+    eat(p, TOKEN_LPAREN);
     
     int cap = 4;
     vt.fp_param_types = malloc(sizeof(VarType) * cap);
     vt.fp_param_count = 0;
     
-    if (current_token.type != TOKEN_RPAREN) {
+    if (p->current_token.type != TOKEN_RPAREN) {
         while(1) {
-            if (current_token.type == TOKEN_ELLIPSIS) {
+            if (p->current_token.type == TOKEN_ELLIPSIS) {
                 vt.fp_is_varargs = 1;
-                eat(l, TOKEN_ELLIPSIS);
+                eat(p, TOKEN_ELLIPSIS);
                 break;
             }
             
-            VarType pt = parse_type(l);
-            if (pt.base == TYPE_UNKNOWN) parser_fail(l, "Expected type in function pointer params");
+            VarType pt = parse_type(p);
+            if (pt.base == TYPE_UNKNOWN) parser_fail(p, "Expected type in function pointer params");
             
-            // Optional parameter name (ignored in type signature but allowed syntax)
-            if (current_token.type == TOKEN_IDENTIFIER) {
-                eat(l, TOKEN_IDENTIFIER); 
+            if (p->current_token.type == TOKEN_IDENTIFIER) {
+                eat(p, TOKEN_IDENTIFIER); 
             }
             
-            // Handle array params
-             if (current_token.type == TOKEN_LBRACKET) {
-                eat(l, TOKEN_LBRACKET);
-                if (current_token.type != TOKEN_RBRACKET) {
-                    // Ignore size expression for simple func ptr parsing
-                    // In a full implementation we'd parse expression
-                     ASTNode* tmp = parse_expression(l);
+             if (p->current_token.type == TOKEN_LBRACKET) {
+                eat(p, TOKEN_LBRACKET);
+                if (p->current_token.type != TOKEN_RBRACKET) {
+                     ASTNode* tmp = parse_expression(p);
                      free_ast(tmp);
                 }
-                eat(l, TOKEN_RBRACKET);
+                eat(p, TOKEN_RBRACKET);
                 pt.ptr_depth++;
             }
             
@@ -517,17 +455,16 @@ VarType parse_func_ptr_decl(Lexer *l, VarType ret_type, char **out_name) {
             }
             vt.fp_param_types[vt.fp_param_count++] = pt;
             
-            if (current_token.type == TOKEN_COMMA) eat(l, TOKEN_COMMA);
+            if (p->current_token.type == TOKEN_COMMA) eat(p, TOKEN_COMMA);
             else break;
         }
     }
-    eat(l, TOKEN_RPAREN);
+    eat(p, TOKEN_RPAREN);
     
     return vt;
 }
 
-// Helper to read file content
-char* read_file_content(const char* path) {
+static char* read_file_content(const char* path) {
     FILE* f = fopen(path, "rb");
     if (!f) return NULL;
     fseek(f, 0, SEEK_END);
@@ -539,14 +476,9 @@ char* read_file_content(const char* path) {
     return buf;
 }
 
-// TODO add more extensions (?)
 char* read_import_file(const char* filename) {
-  // Smart Import Logic
-  
   const char* paths[] = { "", "lib/" };
-  // prioritize .aky because .aky statistically imports from .hky
   const char* exts[] = { ".aky", ".hky", "" };
-  
   char path[1024];
   
   for (int i = 0; i < 2; i++) {
@@ -556,102 +488,40 @@ char* read_import_file(const char* filename) {
           if (content) return content;
       }
   }
-  
   return NULL;
 }
 
-ASTNode* parse_program(Lexer *l) {
-  safe_free_current_token();
-  current_token = lexer_next_raw(l);
+ASTNode* parse_program(Parser *p) {
+  // Prime the first token if not already
+  p->current_token = lexer_next_raw(p);
   
   ASTNode *head = NULL;
   ASTNode **current = &head;
   
-  // Setup Recovery Buffer
   jmp_buf recover_buf;
-  parser_recover_buf = &recover_buf;
+  p->recover_buf = &recover_buf;
 
-  while (current_token.type != TOKEN_EOF) {
-    // If an error occurs, we come back here via longjmp
+  while (p->current_token.type != TOKEN_EOF) {
     if (setjmp(recover_buf) != 0) {
-        parser_sync(l);
-        if (current_token.type == TOKEN_EOF) break;
+        parser_sync(p);
+        if (p->current_token.type == TOKEN_EOF) break;
     }
    
-    debug_flow("Current token type: %s", token_type_to_string(current_token.type));
-
-    ASTNode *node = parse_top_level(l);
+    ASTNode *node = parse_top_level(p);
     if (node) {
         if (!*current) *current = node; 
         
-        // Link potential list of nodes (e.g. from import)
         ASTNode *iter = node;
         while (iter->next) iter = iter->next;
         current = &iter->next;
     }
-
-    debug_flow("Token consumed safely");
   }
   
-  parser_recover_buf = NULL; // Clear recovery
-  safe_free_current_token();
+  p->recover_buf = NULL;
   return head;
 }
 
-const char* get_node_type_string(NodeType type) {
-    switch (type) {
-        case NODE_ROOT:          return "Root";
-        case NODE_FUNC_DEF:      return "FunctionDefinition";
-        case NODE_CALL:          return "Call";
-        case NODE_RETURN:        return "Return";
-        case NODE_BREAK:         return "Break";
-        case NODE_CONTINUE:      return "Continue";
-        
-        // Control Flow
-        case NODE_LOOP:          return "Loop";
-        case NODE_WHILE:         return "While";
-        case NODE_IF:            return "If";
-        case NODE_SWITCH:        return "Switch";
-        case NODE_CASE:          return "Case";
-        
-        // Variables & Assignment
-        case NODE_VAR_DECL:      return "VarDecl";
-        case NODE_ASSIGN:        return "Assignment";
-        case NODE_VAR_REF:       return "VarRef";
-        
-        // Operations
-        case NODE_BINARY_OP:     return "BinaryOp";
-        case NODE_UNARY_OP:      return "UnaryOp";
-        case NODE_INC_DEC:       return "IncDec";
-        case NODE_CAST:          return "Cast";
-        
-        // Data Structures
-        case NODE_LITERAL:       return "Literal";
-        case NODE_ARRAY_LIT:     return "ArrayLiteral";
-        case NODE_ARRAY_ACCESS:  return "ArrayAccess";
-        
-        // OOP & Modular
-        case NODE_LINK:          return "Link";
-        case NODE_CLASS:         return "Class";
-        case NODE_NAMESPACE:     return "Namespace";
-        case NODE_ENUM:          return "Enum";
-        case NODE_MEMBER_ACCESS: return "MemberAccess";
-        case NODE_METHOD_CALL:   return "MethodCall";
-        case NODE_TRAIT_ACCESS:  return "TraitAccess";
-        
-        // Reflection / Metaprogramming
-        case NODE_TYPEOF:        return "Typeof";
-        case NODE_HAS_METHOD:    return "HasMethod";
-        case NODE_HAS_ATTRIBUTE: return "HasAttribute";
-        
-        // Flux / Generator
-        case NODE_EMIT:          return "Emit";
-        case NODE_FOR_IN:        return "ForIn";
-        
-        default:                 return "UnknownNode";
-    }
-}
-
+// AST Utilities
 void free_ast(ASTNode *node) {
   if (!node) return;
   if (node->next) free_ast(node->next);

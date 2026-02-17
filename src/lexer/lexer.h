@@ -159,7 +159,7 @@ typedef struct {
 } Lexer;
 
 // Initialize lexer with context. Context contains the arena for allocations.
-void lexer_init(Lexer *l, const char *src);
+void lexer_init(Lexer *l, CompilerContext *ctx, const char *filename, const char *src);
 
 Token lexer_next(Lexer *l);
 
