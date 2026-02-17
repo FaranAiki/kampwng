@@ -38,7 +38,7 @@ int main() {
 
   print "Emit!\n";
   
-  for emitted in gen(1U<<30) {
+  for emitted in gen(10000) {
     print "%d\n", emitted;
   }
 }
