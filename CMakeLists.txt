@@ -38,22 +38,22 @@ set(ALIR_SOURCES
 )
 
 set(DEPRECATED_SOURCES
-    src/.old/semantic/semantic.c    
-    src/.old/semantic/check.c    
-    src/.old/semantic/scope.c    
-    src/.old/semantic/utils.c 
+    src/old/semantic/semantic.c    
+    src/old/semantic/check.c    
+    src/old/semantic/scope.c    
+    src/old/semantic/utils.c 
 
-    src/.old/codegen/stmt.c
-    src/.old/codegen/flow.c
-    src/.old/codegen/flux.c
-    src/.old/codegen/core.c
-    src/.old/codegen/expr.c
-    src/.old/codegen/builtin.c
-    src/.old/codegen/utils.c
+    src/old/codegen/stmt.c
+    src/old/codegen/flow.c
+    src/old/codegen/flux.c
+    src/old/codegen/core.c
+    src/old/codegen/expr.c
+    src/old/codegen/builtin.c
+    src/old/codegen/utils.c
 
-    src/.old/codegen/node/access.c
-    src/.old/codegen/node/operator.c
-    src/.old/codegen/node/cast.c
+    src/old/codegen/node/access.c
+    src/old/codegen/node/operator.c
+    src/old/codegen/node/cast.c
 )
 
 set(FRONTEND_SOURCES 
