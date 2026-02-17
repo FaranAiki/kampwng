@@ -168,7 +168,7 @@ void safe_free_current_token() {
 
 void parser_fail_at(Lexer *l, Token t, const char *msg) {
     report_error(l, t, msg);
-    l->parser_error_count++;
+    l->ctx->parser_error_count++;
     safe_free_current_token();
     
     if (parser_recover_buf) {

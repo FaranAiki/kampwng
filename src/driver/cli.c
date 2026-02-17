@@ -12,6 +12,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+/*
 char* get_smart_input(const char* prompt) {
     char *input_buffer = malloc(INPUT_BUFFER_SIZE);
     if (!input_buffer) return NULL;
@@ -47,8 +48,9 @@ char* get_smart_input(const char* prompt) {
         first_line = 0;
     }
     return input_buffer;
-}
+}*/
 
+/*
 int run_repl(void) {
     printf(DIAG_CYAN "Alkyl CLI v0.0.1 \n" DIAG_RESET);
     printf("Type " DIAG_YELLOW "'exit'" DIAG_RESET " or " DIAG_YELLOW "'quit'" DIAG_RESET " to leave.\n\n");
@@ -204,7 +206,9 @@ int run_repl(void) {
     LLVMDisposeExecutionEngine(engine);
     return 0;
 }
+*/
 
 int main() {
-  return run_repl();
+  printf("Not implemented.");
+  // return run_repl();
 }

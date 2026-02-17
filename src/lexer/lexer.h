@@ -1,6 +1,8 @@
 #ifndef LEXER_H
 #define LEXER_H
 
+#include "../common/context.h"
+
 typedef enum {
   TOKEN_EOF,
   TOKEN_LOOP,   
@@ -13,7 +15,7 @@ typedef enum {
   TOKEN_LPAREN,   
   TOKEN_RPAREN,   
   TOKEN_SEMICOLON,
-  TOKEN_COLON,    // Added ':'
+  TOKEN_COLON,    
   TOKEN_COMMA,  
   TOKEN_ELLIPSIS, 
   TOKEN_DOT,    
@@ -21,8 +23,7 @@ typedef enum {
   TOKEN_NUMBER,   
   TOKEN_FLOAT,  
   TOKEN_STRING,
-  TOKEN_C_STRING, // Added: c"..."
-                  // TODO: add c[...]
+  TOKEN_C_STRING, 
   TOKEN_CHAR_LIT, 
   TOKEN_IDENTIFIER, 
   
@@ -41,15 +42,15 @@ typedef enum {
   
   TOKEN_IF,     
   TOKEN_ELIF, 
-  TOKEN_THEN, // Added THEN
+  TOKEN_THEN, 
   TOKEN_ELSE,   
   TOKEN_RETURN,
   TOKEN_BREAK,
   TOKEN_CONTINUE,
-  TOKEN_SWITCH,   // Added
-  TOKEN_CASE,     // Added
-  TOKEN_DEFAULT,  // Added
-  TOKEN_LEAK,     // Added
+  TOKEN_SWITCH,   
+  TOKEN_CASE,     
+  TOKEN_DEFAULT,  
+  TOKEN_LEAK,     
   
   TOKEN_DEFINE, 
   TOKEN_AS,     
@@ -57,15 +58,15 @@ typedef enum {
 
   // OOP Keywords
   TOKEN_CLASS,
-  TOKEN_STRUCT, // Added struct keyword
-  TOKEN_UNION,  // Added union keyword
+  TOKEN_STRUCT, 
+  TOKEN_UNION,  
   TOKEN_IS,     
   TOKEN_HAS,    
   TOKEN_OPEN,   
   TOKEN_CLOSED, 
   TOKEN_TYPEOF,
-  TOKEN_HASMETHOD,    // New
-  TOKEN_HASATTRIBUTE, // New
+  TOKEN_HASMETHOD,    
+  TOKEN_HASATTRIBUTE, 
 
   TOKEN_NAMESPACE, 
   TOKEN_ENUM, 
@@ -82,7 +83,7 @@ typedef enum {
   TOKEN_KW_BOOL,   
   TOKEN_KW_SINGLE, 
   TOKEN_KW_DOUBLE, 
-  TOKEN_KW_STRING, // Added for 'string' type
+  TOKEN_KW_STRING, 
   TOKEN_KW_LET,    
 
   TOKEN_KW_SHORT,
@@ -138,35 +139,33 @@ typedef enum {
 
 typedef struct {
   TokenType type;
+  // This string is allocated in the Arena, no need to free individually
   char *text;    
   int int_val;   
-  unsigned long long long_val; // Added for extended ints
+  unsigned long long long_val; 
   double double_val; 
   int line;      
   int col;       
 } Token;
 
 typedef struct {
+  CompilerContext *ctx; // Reference to global compilation context (Arena, Recover, etc)
   const char *src;
-  const char *filename; // Added for diagnostic context
+  const char *filename;
+  int lexer_error_count;
   int pos;
   int line;
   int col;
-  int parser_error_count;
 } Lexer;
 
+// Initialize lexer with context. Context contains the arena for allocations.
 void lexer_init(Lexer *l, const char *src);
+
 Token lexer_next(Lexer *l);
-void free_token(Token t);
+
+// Note: free_token is removed as tokens are arena-managed.
 
 void skip_whitespace_and_comments(Lexer *l);
-char *consume_string_content(Lexer *l);
-
-int lex_symbol(Lexer *l, Token *t);
-int lex_number(Lexer *l, Token *t);
-int lex_char(Lexer *l, Token *t);
-int lex_string(Lexer *l, Token *t);
-int lex_word(Lexer *l, Token *t);
 
 #include "emitter.h"
 

@@ -23,6 +23,12 @@ char* read_file(const char* filename) {
 }
 
 int main(int argc, char *argv[]) {
+  Arena arena;
+  CompilerContext comp_ctx;
+
+  arena_init(&arena);
+  context_init(&comp_ctx, &arena);
+  
   if (argc < 2) {
     printf("Usage: %s <file.aky> [-l<lib>]\n", argv[0]);
     return 1;
@@ -54,6 +60,7 @@ int main(int argc, char *argv[]) {
   if (!code) { fprintf(stderr, "Could not read file: %s\n", filename); return 1; }
 
   Lexer l;
+  l.ctx = &comp_ctx;
   lexer_init(&l, code);
   l.filename = filename; // Set filename for diagnostic context
 
@@ -61,6 +68,7 @@ int main(int argc, char *argv[]) {
 
   // generate for debugging 
   Lexer l_debug = l;
+  l_debug.ctx = &comp_ctx;
   lexer_init(&l_debug, code);
   l.filename = filename;
 
@@ -68,7 +76,7 @@ int main(int argc, char *argv[]) {
 
   ASTNode *root = parse_program(&l);
   
-  if (!root && l.parser_error_count > 0) {
+  if (!root && comp_ctx.parser_error_count > 0) {
       free(code);
       return 1;
   }

@@ -6,15 +6,15 @@
 
 void lexer_init(Lexer *l, const char *src) {
   l->src = src;
-  l->filename = NULL; // Default to no filename
+  l->filename = NULL; 
   l->pos = 0;
   l->line = 1;
   l->col = 1;
 }
 
-char peek(Lexer *l) { return l->src[l->pos]; }
+static char peek(Lexer *l) { return l->src[l->pos]; }
 
-char advance(Lexer *l) {
+static char advance(Lexer *l) {
   char c = l->src[l->pos];
   if (c == '\0') return c;
   
@@ -54,6 +54,8 @@ void skip_whitespace_and_comments(Lexer *l) {
       while (1) {
           char next = peek(l);
           if (next == '\0') {
+              // Can't report easily without token, just log
+              if(l->ctx) l->ctx->error_count++;
               fprintf(stderr, "Unclosed block comment at line %d\n", l->line);
               return; 
           }
@@ -73,7 +75,7 @@ void skip_whitespace_and_comments(Lexer *l) {
   }
 }
 
-int lex_symbol(Lexer *l, Token *t) {
+static int lex_symbol(Lexer *l, Token *t) {
   char c = peek(l);
 
   if (c == '.') {
@@ -189,7 +191,7 @@ int lex_symbol(Lexer *l, Token *t) {
   return 0;
 }
 
-int lex_number(Lexer *l, Token *t) {
+static int lex_number(Lexer *l, Token *t) {
     if (!isdigit(peek(l))) return 0;
     
     unsigned long long val = 0;
@@ -209,7 +211,6 @@ int lex_number(Lexer *l, Token *t) {
       t->type = TOKEN_FLOAT;
       t->double_val = dval;
       
-      // Handle 'L' suffix for float
       if (tolower(peek(l)) == 'l') {
           advance(l);
           t->type = TOKEN_LONG_DOUBLE_LIT;
@@ -219,7 +220,6 @@ int lex_number(Lexer *l, Token *t) {
       return 1;
     }
 
-    // Handle integer suffixes: U, L, LL
     int is_u = 0, is_l = 0, is_ll = 0;
     while (1) {
         char s = tolower(peek(l));
@@ -249,7 +249,7 @@ int lex_number(Lexer *l, Token *t) {
     return 1;
 }
 
-int lex_char(Lexer *l, Token *t) {
+static int lex_char(Lexer *l, Token *t) {
     if (peek(l) != '\'') return 0;
     
     advance(l); 
@@ -270,8 +270,10 @@ int lex_char(Lexer *l, Token *t) {
     
     if (peek(l) == '\'') advance(l); 
     else {
+        // We can't exit(1) nicely here without setjmp, but for now we rely on parser to catch unknown tokens
+        // Or check error recovery.
+        if (l->ctx) l->ctx->error_count++;
         fprintf(stderr, "Lexer Error: Unclosed character literal at %d:%d\n", l->line, l->col);
-        exit(1);
     }
     
     t->type = TOKEN_CHAR_LIT;
@@ -280,13 +282,15 @@ int lex_char(Lexer *l, Token *t) {
     return 1;
 }
 
-char* consume_string_content(Lexer *l) {
-    size_t capacity = 32;
+// Uses a temporary stack buffer to parse the string, then copies to Arena
+static char* consume_string_content(Lexer *l) {
+    char buffer[4096]; // Max literal size for now
     size_t length = 0;
-    char *buffer = malloc(capacity);
-    if (!buffer) { fprintf(stderr, "Lexer Error: Out of memory\n"); exit(1); }
+    size_t cap = 4095;
 
     while (peek(l) != '"' && peek(l) != '\0') {
+      if (length >= cap) break; // Truncate safety
+
       char val = peek(l);
       if (val == '\\') {
         advance(l); 
@@ -306,19 +310,17 @@ char* consume_string_content(Lexer *l) {
       } else {
         advance(l); 
       }
-      if (length + 1 >= capacity) {
-        capacity *= 2;
-        buffer = realloc(buffer, capacity);
-        if (!buffer) { fprintf(stderr, "Lexer Error: Out of memory\n"); exit(1); }
-      }
       buffer[length++] = val;
     }
     buffer[length] = '\0';
+    
     if (peek(l) == '"') advance(l);
-    return buffer;
+    
+    // Allocate final string in arena
+    return arena_strndup(l->ctx->arena, buffer, length);
 }
 
-int lex_string(Lexer *l, Token *t) {
+static int lex_string(Lexer *l, Token *t) {
   char c = peek(l);
   
   // C-String check: c"..."
@@ -341,26 +343,35 @@ int lex_string(Lexer *l, Token *t) {
   return 0;
 }
 
-int lex_word(Lexer *l, Token *t) {
+static int lex_word(Lexer *l, Token *t) {
   char c = peek(l);
   if (!isalpha(c) && c != '_') return 0;
   
-  size_t capacity = 16;
+  const char *start = &l->src[l->pos];
   size_t length = 0;
-  char *word = malloc(capacity);
-    
+
   while (isalnum(peek(l)) || peek(l) == '_') {
-      char wc = advance(l);
-      if (length + 1 >= capacity) {
-          capacity *= 2;
-          word = realloc(word, capacity);
-      }
-      word[length++] = wc;
+      advance(l);
+      length++;
   }
-  word[length] = '\0';
+  
+  // Check keywords using a temporary stack buffer for null-termination check
+  // or simple comparison if we had a length-based keyword checker.
+  // For now, duplicate to arena to perform string checks (slightly inefficient but clean with Arena)
+  // OR use a local stack buffer for comparison.
+  
+  char word[256];
+  if (length < 256) {
+      strncpy(word, start, length);
+      word[length] = '\0';
+  } else {
+      // Too long for a keyword, treating as identifier
+      t->type = TOKEN_IDENTIFIER;
+      t->text = arena_strndup(l->ctx->arena, start, length);
+      return 1;
+  }
 
   // Keyword Checks
-  // #define tokenwis(T) strcmp(word, T)
   if (strcmp(word, "loop") == 0) t->type = TOKEN_LOOP;
   else if (strcmp(word, "while") == 0) t->type = TOKEN_WHILE;
   else if (strcmp(word, "once") == 0) t->type = TOKEN_ONCE;
@@ -425,11 +436,10 @@ int lex_word(Lexer *l, Token *t) {
   else if (strcmp(word, "not") == 0) t->type = TOKEN_NOT;
   else {
     t->type = TOKEN_IDENTIFIER;
-    t->text = word;
+    t->text = arena_strndup(l->ctx->arena, start, length);
     return 1;
   }
   
-  free(word);
   return 1;
 }
 
@@ -453,8 +463,4 @@ Token lexer_next(Lexer *l) {
   advance(l);
   t.type = TOKEN_UNKNOWN;
   return t;
-}
-
-void free_token(Token t) {
-  if (t.text) free(t.text);
 }

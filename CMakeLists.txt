@@ -69,6 +69,7 @@ set(HELPER_SOURCES
     src/common/diagnostic.c
     src/common/common.c
     src/common/arena.c
+    src/common/context.c
 )
 
 set(DEPRECATED_SEMANTIC_SOURCES

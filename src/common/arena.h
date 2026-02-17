@@ -27,6 +27,9 @@ void arena_reset(Arena *a);
 // Free all memory associated with the arena.
 void arena_free(Arena *a);
 
+char* arena_strdup(Arena *a, const char *str);
+char* arena_strndup(Arena *a, const char *str, size_t len);
+
 // Helper: Allocate a specific struct/type
 #define arena_alloc_type(a, T) ((T*)arena_alloc(a, sizeof(T)))
 

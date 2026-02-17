@@ -228,7 +228,7 @@ ASTNode* parse_assignment_or_call(Lexer *l) {
   }
   free(node);
   
-  l->parser_error_count++;
+  l->ctx->parser_error_count++;
   if (start_token.text) free(start_token.text);
   
   if (parser_recover_buf) longjmp(*parser_recover_buf, 1);

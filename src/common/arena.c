@@ -105,3 +105,23 @@ void arena_free(Arena *a) {
     a->head = NULL;
     a->current = NULL;
 }
+
+char* arena_strdup(Arena *a, const char *str) {
+    if (!str) return NULL;
+    size_t len = strlen(str);
+    char *new_str = (char*)arena_alloc(a, len + 1);
+    if (new_str) {
+        strcpy(new_str, str);
+    }
+    return new_str;
+}
+
+char* arena_strndup(Arena *a, const char *str, size_t len) {
+    if (!str) return NULL;
+    char *new_str = (char*)arena_alloc(a, len + 1);
+    if (new_str) {
+        strncpy(new_str, str, len);
+        new_str[len] = '\0';
+    }
+    return new_str;
+}
