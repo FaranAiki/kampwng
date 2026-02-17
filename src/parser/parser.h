@@ -67,24 +67,24 @@ struct VarType {
   int ptr_depth; 
   char *class_name;
   int array_size; 
-  int is_unsigned; // Indicates unsigned nature of types like int, long, char, etc.
+  int is_unsigned; 
   
   // Function Pointer Support
   int is_func_ptr;
-  struct VarType *fp_ret_type;   // Return type of the function
-  struct VarType *fp_param_types; // Array of parameter types
+  struct VarType *fp_ret_type;   
+  struct VarType *fp_param_types; 
   int fp_param_count;
   int fp_is_varargs;
 };
 
+// The AST Node structure
+// PURE: No 'expr_type' here. Types live in the Side Table.
 typedef struct ASTNode {
   NodeType type;
   struct ASTNode *next; 
   // Source Location
   int line;
   int col;
-  // Semantic Check Decoration
-  VarType expr_type; 
 } ASTNode;
 
 typedef struct Parameter {
@@ -96,14 +96,14 @@ typedef struct Parameter {
 typedef struct {
   ASTNode base;
   char *name;
-  char *mangled_name; // Added for overloading
+  char *mangled_name; 
   VarType ret_type;
   Parameter *params;
   ASTNode *body; 
   int is_varargs; 
   int is_open; 
   char *class_name; 
-  int is_flux; // Flag for flux functions
+  int is_flux; 
 } FuncDefNode;
 
 typedef struct {
@@ -116,8 +116,8 @@ typedef struct {
   } traits; 
   ASTNode *members; 
   int is_open; 
-  int is_extern; // Added for opaque C types
-  int is_union;  // Added for union types
+  int is_extern; 
+  int is_union;  
 } ClassNode;
 
 typedef struct EnumEntry {
@@ -149,10 +149,9 @@ typedef struct {
   ASTNode *object;
   char *method_name;
   ASTNode *args;
-  // Resolution Info
-  char *mangled_name; // The actual function to call (e.g., _Z7Parent3foo...)
-  char *owner_class;  // The class/trait where it was found (for 'this' adjustment)
-  int is_static;      // Added for namespace calls
+  char *mangled_name; 
+  char *owner_class;  
+  int is_static;      
 } MethodCallNode;
 
 typedef struct {
@@ -170,7 +169,7 @@ typedef struct {
 typedef struct {
   ASTNode base;
   char *name;
-  char *mangled_name; // Added: resolved overload name
+  char *mangled_name; 
   ASTNode *args; 
 } CallNode;
 
@@ -179,7 +178,6 @@ typedef struct {
   ASTNode *value;
 } ReturnNode;
 
-// Flux: emit
 typedef struct {
     ASTNode base;
     ASTNode *value;
@@ -206,14 +204,12 @@ typedef struct {
   int is_do_while; 
 } WhileNode;
 
-// Flux: for var in collection
 typedef struct {
     ASTNode base;
     char *var_name;
     ASTNode *collection;
     ASTNode *body;
-    // Semantic info
-    VarType iter_type; // Type of 'var_name'
+    VarType iter_type; 
 } ForInNode;
 
 typedef struct {
@@ -223,19 +219,18 @@ typedef struct {
   ASTNode *else_body;
 } IfNode;
 
-// Switch Structs
 typedef struct {
     ASTNode base;
-    ASTNode *value; // Case Value (Literal/Enum)
-    ASTNode *body;  // Statement List
-    int is_leak;    // Fallthrough flag
+    ASTNode *value; 
+    ASTNode *body;  
+    int is_leak;    
 } CaseNode;
 
 typedef struct {
     ASTNode base;
     ASTNode *condition;
-    ASTNode *cases; // List of CaseNodes
-    ASTNode *default_case; // List of statements for default
+    ASTNode *cases; 
+    ASTNode *default_case; 
 } SwitchNode;
 
 typedef struct {
@@ -270,7 +265,6 @@ typedef struct {
 typedef struct {
   ASTNode base;
   char *name;
-  // Added: Resolved mangled name for function pointers
   char *mangled_name;
 } VarRefNode;
 
@@ -319,10 +313,7 @@ ASTNode* parse_expression(Lexer *l);
 void free_ast(ASTNode *node);
 void safe_free_current_token(void);
 
-// Reset internal parser state (crucial for REPL)
 void parser_reset(void);
-
-// CLI Hooks
 void parser_set_recovery(jmp_buf *env);
 
 #include "emitter.h"

@@ -1,263 +1,106 @@
-#ifndef SEMANTIC_CHECKED_H
-#define SEMANTIC_CHECKED_H
+#ifndef SEMANTIC_H
+#define SEMANTIC_H
 
 #include "../parser/parser.h"
 
-// Enum for Checked Nodes
-// These mirror the parser nodes but imply semantic validation has occurred
+// ==========================================
+// PART 1: SYMBOL TABLE (For Scoping)
+// Maps "Name" -> "Symbol Info"
+// ==========================================
+
 typedef enum {
-    CHECKED_ROOT,
-    CHECKED_FUNC_DEF,
-    CHECKED_BLOCK,
-    CHECKED_RETURN,
-    CHECKED_BREAK,
-    CHECKED_CONTINUE,
-    CHECKED_LOOP,
-    CHECKED_WHILE,
-    CHECKED_IF,
-    CHECKED_SWITCH,
-    CHECKED_CASE,
-    CHECKED_VAR_DECL,
-    CHECKED_ASSIGN,
-    CHECKED_BINARY_OP,
-    CHECKED_UNARY_OP,
-    CHECKED_LITERAL,
-    CHECKED_VAR_REF,
-    CHECKED_CALL,
-    CHECKED_ARRAY_ACCESS,
-    CHECKED_MEMBER_ACCESS,
-    CHECKED_METHOD_CALL,
-    CHECKED_CAST,           // Explicit node for casts (both source-level and implicit)
-    CHECKED_TRAIT_ACCESS,
-    CHECKED_CLASS,
-    CHECKED_NAMESPACE,
-    CHECKED_ENUM,
-    // Flux / Generator
-    CHECKED_EMIT,
-    CHECKED_FOR_IN
-} CheckedNodeType;
+    SYM_VAR,
+    SYM_FUNC,
+    SYM_CLASS,
+    SYM_ENUM,
+    SYM_NAMESPACE
+} SymbolKind;
 
-// Base Checked AST Node
-// Key Difference: 'type' is fully resolved. No TYPE_AUTO or TYPE_UNKNOWN allowed in expressions.
-typedef struct ASTCheckedNode {
-    CheckedNodeType node_type;
-    struct ASTCheckedNode *next;
+typedef struct SemSymbol {
+    char *name;
+    SymbolKind kind;
+    VarType type;         // For VAR, FUNC (return type)
     
-    // Source Location (preserved for error reporting in later stages)
-    int line;
-    int col;
+    // Function specific
+    VarType *param_types;
+    int param_count;
     
-    // The resolved semantic type of this expression.
-    // For statements (if, while), this is typically TYPE_VOID.
-    VarType type; 
-} ASTCheckedNode;
-
-// Parameter with resolved type
-typedef struct CheckedParameter {
-    VarType type;
-    char *name;
-    struct CheckedParameter *next;
-} CheckedParameter;
-
-// Function Definition (Resolved)
-typedef struct {
-    ASTCheckedNode base;
-    char *name;
-    char *mangled_name; // Fully resolved name (e.g., _Z3fooi)
-    VarType ret_type;
-    CheckedParameter *params;
-    ASTCheckedNode *body;
-    int is_varargs;
-    int is_flux;
-    char *owner_class;  // If method, the class name
-} CheckedFuncDefNode;
-
-// Variable Declaration (Inferred)
-// 'auto'/'let' is replaced by the concrete type of the initializer.
-typedef struct {
-    ASTCheckedNode base;
-    VarType var_type;   // Concrete type (e.g., TYPE_INT)
-    char *name;
-    ASTCheckedNode *initializer; // Can be NULL
+    // Var specific
     int is_mutable;
-    int is_array;
-    int array_size;     // Resolved integer size
-} CheckedVarDeclNode;
+    
+    // Scope linkage
+    struct SemScope *inner_scope; 
+    
+    struct SemSymbol *next; // Linked list bucket
+} SemSymbol;
 
-// Assignment
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *target; // l-value (CheckedVarRef, CheckedMemberAccess, etc.)
-    ASTCheckedNode *value;  // r-value (Expression)
-    int op;                 // Token type (TOKEN_ASSIGN, TOKEN_PLUS_ASSIGN, etc.)
-} CheckedAssignNode;
+typedef struct SemScope {
+    SemSymbol *symbols;
+    struct SemScope *parent;
+    int is_function_scope; 
+    VarType expected_ret_type; 
+} SemScope;
 
-// Binary Operation
-// Implicit casts are inserted as children if needed.
-typedef struct {
-    ASTCheckedNode base;
-    int op;
-    ASTCheckedNode *left;
-    ASTCheckedNode *right;
-} CheckedBinaryOpNode;
+// ==========================================
+// PART 2: SIDE TABLE (For Expressions)
+// Maps "ASTNode Address" -> "Type"
+// ==========================================
 
-// Unary Operation
-typedef struct {
-    ASTCheckedNode base;
-    int op;
-    ASTCheckedNode *operand;
-} CheckedUnaryOpNode;
+#define TYPE_TABLE_SIZE 1024
 
-// Literal (Typed)
-typedef struct {
-    ASTCheckedNode base;
-    union {
-        int int_val;
-        unsigned long long long_val;
-        double double_val;
-        char *str_val;
-    } val;
-} CheckedLiteralNode;
+typedef struct TypeEntry {
+    ASTNode *node;         // KEY: The pointer to the AST node
+    VarType type;          // VALUE: The resolved type
+    struct TypeEntry *next;
+} TypeEntry;
 
-// Variable Reference (Resolved)
-typedef struct {
-    ASTCheckedNode base;
-    char *name;
-    char *mangled_name; // If referring to a function pointer or global
-    // Could add: symbol table index or pointer
-} CheckedVarRefNode;
-
-// Function Call (Resolved)
-typedef struct {
-    ASTCheckedNode base;
-    char *name;
-    char *mangled_name; // The specific overload selected
-    ASTCheckedNode *args;
-} CheckedCallNode;
-
-// Cast (Explicit or Implicit)
-// Used when the semantic analyzer detects a type mismatch that can be coerced
-// or when the user uses 'as'.
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *operand;
-    VarType target_type; // The type we are casting TO
-} CheckedCastNode;
-
-// Member Access
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *object;
-    char *member_name;
-    int member_index;    // Optimization: Index in the struct
-} CheckedMemberAccessNode;
-
-// Method Call
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *object;
-    char *method_name;
-    char *mangled_name;  // Resolved method name
-    ASTCheckedNode *args;
-} CheckedMethodCallNode;
-
-// Array Access
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *target;
-    ASTCheckedNode *index;
-} CheckedArrayAccessNode;
-
-// Control Flow
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *condition;
-    ASTCheckedNode *then_body;
-    ASTCheckedNode *else_body;
-} CheckedIfNode;
+// ==========================================
+// PART 3: THE CONTEXT
+// ==========================================
 
 typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *condition;
-    ASTCheckedNode *body;
-    int is_do_while;
-} CheckedWhileNode;
+    // 1. Symbol Table State (Scopes)
+    SemScope *current_scope;
+    SemScope *global_scope;
+    
+    // 2. Side Table State (Expression Types)
+    TypeEntry *type_buckets[TYPE_TABLE_SIZE];
 
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *iterations;
-    ASTCheckedNode *body;
-} CheckedLoopNode;
+    // Error tracking
+    int error_count;
+    const char *current_source; 
+    
+    // Contextual flags
+    int in_loop;
+    int in_switch;
+} SemanticCtx;
 
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *value; // Return value (or NULL)
-} CheckedReturnNode;
+// --- API ---
 
-typedef struct {
-    ASTCheckedNode base;
-} CheckedBreakNode;
+// Lifecycle
+void sem_init(SemanticCtx *ctx);
+void sem_cleanup(SemanticCtx *ctx);
 
-typedef struct {
-    ASTCheckedNode base;
-} CheckedContinueNode;
+// Analysis Entry Point
+int sem_check_program(SemanticCtx *ctx, ASTNode *root);
 
-// Switch
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *value; // Constant value
-    ASTCheckedNode *body;
-    int is_leak;
-} CheckedCaseNode;
+// Symbol Table Operations
+void sem_scope_enter(SemanticCtx *ctx, int is_func, VarType ret_type);
+void sem_scope_exit(SemanticCtx *ctx);
+SemSymbol* sem_symbol_add(SemanticCtx *ctx, const char *name, SymbolKind kind, VarType type);
+SemSymbol* sem_symbol_lookup(SemanticCtx *ctx, const char *name);
 
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *condition;
-    ASTCheckedNode *cases;
-    ASTCheckedNode *default_case;
-} CheckedSwitchNode;
+// Side Table Operations
+void sem_set_node_type(SemanticCtx *ctx, ASTNode *node, VarType type);
+VarType sem_get_node_type(SemanticCtx *ctx, ASTNode *node);
 
-// Classes (Resolved)
-// Members here are fully checked.
-typedef struct {
-    ASTCheckedNode base;
-    char *name;
-    char *parent_name;
-    ASTCheckedNode *members;
-    int is_extern;
-    int is_union;
-} CheckedClassNode;
+// Helpers
+int sem_types_are_compatible(VarType dest, VarType src);
+char* sem_type_to_str(VarType t);
 
-typedef struct {
-    ASTCheckedNode base;
-    char *name;
-    ASTCheckedNode *body;
-} CheckedNamespaceNode;
+void sem_check_node(SemanticCtx *ctx, ASTNode *node);
+void sem_check_block(SemanticCtx *ctx, ASTNode *block);
+void sem_check_expr(SemanticCtx *ctx, ASTNode *node);
+void sem_scan_top_level(SemanticCtx *ctx, ASTNode *node);
 
-typedef struct {
-    char *name;
-    int value;
-    struct CheckedEnumEntry *next;
-} CheckedEnumEntry;
-
-typedef struct {
-    ASTCheckedNode base;
-    char *name;
-    CheckedEnumEntry *entries;
-} CheckedEnumNode;
-
-// Flux / Generators
-typedef struct {
-    ASTCheckedNode base;
-    ASTCheckedNode *value;
-} CheckedEmitNode;
-
-typedef struct {
-    ASTCheckedNode base;
-    char *var_name;
-    ASTCheckedNode *collection;
-    ASTCheckedNode *body;
-    VarType iter_type; // Explicitly resolved type of the iterator
-} CheckedForInNode;
-
-#endif // SEMANTIC_CHECKED_H
+#endif // SEMANTIC_H

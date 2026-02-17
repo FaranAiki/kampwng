@@ -73,12 +73,6 @@ int main(int argc, char *argv[]) {
       return 1;
   }
   
-  if (semantic_analysis(root, code, filename) != 0) {
-      free(code);
-      free_ast(root);
-      return 1;
-  }
- 
   // ASTNode *root_debug = parse_program(&l_debug);
 
   to_ast_out(root, BASENAME ".ast");

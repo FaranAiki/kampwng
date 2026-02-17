@@ -37,12 +37,14 @@ set(ALIR_SOURCES
     src/alir/generator.c
 )
 
-set(DEPRECATED_SOURCES
+set(DEPRECATED_SEMANTIC_SOURCES
     src/old/semantic/semantic.c    
     src/old/semantic/check.c    
     src/old/semantic/scope.c    
     src/old/semantic/utils.c 
+)
 
+set(DEPRECATED_LLVM_CODEGEN_SOURCES
     src/old/codegen/stmt.c
     src/old/codegen/flow.c
     src/old/codegen/flux.c
@@ -77,7 +79,7 @@ set(COMMON_SOURCES
   ${MUST_LLVM_SOURCES}
   ${ALIR_SOURCES}
   ${HELPER_SOURCES}
-  ${DEPRECATED_SOURCES}
+  ${DEPRECATED_LLVM_CODEGEN_SOURCES}
 )
 
 add_executable(alkyl src/driver/main.c ${COMMON_SOURCES})

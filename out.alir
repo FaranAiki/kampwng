@@ -1,23 +1,37 @@
 ; Module: main_module
 
 ; Globals
-@str.0 = constant string "%d, %d\n"
-
-define func i32 @test(double %p0) {
-entry:
-  %0 = alloca double
-  ret void
-}
+@str.7 = constant string "Expected a Hello, got %s\n"
+@str.6 = constant string "Expected t c, got %c\n"
+@str.5 = constant string "Expected zero2 2, got %d\n"
+@str.4 = constant string "Expected zero1 1, got %d\n"
+@str.3 = constant string "Expected zero0 0, got %d\n"
+@str.2 = constant string "Semua di dunia ini adalah objek\n"
+@str.1 = constant string "%s"
+@str.0 = constant string "Hello"
 
 define func i32 @main() {
 entry:
-  %0 = alloca any
-  %1 = call @test (5)
-  store %1, %0
-  %2 = alloca any
-  %3 = call @test (0)
-  store %3, %2
-  %4 = load %0
-  %5 = load %2
-  %6 = call @print (@str.0, %4, %5)
+  %0 = alloca i32
+  store 0, %0
+  %1 = alloca i32
+  store 1, %1
+  %2 = alloca i32
+  store 2, %2
+  %3 = alloca i8
+  store 0, %3
+  %4 = alloca string
+  store @str.0, %4
+  %5 = call @printf (@str.1, @str.2)
+  %6 = load %0
+  %7 = call @printf (@str.3, %6)
+  %8 = load %1
+  %9 = call @printf (@str.4, %8)
+  %10 = load %2
+  %11 = call @printf (@str.5, %10)
+  %12 = load %3
+  %13 = call @printf (@str.6, %12)
+  %14 = load %4
+  %15 = call @printf (@str.7, %14)
+  ret 0
 }
