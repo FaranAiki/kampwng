@@ -16,7 +16,7 @@ namespace math {
   }
 
   double add_with_sin(int a, double b) {
-    return (double) a + math.sin(b);
+    return a + math.sin(b);
   }
 }
 
@@ -36,8 +36,8 @@ int main() {
   a = math.add(a, 6);
   print "Expected 5 + 6, got %d\n", a;
 
-  print "What is the sine of 5? %lf\n", math.sin((double) 5);
-  print "What is the sine of 1 + sin(2)? %lf\n", math.add_with_sin(1, (double)2);
+  print "What is the sine of 5? %lf\n", math.sin(5 as double);
+  print "What is the sine of 1 + sin(2)? %lf\n", math.add_with_sin(1, 2 as double);
 
   One one;
   let two = One(5, 6);

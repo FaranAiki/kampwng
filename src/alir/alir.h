@@ -57,8 +57,8 @@ typedef enum {
     ALIR_OP_LT, ALIR_OP_GT, ALIR_OP_LTE, ALIR_OP_GTE, ALIR_OP_EQ, ALIR_OP_NEQ,
     
     // Control Flow
-    ALIR_OP_BR,         // Unconditional Branch
-    ALIR_OP_COND_BR,    // Conditional Branch
+    ALIR_OP_JUMP,         // Unconditional Branch
+    ALIR_OP_CONDI,    // Conditional Branch
     ALIR_OP_SWITCH,     // Switch (Complex Flow)
     ALIR_OP_CALL,
     ALIR_OP_RET,
@@ -238,5 +238,18 @@ void alir_emit_to_file(AlirModule *mod, const char *filename);
 // Internal gen prototypes
 AlirValue* alir_gen_expr(AlirCtx *ctx, ASTNode *node);
 void alir_gen_stmt(AlirCtx *ctx, ASTNode *node);
+
+void emit(AlirCtx *ctx, AlirInst *i);
+
+AlirInst* mk_inst(AlirOpcode op, AlirValue *dest, AlirValue *op1, AlirValue *op2);
+AlirValue* new_temp(AlirCtx *ctx, VarType t);
+AlirValue* promote(AlirCtx *ctx, AlirValue *v, VarType target);
+AlirInst* mk_inst(AlirOpcode op, AlirValue *dest, AlirValue *op1, AlirValue *op2);
+void alir_add_symbol(AlirCtx *ctx, const char *name, AlirValue *ptr, VarType t);
+AlirSymbol* alir_find_symbol(AlirCtx *ctx, const char *name);
+
+void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn);
+void alir_gen_flux_yield(AlirCtx *ctx, EmitNode *en);
+void collect_flux_vars_recursive(AlirCtx *ctx, ASTNode *node, int *idx_ptr);
 
 #endif // ALIR_H

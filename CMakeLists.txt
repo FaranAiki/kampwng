@@ -54,6 +54,9 @@ set(SEMANTIC_SOURCES
 set(ALIR_SOURCES
     src/alir/core.c 
     src/alir/generator.c
+    src/alir/const.c
+    src/alir/flux.c
+    src/alir/utils.c
 )
 
 set (ALICK_SOURCES

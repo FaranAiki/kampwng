@@ -16,11 +16,11 @@ void sem_check_implicit_cast(SemanticCtx *ctx, ASTNode *node, VarType dest, VarT
         if (node->type == NODE_LITERAL) {
             LiteralNode *lit = (LiteralNode*)node;
             if (lit->var_type.base == TYPE_STRING && lit->val.str_val) {
-                sem_hint(ctx, node, "Use c\"%s\" if intended to be a C-style string", lit->val.str_val);
+                sem_hint(ctx, node, "Use c\"%s\" for a C-style string", lit->val.str_val);
                 return;
             }
         }
-        sem_hint(ctx, node, "Use c\"...\" if intended to be a C-style string");
+        sem_hint(ctx, node, "Use c\"...\" for a C-style string");
     }
 }
 

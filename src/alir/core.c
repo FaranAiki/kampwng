@@ -88,8 +88,6 @@ void alir_append_inst(AlirBlock *block, AlirInst *inst) {
     }
 }
 
-// --- STRUCT REGISTRY ---
-
 void alir_register_struct(AlirModule *mod, const char *name, AlirField *fields) {
     AlirStruct *st = calloc(1, sizeof(AlirStruct));
     st->name = strdup(name);
@@ -126,62 +124,6 @@ int alir_get_field_index(AlirModule *mod, const char *struct_name, const char *f
     return -1;
 }
 
-// --- VALUE CREATORS ---
-
-AlirValue* alir_const_int(long val) {
-    AlirValue *v = calloc(1, sizeof(AlirValue));
-    v->kind = ALIR_VAL_CONST;
-    v->type = (VarType){TYPE_INT, 0, NULL, 0, 0};
-    v->int_val = val;
-    return v;
-}
-
-AlirValue* alir_const_float(double val) {
-    AlirValue *v = calloc(1, sizeof(AlirValue));
-    v->kind = ALIR_VAL_CONST;
-    v->type = (VarType){TYPE_DOUBLE, 0, NULL, 0, 0};
-    v->float_val = val;
-    return v;
-}
-
-AlirValue* alir_val_temp(VarType t, int id) {
-    AlirValue *v = calloc(1, sizeof(AlirValue));
-    v->kind = ALIR_VAL_TEMP;
-    v->type = t;
-    v->temp_id = id;
-    return v;
-}
-
-AlirValue* alir_val_var(const char *name) {
-    AlirValue *v = calloc(1, sizeof(AlirValue));
-    v->kind = ALIR_VAL_VAR;
-    v->str_val = strdup(name);
-    return v;
-}
-
-AlirValue* alir_val_global(const char *name, VarType type) {
-    AlirValue *v = calloc(1, sizeof(AlirValue));
-    v->kind = ALIR_VAL_GLOBAL;
-    v->str_val = strdup(name);
-    v->type = type;
-    return v;
-}
-
-AlirValue* alir_val_label(const char *label) {
-    AlirValue *v = calloc(1, sizeof(AlirValue));
-    v->kind = ALIR_VAL_LABEL;
-    v->str_val = strdup(label);
-    return v;
-}
-
-AlirValue* alir_val_type(const char *type_name) {
-    AlirValue *v = calloc(1, sizeof(AlirValue));
-    v->kind = ALIR_VAL_TYPE;
-    v->str_val = strdup(type_name);
-    v->type = (VarType){TYPE_CLASS, 0, strdup(type_name), 0, 0};
-    return v;
-}
-
 const char* alir_op_str(AlirOpcode op) {
     switch(op) {
         case ALIR_OP_ALLOCA: return "alloca";
@@ -190,7 +132,7 @@ const char* alir_op_str(AlirOpcode op) {
         case ALIR_OP_GET_PTR: return "getptr";
         case ALIR_OP_BITCAST: return "bitcast";
         
-        case ALIR_OP_ALLOC_HEAP: return "alloc_heap";
+        case ALIR_OP_ALLOC_HEAP: return "halloc";
         case ALIR_OP_SIZEOF: return "sizeof";
         case ALIR_OP_FREE: return "free";
         
@@ -204,8 +146,8 @@ const char* alir_op_str(AlirOpcode op) {
         case ALIR_OP_FMUL: return "fmul";
         case ALIR_OP_FDIV: return "fdiv";
         
-        case ALIR_OP_BR: return "br";
-        case ALIR_OP_COND_BR: return "br.cond";
+        case ALIR_OP_JUMP: return "jump";
+        case ALIR_OP_CONDI: return "condi";
         case ALIR_OP_SWITCH: return "switch";
         case ALIR_OP_CALL: return "call";
         case ALIR_OP_RET: return "ret";
@@ -301,6 +243,7 @@ void alir_fprint_val(FILE *f, AlirValue *v) {
 void alir_emit_stream(AlirModule *mod, FILE *f) {
     fprintf(f, "; Module: %s\n", mod->name);
     
+    // TODO: make sure that this is modular
     // 1. Print Structs
     if (mod->structs) {
         fprintf(f, "\n; Struct Definitions\n");
@@ -325,18 +268,18 @@ void alir_emit_stream(AlirModule *mod, FILE *f) {
         AlirGlobal *g = mod->globals;
         while(g) {
             char *esc = escape_string(g->string_content);
-            fprintf(f, "@%s = constant string \"%s\"\n", g->name, esc);
+            fprintf(f, "@%s = cstring \"%s\"\n", g->name, esc);
             free(esc);
             g = g->next;
         }
     }
     
-    // 3. Print Functions
+    // 3. Functions
     AlirFunction *func = mod->functions;
     while(func) {
         if (func->block_count == 0) {
             // Declaration
-            fprintf(f, "\ndeclare ");
+            fprintf(f, "\npromise ");
             alir_fprint_type(f, func->ret_type);
             fprintf(f, " @%s(", func->name);
             
