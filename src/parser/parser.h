@@ -58,6 +58,7 @@ typedef enum {
   TYPE_STRING,
   TYPE_AUTO,
   TYPE_CLASS, 
+  TYPE_ENUM, // Added TYPE_ENUM
   TYPE_UNKNOWN
 } BaseType;
 

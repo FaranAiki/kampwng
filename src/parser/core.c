@@ -386,8 +386,9 @@ VarType parse_type(Lexer *l) {
           int kind = get_typename_kind(current_token.text);
           if (kind != 0) {
               if (kind == 2) { 
-                  // Enum - treat as INT for compatibility
-                  t.base = TYPE_INT;
+                  // Enum - treat as TYPE_ENUM so Semantic Analysis knows it's an Enum
+                  t.base = TYPE_ENUM;
+                  t.class_name = strdup(current_token.text);
               } else {
                   // Class
                   t.base = TYPE_CLASS;

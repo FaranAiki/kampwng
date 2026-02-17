@@ -25,6 +25,7 @@ void semantic_emit_type_str(StringBuilder *sb, VarType t) {
         case TYPE_STRING: sb_append_fmt(sb, "string"); break;
         case TYPE_AUTO: sb_append_fmt(sb, "let"); break;
         case TYPE_CLASS: sb_append_fmt(sb, "%s", t.class_name ? t.class_name : "class"); break;
+        case TYPE_ENUM: sb_append_fmt(sb, "enum %s", t.class_name ? t.class_name : ""); break;
         default: sb_append_fmt(sb, "unknown"); break;
     }
 
@@ -103,4 +104,3 @@ void semantic_to_file(SemanticCtx *ctx, const char *filename) {
         free(str);
     }
 }
-

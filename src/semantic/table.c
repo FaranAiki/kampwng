@@ -106,10 +106,27 @@ SemSymbol* sem_symbol_lookup(SemanticCtx *ctx, const char *name) {
     SemScope *scope = ctx->current_scope;
     while (scope) {
         SemSymbol *sym = scope->symbols;
+        // Pass 1: Direct lookup for variables, functions, or the Enum type itself
         while (sym) {
             if (strcmp(sym->name, name) == 0) return sym;
             sym = sym->next;
         }
+
+        // Pass 2: Implicit Enum Member Lookup
+        // If not found directly, check inside any Enums defined in this scope.
+        // This allows 'Daging' to be found if 'Makanan' is in scope.
+        sym = scope->symbols;
+        while (sym) {
+            if (sym->kind == SYM_ENUM && sym->inner_scope) {
+                SemSymbol *mem = sym->inner_scope->symbols;
+                while (mem) {
+                    if (strcmp(mem->name, name) == 0) return mem;
+                    mem = mem->next;
+                }
+            }
+            sym = sym->next;
+        }
+
         scope = scope->parent;
     }
     return NULL;
@@ -124,7 +141,7 @@ int sem_types_are_equal(VarType a, VarType b) {
     // Unsigned check can be loose depending on strictness preferences
     if (a.is_unsigned != b.is_unsigned) return 0; 
     
-    if (a.base == TYPE_CLASS) {
+    if (a.base == TYPE_CLASS || a.base == TYPE_ENUM) {
         if (a.class_name && b.class_name) {
             return strcmp(a.class_name, b.class_name) == 0;
         }
@@ -142,6 +159,10 @@ int sem_types_are_compatible(VarType dest, VarType src) {
     // Numeric promotions
     int dest_is_num = (dest.base >= TYPE_INT && dest.base <= TYPE_LONG_DOUBLE);
     int src_is_num = (src.base >= TYPE_INT && src.base <= TYPE_LONG_DOUBLE);
+
+    // Enums are implicitly compatible with integers and themselves
+    if (src.base == TYPE_ENUM && dest_is_num) return 1;
+    if (dest.base == TYPE_ENUM && src_is_num) return 1;
     
     if (dest_is_num && src_is_num && dest.ptr_depth == 0 && src.ptr_depth == 0) {
         return 1; // Allow implicit numeric casts
@@ -194,6 +215,7 @@ char* sem_type_to_str(VarType t) {
         case TYPE_STRING: base = "string"; break;
         case TYPE_AUTO: base = "let"; break;
         case TYPE_CLASS: base = t.class_name ? t.class_name : "class"; break;
+        case TYPE_ENUM: base = t.class_name ? t.class_name : "enum"; break;
         default: base = "unknown"; break;
     }
     

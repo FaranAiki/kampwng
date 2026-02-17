@@ -183,11 +183,11 @@ void sem_check_assign(SemanticCtx *ctx, AssignNode *node) {
 }
 
 int is_numeric(VarType t) {
-    return (t.base >= TYPE_INT && t.base <= TYPE_LONG_DOUBLE && t.ptr_depth == 0);
+    return ((t.base >= TYPE_INT && t.base <= TYPE_LONG_DOUBLE) || t.base == TYPE_ENUM) && t.ptr_depth == 0;
 }
 
 int is_integer(VarType t) {
-    return (t.base >= TYPE_INT && t.base <= TYPE_CHAR && t.ptr_depth == 0);
+    return ((t.base >= TYPE_INT && t.base <= TYPE_CHAR) || t.base == TYPE_ENUM) && t.ptr_depth == 0;
 }
 
 int is_bool(VarType t) {

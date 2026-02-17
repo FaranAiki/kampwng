@@ -110,8 +110,38 @@ void sem_scan_top_level(SemanticCtx *ctx, ASTNode *node) {
         }
         else if (node->type == NODE_ENUM) {
             EnumNode *en = (EnumNode*)node;
-            sem_symbol_add(ctx, en->name, SYM_ENUM, (VarType){TYPE_INT, 0, NULL});
-            // Note: Enum members could be registered as constants here
+            
+            // Register Enum Type Symbol (TYPE_ENUM)
+            VarType enum_type = {TYPE_ENUM, 0, strdup(en->name)};
+            SemSymbol *sym = sem_symbol_add(ctx, en->name, SYM_ENUM, enum_type);
+            
+            // Create inner scope for members (Enum.Member access)
+            SemScope *enum_scope = malloc(sizeof(SemScope));
+            enum_scope->symbols = NULL;
+            enum_scope->parent = ctx->current_scope;
+            enum_scope->is_function_scope = 0;
+            sym->inner_scope = enum_scope;
+            
+            // Populate members in the inner scope
+            EnumEntry *entry = en->entries;
+            while(entry) {
+                SemSymbol *mem = malloc(sizeof(SemSymbol));
+                mem->name = strdup(entry->name);
+                mem->kind = SYM_VAR; // Acts as a constant variable
+                mem->type = enum_type; // Member type is the Enum type
+                mem->is_mutable = 0;
+                mem->is_initialized = 1;
+                mem->param_types = NULL;
+                mem->param_count = 0;
+                mem->parent_name = NULL;
+                mem->inner_scope = NULL;
+                
+                // Link into enum scope
+                mem->next = enum_scope->symbols;
+                enum_scope->symbols = mem;
+                
+                entry = entry->next;
+            }
         }
         else if (node->type == NODE_NAMESPACE) {
             NamespaceNode *ns = (NamespaceNode*)node;
@@ -263,12 +293,35 @@ void sem_check_member_access(SemanticCtx *ctx, MemberAccessNode *node) {
             sem_error(ctx, (ASTNode*)node, "Class '%s' has no member named '%s'", obj_type.class_name, node->member_name);
             sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_UNKNOWN});
         }
-    } 
+    }
+    else if (obj_type.base == TYPE_ENUM && obj_type.class_name) {
+        // Enum Member Access: EnumName.Member
+        SemSymbol *enum_sym = sem_symbol_lookup(ctx, obj_type.class_name);
+        
+        if (!enum_sym || enum_sym->kind != SYM_ENUM) {
+            sem_error(ctx, (ASTNode*)node, "'%s' is not an enum", obj_type.class_name);
+            sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_UNKNOWN});
+            return;
+        }
+
+        if (enum_sym->inner_scope) {
+             SemSymbol *member = enum_sym->inner_scope->symbols;
+             while (member) {
+                 if (strcmp(member->name, node->member_name) == 0) {
+                     sem_set_node_type(ctx, (ASTNode*)node, member->type);
+                     return;
+                 }
+                 member = member->next;
+             }
+        }
+        sem_error(ctx, (ASTNode*)node, "Enum '%s' has no member '%s'", obj_type.class_name, node->member_name);
+        sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_UNKNOWN});
+    }
     else if (obj_type.base == TYPE_STRING && strcmp(node->member_name, "length") == 0) {
         sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_INT});
     }
     else {
-        sem_error(ctx, (ASTNode*)node, "Cannot access member on non-class type");
+        sem_error(ctx, (ASTNode*)node, "Cannot access member on non-class/non-enum type");
         sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_UNKNOWN});
     }
 }
@@ -393,8 +446,14 @@ void sem_check_expr(SemanticCtx *ctx, ASTNode *node) {
             VarType t = sem_get_node_type(ctx, aa->target);
             if (t.array_size > 0) t.array_size = 0;
             else if (t.ptr_depth > 0) t.ptr_depth--;
+            else if (t.base == TYPE_ENUM) {
+                 // Support Enum Reflection via Indexing: EnumName[val] -> String
+                 // This effectively returns a string name of the enum value
+                 sem_set_node_type(ctx, node, (VarType){TYPE_STRING});
+                 return;
+            }
             else {
-                sem_error(ctx, node, "Type is not an array or pointer");
+                sem_error(ctx, node, "Type is not an array, pointer, or enum");
                 t = (VarType){TYPE_UNKNOWN};
             }
             sem_set_node_type(ctx, node, t);

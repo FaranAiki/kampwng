@@ -19,7 +19,7 @@ int main() {
   print "%s is %d\n", Makanan[sarapan], sarapan;
   sarapan++;
   print "%s is %d\n", Makanan[sarapan], sarapan;
-  sarapan = Daging;
+  sarapan = Makanan.Daging;
   switch (sarapan) {
     // case is blocked:
     // you do not need break here
