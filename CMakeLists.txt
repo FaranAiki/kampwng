@@ -46,6 +46,7 @@ set(FRONTEND_SOURCES
     src/parser/top.c 
     src/parser/emitter.c  
     src/parser/link.c  
+    src/parser/modif.c  
     
 )
 
