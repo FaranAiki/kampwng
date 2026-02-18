@@ -62,6 +62,18 @@ typedef enum {
   TYPE_UNKNOWN
 } BaseType;
 
+typedef enum {
+  IS_A_NONE,
+  IS_A_NAKED, // MUST be inherited, e.g. if there is no class/function inheriting/replacing it, throw semantic error
+  IS_A_FINAL, // CANNOT be inherited like in Java, e.g. final cannot be override
+} IsASemantic; // inheritance
+
+typedef enum {
+  HAS_A_NONE,
+  HAS_A_REACTIVE, // MUST be composed
+  HAS_A_INERT, // CANNOT be composed
+} HasASemantic; // composition
+
 typedef struct VarType VarType;
 struct VarType {
   BaseType base;
@@ -98,9 +110,15 @@ typedef struct {
   Parameter *params;
   ASTNode *body; 
   int is_varargs; 
-  int is_open; 
+  int is_public;
+  int is_open;
+  int is_static;
+  int is_base;
+  int is_virtual;
+  int is_abstract;
+  int is_override;
   char *class_name; 
-  int is_flux; 
+  int is_flux;
 } FuncDefNode;
 
 typedef struct {
@@ -113,8 +131,14 @@ typedef struct {
   } traits; 
   ASTNode *members; 
   int is_open; 
+  int is_public; 
   int is_extern; 
-  int is_union;  
+  int is_union;
+  int is_static; 
+  int is_inert; // cannot be composed (has-a)
+  int is_naked; // must be 
+  int is_final; // cannot be inherited (is-a)
+  int is_abstract; // like in C++, C#, Java
 } ClassNode;
 
 typedef struct EnumEntry {
@@ -194,10 +218,13 @@ typedef struct {
   VarType var_type;
   char *name;
   ASTNode *initializer;
-  int is_mutable; 
   int is_array;   
   ASTNode *array_size; 
-  int is_open; 
+  int is_open;
+  int is_public;
+  int is_static;
+  int is_const;
+  int is_mutable; 
 } VarDeclNode;
 
 typedef struct {
