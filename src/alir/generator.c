@@ -25,7 +25,6 @@ void pop_loop(AlirCtx *ctx) {
     // No free needed with arena
 }
 
-// --- CONSTANT EVALUATION ---
 // Helper to extract constant integer from AST node (Literals or Enum Members)
 long alir_eval_constant_int(AlirCtx *ctx, ASTNode *node) {
     if (!node) return 0;

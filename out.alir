@@ -4,6 +4,8 @@
 %struct.Mahasiswa = type { i8*:name, i32:age, i32:nim }
 %struct.Person = type { i8*:name, i32:age }
 %struct.Hand = type {  }
+%struct.File = type { string:filename, string:mode, %FILE*:fd_ptr, i32:is_closed }
+%struct.FILE = type {  }
 
 ; Globals
 @str.4 = cstring "%d\n"

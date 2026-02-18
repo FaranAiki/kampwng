@@ -469,11 +469,11 @@ static char* read_file_content(Parser *p, const char* path) {
 
 char* read_import_file(Parser *p, const char* filename) {
   const char* paths[] = { "", "lib/" };
-  const char* exts[] = { ".aky", ".hky", "" };
+  const char* exts[] = { ".aky", ".hky", ".alk", ".alky", ".alkyl", "" };
   char path[1024];
   
-  for (int i = 0; i < 2; i++) {
-      for (int j = 0; j < 3; j++) {
+  for (unsigned long i = 0; i < sizeof(paths)/sizeof(*paths); i++) {
+      for (unsigned long j = 0; j < sizeof(exts)/sizeof(*exts); j++) {
           snprintf(path, sizeof(path), "%s%s%s", paths[i], filename, exts[j]);
           char *content = read_file_content(p, path);
           if (content) return content;

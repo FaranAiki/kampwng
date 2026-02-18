@@ -38,7 +38,7 @@ struct Expansion {
     struct Expansion *next;
 };
 
-// --- CORE FUNCTIONS (parser_core.c) ---
+// --- CORE FUNCTIONS (core.c) ---
 void parser_fail(Parser *p, const char *msg);
 void parser_fail_at(Parser *p, Token t, const char *msg);
 void parser_sync(Parser *p);

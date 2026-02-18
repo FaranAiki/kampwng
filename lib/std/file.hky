@@ -2,7 +2,7 @@
 // if using gcc (which is pre-stage 1/2)
 // link c;
 
-import "c/stddef';
+typedef size_t as long long;
 
 namespace io {
 

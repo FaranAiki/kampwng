@@ -45,10 +45,112 @@ void alir_fprint_val(FILE *f, AlirValue *v) {
     }
 }
 
+void alir_emit_function(AlirModule *mod, FILE *f) {
+  AlirFunction *func = mod->functions;
+  while(func) {
+      if (func->block_count == 0) {
+          // Declaration
+          fprintf(f, "\npromise ");
+          alir_fprint_type(f, func->ret_type);
+          fprintf(f, " @%s(", func->name);
+          
+          AlirParam *p = func->params;
+          while(p) {
+              alir_fprint_type(f, p->type);
+              if (p->next) fprintf(f, ", ");
+              p = p->next;
+          }
+          fprintf(f, ")\n");
+          
+      } else {
+          // Definition
+          fprintf(f, "\ndefine %s ", func->is_flux ? "flux" : "func");
+          alir_fprint_type(f, func->ret_type);
+          fprintf(f, " @%s(", func->name);
+          
+          AlirParam *p = func->params;
+          int i = 0;
+          while(p) {
+              alir_fprint_type(f, p->type);
+              fprintf(f, " %%p%d", i++);
+              if (p->next) fprintf(f, ", ");
+              p = p->next;
+          }
+          fprintf(f, ") {\n");
+          
+          AlirBlock *b = func->blocks;
+          while(b) {
+              fprintf(f, "%s:\n", b->label);
+              
+              AlirInst *inst = b->head;
+              while(inst) {
+                  fprintf(f, "  ");
+                  if (inst->dest) {
+                      alir_fprint_val(f, inst->dest);
+                      fprintf(f, " = ");
+                  }
+                  
+                  // Special handling for ALLOCA to print type
+                  if (inst->op == ALIR_OP_ALLOCA && inst->dest) {
+                      fprintf(f, "alloca ");
+                      // dest is assumed to be the variable type directly in current gen logic
+                      // If logic implies dest is pointer, we should handle that, but for now
+                      // we print the type stored in the temp info
+                      alir_fprint_type(f, inst->dest->type);
+                  } 
+                  else {
+                      fprintf(f, "%s ", alir_op_str(inst->op));
+                      
+                      if (inst->op1) {
+                          alir_fprint_val(f, inst->op1);
+                      } else if (inst->op == ALIR_OP_STORE) {
+                           // Handle missing value in store (e.g. uninit var)
+                           fprintf(f, "undef"); 
+                      } else if (inst->op == ALIR_OP_RET && !inst->op1) {
+                          fprintf(f, "void");
+                      }
+
+                      if (inst->op == ALIR_OP_SWITCH) {
+                          fprintf(f, " [");
+                          AlirSwitchCase *c = inst->cases;
+                          while(c) {
+                              fprintf(f, " %ld: %s ", c->value, c->label);
+                              c = c->next;
+                          }
+                          fprintf(f, "] else ");
+                          if (inst->op2) alir_fprint_val(f, inst->op2);
+                      } else {
+                          if (inst->op2) {
+                              fprintf(f, ", ");
+                              alir_fprint_val(f, inst->op2);
+                          }
+                          
+                          if (inst->args) {
+                              fprintf(f, " (");
+                              for(int k=0; k<inst->arg_count; k++) {
+                                  if (k > 0) fprintf(f, ", ");
+                                  alir_fprint_val(f, inst->args[k]);
+                              }
+                              fprintf(f, ")");
+                          }
+                      }
+                  }
+                  
+                  fprintf(f, "\n");
+                  inst = inst->next;
+              }
+              b = b->next;
+          }
+          fprintf(f, "}\n");
+      }
+      func = func->next;
+
+  }
+}
+
 void alir_emit_stream(AlirModule *mod, FILE *f) {
     fprintf(f, "; Module: %s\n", mod->name);
     
-    // 0. Print Enums (as comments or constants?)
     if (mod->enums) {
         fprintf(f, "\n; Enum Definitions\n");
         AlirEnum *e = mod->enums;
@@ -65,7 +167,6 @@ void alir_emit_stream(AlirModule *mod, FILE *f) {
         }
     }
 
-    // 1. Print Structs
     if (mod->structs) {
         fprintf(f, "\n; Struct Definitions\n");
         AlirStruct *st = mod->structs;
@@ -83,122 +184,19 @@ void alir_emit_stream(AlirModule *mod, FILE *f) {
         }
     }
 
-    // 2. Print Globals (Strings)
     if (mod->globals) {
         fprintf(f, "\n; Globals\n");
         AlirGlobal *g = mod->globals;
         while(g) {
             char *esc = escape_string(g->string_content);
             fprintf(f, "@%s = cstring \"%s\"\n", g->name, esc);
-            // We use free here because escape_string from common.c uses SB without arena, thus mallocs.
-            // If common.c was modified to use arena, we wouldn't free.
-            // Assuming common.c is standard and might be used without arena, checking:
-            // escape_string(str) -> creates SB with NULL arena -> mallocs -> we must free.
+            // escape string does not use arena
             free(esc);
             g = g->next;
         }
     }
     
-    // 3. Functions
-    AlirFunction *func = mod->functions;
-    while(func) {
-        if (func->block_count == 0) {
-            // Declaration
-            fprintf(f, "\npromise ");
-            alir_fprint_type(f, func->ret_type);
-            fprintf(f, " @%s(", func->name);
-            
-            AlirParam *p = func->params;
-            while(p) {
-                alir_fprint_type(f, p->type);
-                if (p->next) fprintf(f, ", ");
-                p = p->next;
-            }
-            fprintf(f, ")\n");
-            
-        } else {
-            // Definition
-            fprintf(f, "\ndefine %s ", func->is_flux ? "flux" : "func");
-            alir_fprint_type(f, func->ret_type);
-            fprintf(f, " @%s(", func->name);
-            
-            AlirParam *p = func->params;
-            int i = 0;
-            while(p) {
-                alir_fprint_type(f, p->type);
-                fprintf(f, " %%p%d", i++);
-                if (p->next) fprintf(f, ", ");
-                p = p->next;
-            }
-            fprintf(f, ") {\n");
-            
-            AlirBlock *b = func->blocks;
-            while(b) {
-                fprintf(f, "%s:\n", b->label);
-                
-                AlirInst *inst = b->head;
-                while(inst) {
-                    fprintf(f, "  ");
-                    if (inst->dest) {
-                        alir_fprint_val(f, inst->dest);
-                        fprintf(f, " = ");
-                    }
-                    
-                    // Special handling for ALLOCA to print type
-                    if (inst->op == ALIR_OP_ALLOCA && inst->dest) {
-                        fprintf(f, "alloca ");
-                        // dest is assumed to be the variable type directly in current gen logic
-                        // If logic implies dest is pointer, we should handle that, but for now
-                        // we print the type stored in the temp info
-                        alir_fprint_type(f, inst->dest->type);
-                    } 
-                    else {
-                        fprintf(f, "%s ", alir_op_str(inst->op));
-                        
-                        if (inst->op1) {
-                            alir_fprint_val(f, inst->op1);
-                        } else if (inst->op == ALIR_OP_STORE) {
-                             // Handle missing value in store (e.g. uninit var)
-                             fprintf(f, "undef"); 
-                        } else if (inst->op == ALIR_OP_RET && !inst->op1) {
-                            fprintf(f, "void");
-                        }
-
-                        if (inst->op == ALIR_OP_SWITCH) {
-                            fprintf(f, " [");
-                            AlirSwitchCase *c = inst->cases;
-                            while(c) {
-                                fprintf(f, " %ld: %s ", c->value, c->label);
-                                c = c->next;
-                            }
-                            fprintf(f, "] else ");
-                            if (inst->op2) alir_fprint_val(f, inst->op2);
-                        } else {
-                            if (inst->op2) {
-                                fprintf(f, ", ");
-                                alir_fprint_val(f, inst->op2);
-                            }
-                            
-                            if (inst->args) {
-                                fprintf(f, " (");
-                                for(int k=0; k<inst->arg_count; k++) {
-                                    if (k > 0) fprintf(f, ", ");
-                                    alir_fprint_val(f, inst->args[k]);
-                                }
-                                fprintf(f, ")");
-                            }
-                        }
-                    }
-                    
-                    fprintf(f, "\n");
-                    inst = inst->next;
-                }
-                b = b->next;
-            }
-            fprintf(f, "}\n");
-        }
-        func = func->next;
-    }
+    alir_emit_function(mod, f); 
 }
 
 void alir_print(AlirModule *mod) {

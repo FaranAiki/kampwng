@@ -33,7 +33,6 @@ ASTNode* parse_define(Parser *p) {
                   if (p->current_token.type != TOKEN_IDENTIFIER) parser_fail(p, "Expected parameter name in define definition");
                   if (param_count >= cap) { 
                       cap *= 2; 
-                      // Simple realloc
                       char **new_params = parser_alloc(p, sizeof(char*)*cap);
                       memcpy(new_params, params, sizeof(char*)*param_count);
                       params = new_params;
@@ -85,8 +84,6 @@ ASTNode* parse_define(Parser *p) {
       snprintf(hint, sizeof(hint), "Did you mean \"define %s as %s...\"?", sigs[0].name, found);
       report_hint(p->l, p->current_token, hint);
       
-      // No free needed with arena
-      
       if (p->recover_buf) longjmp(*p->recover_buf, 1);
   }
   eat(p, TOKEN_AS);
@@ -110,8 +107,6 @@ ASTNode* parse_define(Parser *p) {
   for(int i=0; i<sig_count; i++) {
       register_macro(p, sigs[i].name, sigs[i].params, sigs[i].param_count, body_tokens, body_len);
   }
-  
-  // No frees needed
   
   if (p->current_token.type == TOKEN_SEMICOLON) eat(p, TOKEN_SEMICOLON);
 
@@ -163,7 +158,6 @@ ASTNode* parse_typedef(Parser *p) {
               if (p->current_token.type != TOKEN_RBRACKET) {
                   ASTNode *sz = parse_expression(p);
                   if (sz && sz->type == NODE_LITERAL) current_target.array_size = ((LiteralNode*)sz)->val.int_val;
-                  // No free_ast(sz)
                   (void)sz;
               }
               eat(p, TOKEN_RBRACKET);
@@ -171,7 +165,6 @@ ASTNode* parse_typedef(Parser *p) {
           }
           
           register_alias(p, new_name, current_target);
-          // No free(new_name)
           
           if (p->current_token.type == TOKEN_COMMA) eat(p, TOKEN_COMMA);
           else break;
@@ -283,54 +276,6 @@ ASTNode* parse_extern(Parser *p) {
   return (ASTNode*)node;
 }
 
-ASTNode* parse_import(Parser *p) {
-  eat(p, TOKEN_IMPORT);
-  if (p->current_token.type != TOKEN_STRING) parser_fail(p, "Expected file path string after 'import'");
-  char* fname = parser_strdup(p, p->current_token.text);
-  p->current_token.text = NULL;
-  eat(p, TOKEN_STRING);
-  eat(p, TOKEN_SEMICOLON);
-  
-  char* src = read_import_file(p, fname);
-  if (!src) { 
-      char msg[256];
-      snprintf(msg, 256, "Could not open imported file: '%s'", fname);
-      // fname not freed
-      parser_fail(p, msg); 
-  }
-  
-  Lexer import_l; 
-  lexer_init(&import_l, p->ctx, fname, src);
-  // import_l.filename = fname; // Already set by init
-  
-  Parser import_p;
-  parser_init(&import_p, &import_l);
-  
-  ASTNode* imported_root = parse_program(&import_p);
-  
-  // No free(src), No free(fname)
-  
-  return imported_root; 
-}
-
-ASTNode* parse_link(Parser *p) {
-  eat(p, TOKEN_LINK);
-  char *lib_name = NULL;
-  if (p->current_token.type == TOKEN_IDENTIFIER || p->current_token.type == TOKEN_STRING) {
-    lib_name = parser_strdup(p, p->current_token.text);
-    p->current_token.text = NULL;
-    if (p->current_token.type == TOKEN_IDENTIFIER) eat(p, TOKEN_IDENTIFIER);
-    else eat(p, TOKEN_STRING);
-  } else {
-    parser_fail(p, "Expected library name (string or identifier) after 'link'");
-  }
-  if (p->current_token.type == TOKEN_SEMICOLON) eat(p, TOKEN_SEMICOLON);
-  LinkNode *node = parser_alloc(p, sizeof(LinkNode));
-  node->base.type = NODE_LINK;
-  node->lib_name = lib_name;
-  return (ASTNode*)node;
-}
-
 ASTNode* parse_enum(Parser *p) {
   eat(p, TOKEN_ENUM);
   if (p->current_token.type != TOKEN_IDENTIFIER) parser_fail(p, "Expected enum name");
@@ -380,6 +325,7 @@ ASTNode* parse_enum(Parser *p) {
   return (ASTNode*)en;
 }
 
+// todo split this into modular
 ASTNode* parse_class(Parser *p) {  
   int is_open = 0;
   if (p->current_token.type == TOKEN_OPEN) { is_open = 1; eat(p, TOKEN_OPEN); }

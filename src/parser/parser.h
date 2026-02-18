@@ -339,5 +339,6 @@ ASTNode* parse_program(Parser *p);
 ASTNode* parse_expression(Parser *p);
 
 #include "emitter.h"
+#include "link.h"
 
 #endif // PARSER_H
