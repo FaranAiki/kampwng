@@ -110,13 +110,13 @@ typedef struct {
   Parameter *params;
   ASTNode *body; 
   int is_varargs; 
-  int is_public;
-  int is_open;
+  int is_public; // public can be exposed, if false private
+  int is_open; // open can be extensible, if false closed
   int is_static;
-  int is_base;
-  int is_virtual;
-  int is_abstract;
-  int is_override;
+  int is_virtual; // virtual keyword 
+  int is_abstract; // this is like Java's abstract keyword
+  int is_is_a; // use the IsASemantic
+  int is_has_a; // use the HasASemantic
   char *class_name; 
   int is_flux;
 } FuncDefNode;
@@ -135,10 +135,9 @@ typedef struct {
   int is_extern; 
   int is_union;
   int is_static; 
-  int is_inert; // cannot be composed (has-a)
-  int is_naked; // must be 
-  int is_final; // cannot be inherited (is-a)
   int is_abstract; // like in C++, C#, Java
+  int is_is_a; // use the IsASemantic
+  int is_has_a; // use the HasASemantic
 } ClassNode;
 
 typedef struct EnumEntry {
