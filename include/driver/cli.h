@@ -3,9 +3,9 @@
 
 #define INPUT_BUFFER_SIZE 4096
 
-#include "../parser/parser.h"
-#include "../old/codegen/codegen.h"
-#include "../common/debug.h"
+#include "../../include/parser/parser.h"
+#include "../../src/old/codegen/codegen.h"
+#include "../../include/common/debug.h"
 
 // Entry point for the Interactive Shell
 int run_repl(void);

@@ -1,7 +1,7 @@
 #ifndef CODEGEN_H
 #define CODEGEN_H
 
-#include "../../parser/parser.h"
+#include "../../include/parser/parser.h"
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>

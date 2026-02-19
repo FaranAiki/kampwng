@@ -87,8 +87,6 @@ typedef struct {
     int in_switch;
 } SemanticCtx;
 
-// --- API ---
-
 // Lifecycle
 void sem_init(SemanticCtx *ctx, CompilerContext *compiler_ctx);
 // sem_cleanup is largely unnecessary with Arena, but kept for consistency/resetting non-arena state
@@ -130,7 +128,7 @@ SemSymbol* lookup_local_symbol(SemanticCtx *ctx, const char *name);
 void sem_check_func_def(SemanticCtx *ctx, FuncDefNode *node);
 
 
-#include "semantic/emitter.h"
-#include "semantic/type.h"
+#include "emitter.h"
+#include "type.h"
 
 #endif // SEMANTIC_H

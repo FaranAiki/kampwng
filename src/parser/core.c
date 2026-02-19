@@ -21,8 +21,6 @@ void parser_init(Parser *p, Lexer *l) {
     }
 }
 
-// --- ARENA HELPERS ---
-
 void* parser_alloc(Parser *p, size_t size) {
     if (!p || !p->ctx || !p->ctx->arena) return calloc(1, size); // Fallback if no context
     void *ptr = arena_alloc(p->ctx->arena, size);
@@ -35,8 +33,6 @@ char* parser_strdup(Parser *p, const char *str) {
     if (!p || !p->ctx || !p->ctx->arena) return strdup(str); // Fallback
     return arena_strdup(p->ctx->arena, str);
 }
-
-// --- TYPE REGISTRY ---
 
 void register_typename(Parser *p, const char *name, int is_enum) {
     TypeName *t = parser_alloc(p, sizeof(TypeName));
@@ -63,8 +59,6 @@ static int get_typename_kind(Parser *p, const char *name) {
     }
     return 0;
 }
-
-// --- ALIAS REGISTRY ---
 
 void register_alias(Parser *p, const char *name, VarType target) {
     TypeAlias *curr = p->alias_head;
@@ -124,8 +118,6 @@ static Macro* find_macro(Parser *p, const char *name) {
     }
     return NULL;
 }
-
-// --- TOKEN STREAM MANAGEMENT ---
 
 Token lexer_next_raw(Parser *p) {
     return lexer_next(p->l);

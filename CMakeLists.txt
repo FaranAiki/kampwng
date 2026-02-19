@@ -25,15 +25,16 @@ llvm_map_components_to_libnames(llvm_libs
 )
 
 include_directories(
-    include 
-    src/lexer 
-    src/parser 
-    src/driver
-    src/semantic
-    src/alir
-    src/alick
-    src/common
-    src/llvm_codegen
+    src/old/codegen/ # fallback
+    include/
+    include/lexer
+    include/parser
+    include/alir
+    include/alick
+    include/codegen 
+    include/semantic
+    include/driver
+    include/common
 )
 
 set(FRONTEND_SOURCES 
