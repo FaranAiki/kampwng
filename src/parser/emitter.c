@@ -367,7 +367,7 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
                 case TOKEN_LT: op = "<"; break;
                 case TOKEN_GT: op = ">"; break;
                 case TOKEN_LTE: op = "<="; break;
-                case TOKEN_GTE: op = ">=";
+                case TOKEN_GTE: op = ">="; break;
                 case TOKEN_AND: op = "&"; break;
                 case TOKEN_OR: op = "|"; break;
                 case TOKEN_XOR: op = "^"; break;

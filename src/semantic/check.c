@@ -58,10 +58,13 @@ void sem_scan_class_members(SemanticCtx *ctx, ClassNode *cn, SemSymbol *class_sy
     while(mem) {
         if (mem->type == NODE_VAR_DECL) {
             VarDeclNode *vd = (VarDeclNode*)mem;
-            sem_symbol_add(ctx, vd->name, SYM_VAR, vd->var_type);
+            SemSymbol *sym = sem_symbol_add(ctx, vd->name, SYM_VAR, vd->var_type);
+            sym->is_mutable = vd->is_mutable;
         } else if (mem->type == NODE_FUNC_DEF) {
             FuncDefNode *fd = (FuncDefNode*)mem;
-            sem_symbol_add(ctx, fd->name, SYM_FUNC, fd->ret_type);
+            SemSymbol *sym = sem_symbol_add(ctx, fd->name, SYM_FUNC, fd->ret_type);
+            sym->is_is_a = fd->is_is_a;
+            sym->is_has_a = fd->is_has_a;
         }
         mem = mem->next;
     }
@@ -75,17 +78,22 @@ void sem_scan_top_level(SemanticCtx *ctx, ASTNode *node) {
     while (node) {
         if (node->type == NODE_FUNC_DEF) {
             FuncDefNode *fd = (FuncDefNode*)node;
-            sem_symbol_add(ctx, fd->name, SYM_FUNC, fd->ret_type);
+            SemSymbol *sym = sem_symbol_add(ctx, fd->name, SYM_FUNC, fd->ret_type);
+            sym->is_is_a = fd->is_is_a;
+            sym->is_has_a = fd->is_has_a;
         }
         else if (node->type == NODE_VAR_DECL) {
             // Global variables
             VarDeclNode *vd = (VarDeclNode*)node;
-            sem_symbol_add(ctx, vd->name, SYM_VAR, vd->var_type);
+            SemSymbol *sym = sem_symbol_add(ctx, vd->name, SYM_VAR, vd->var_type);
+            sym->is_mutable = vd->is_mutable;
         }
         else if (node->type == NODE_CLASS) {
             ClassNode *cn = (ClassNode*)node;
             VarType type_class = {TYPE_CLASS, 0, arena_strdup(ctx->compiler_ctx->arena, cn->name)};
             SemSymbol *sym = sem_symbol_add(ctx, cn->name, SYM_CLASS, type_class);
+            sym->is_is_a = cn->is_is_a;
+            sym->is_has_a = cn->is_has_a;
             if (cn->parent_name) {
                 sym->parent_name = arena_strdup(ctx->compiler_ctx->arena, cn->parent_name);
             }

@@ -100,6 +100,7 @@ void sem_check_var_decl(SemanticCtx *ctx, VarDeclNode *node, int register_sym) {
             }
 
             SemSymbol *sym = sem_symbol_add(ctx, node->name, SYM_VAR, node->var_type);
+            sym->is_mutable = node->is_mutable; 
             
             // --- INITIALIZATION TRACKING ---
             int is_global = (ctx->current_scope == ctx->global_scope);
@@ -114,7 +115,19 @@ void sem_check_var_decl(SemanticCtx *ctx, VarDeclNode *node, int register_sym) {
         SemSymbol *sym = lookup_local_symbol(ctx, node->name);
         if (sym) {
             sym->type = node->var_type;
+            sym->is_mutable = node->is_mutable;
             if (node->initializer) sym->is_initialized = 1;
+        }
+    }
+
+    // --- COMPOSITION (HAS-A) CHECK FOR FIELDS ---
+    if (ctx->current_scope && ctx->current_scope->is_class_scope && node->var_type.base == TYPE_CLASS && node->var_type.class_name) {
+        SemSymbol *type_sym = sem_symbol_lookup(ctx, node->var_type.class_name, NULL);
+        if (type_sym && type_sym->kind == SYM_CLASS) {
+            if (type_sym->is_has_a == HAS_A_INERT) {
+                sem_error(ctx, (ASTNode*)node, "Class '%s' is inert, thus cannot be implicitly composed as field '%s'", type_sym->name, node->name);
+            }
+            type_sym->is_used_as_composition = 1;
         }
     }
 }

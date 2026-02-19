@@ -35,6 +35,12 @@ typedef struct SemSymbol {
     int is_mutable;
     int is_initialized;   // Track if variable has been assigned a value
     
+    // Semantic Modifiers
+    IsASemantic is_is_a;
+    HasASemantic is_has_a;
+    int is_used_as_parent;
+    int is_used_as_composition;
+    
     // Scope linkage
     struct SemScope *inner_scope; 
     

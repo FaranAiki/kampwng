@@ -107,6 +107,33 @@ int sem_check_program(SemanticCtx *ctx, ASTNode *root) {
 
     if (current_errors > 0) return current_errors;
     
+    // Pass 1.5: Structural validations (Inheritance, Traits)
+    ASTNode *curr_val = root;
+    while (curr_val) {
+        if (curr_val->type == NODE_CLASS) {
+            ClassNode *cn = (ClassNode*)curr_val;
+            if (cn->parent_name) {
+                SemSymbol *parent = sem_symbol_lookup(ctx, cn->parent_name, NULL);
+                if (parent && parent->kind == SYM_CLASS) {
+                    if (parent->is_is_a == IS_A_FINAL) {
+                        sem_error(ctx, curr_val, "Class '%s' cannot inherit from final class '%s'", cn->name, cn->parent_name);
+                    }
+                    parent->is_used_as_parent = 1;
+                }
+            }
+            for (int i = 0; i < cn->traits.count; i++) {
+                SemSymbol *trait = sem_symbol_lookup(ctx, cn->traits.names[i], NULL);
+                if (trait && trait->kind == SYM_CLASS) {
+                    if (trait->is_has_a == HAS_A_INERT) {
+                        sem_error(ctx, curr_val, "Class '%s' is inert, thus cannot be explicitly composed in '%s'", trait->name, cn->name);
+                    }
+                    trait->is_used_as_composition = 1;
+                }
+            }
+        }
+        curr_val = curr_val->next;
+    }
+
     ASTNode *curr = root;
     while (curr) {
         if (curr->type == NODE_VAR_DECL) {
@@ -118,6 +145,22 @@ int sem_check_program(SemanticCtx *ctx, ASTNode *root) {
         curr = curr->next;
     }
     
+    // Final structural validations (naked, reactive) globally
+    if (ctx->global_scope) {
+        SemSymbol *gsym = ctx->global_scope->symbols;
+        while (gsym) {
+            if (gsym->kind == SYM_CLASS) {
+                if (gsym->is_is_a == IS_A_NAKED && !gsym->is_used_as_parent) {
+                    sem_error(ctx, NULL, "Class '%s' is marked naked but is never inherited", gsym->name);
+                }
+                if (gsym->is_has_a == HAS_A_REACTIVE && !gsym->is_used_as_composition) {
+                    sem_error(ctx, NULL, "Class '%s' is marked reactive but is never composed (has-ed)", gsym->name);
+                }
+            }
+            gsym = gsym->next;
+        }
+    }
+
     if (ctx->compiler_ctx) return ctx->compiler_ctx->semantic_error_count;
     return 0;
 }
