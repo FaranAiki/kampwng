@@ -130,7 +130,7 @@ typedef struct {
   bool is_abstract : 1;
   bool is_flux : 1;
   bool is_pure : 1;
-  bool is_clean : 1;
+  bool is_pristine : 1;
 } FuncDefNode;
 
 typedef struct {
@@ -255,7 +255,7 @@ typedef struct {
   bool is_const : 1;
   bool is_mutable : 1; 
   bool is_pure : 1;
-  bool is_clean : 1;
+  bool is_pristine : 1;
 } VarDeclNode;
 
 typedef struct {

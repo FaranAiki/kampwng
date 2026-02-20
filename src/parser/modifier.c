@@ -90,7 +90,7 @@ void apply_func_modifiers(FuncDefNode* node, int modifiers) {
     
     // By default, pure and clean are true unless overridden
     node->is_pure = (modifiers & MODIFIER_IMPURE) ? 0 : 1;
-    node->is_clean = (modifiers & MODIFIER_TAINTED) ? 0 : 1;
+    node->is_pristine = (modifiers & MODIFIER_TAINTED) ? 0 : 1;
 
     // Inherited rules for functions (e.g. final overriding rules)
     if (modifiers & MODIFIER_FINAL) {
@@ -125,7 +125,7 @@ void apply_var_modifiers(VarDeclNode* node, int modifiers) {
     
     // By default, pure and clean are true unless overridden
     node->is_pure = (modifiers & MODIFIER_IMPURE) ? 0 : 1;
-    node->is_clean = (modifiers & MODIFIER_TAINTED) ? 0 : 1;
+    node->is_pristine = (modifiers & MODIFIER_TAINTED) ? 0 : 1;
 
     // Variable specific OOP constraints, in case anonymous classes/objects are used
     if (modifiers & MODIFIER_FINAL) {

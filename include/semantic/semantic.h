@@ -46,7 +46,7 @@ typedef struct SemSymbol {
     bool is_used_as_parent : 1;
     bool is_used_as_composition : 1;
     bool is_pure : 1;
-    bool is_clean : 1;
+    bool is_pristine : 1;
 } SemSymbol;
 
 typedef struct SemScope {
