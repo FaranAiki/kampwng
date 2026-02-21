@@ -71,7 +71,10 @@ set(ALIR_SOURCES
 )
 
 set (ALICK_SOURCES
-
+    src/alick/core.c
+    src/alick/memory.c
+    src/alick/type.c
+    src/alick/cfg.c
 )
 
 set(HELPER_SOURCES

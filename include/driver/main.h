@@ -8,7 +8,7 @@
 #include "../../include/semantic/semantic.h"
 #include "../../include/common/debug.h"
 #include "../../include/alir/alir.h"
-// #include "../alick/alick.h"
+#include "../include/alick/alick.h"
 
 char* read_file(const char* filename);
 

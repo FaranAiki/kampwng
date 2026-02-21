@@ -117,8 +117,11 @@ int main(int argc, char *argv[]) {
 
   debug_step("Finished alir. Start alir check and analysis.");
 
-  // alir check    
- 
+  int alick_error = alick_check_module(alir_module);    
+  if (alick_error > 0) {
+    printf("Error occured in alick.\n");
+  }
+
   exit(0);
 
   LLVMInitializeNativeTarget();

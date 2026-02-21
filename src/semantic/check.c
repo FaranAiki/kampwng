@@ -7,6 +7,7 @@
 // --- Forward Declarations ---
 void sem_check_var_decl(SemanticCtx *ctx, VarDeclNode *node, int register_sym);
 void sem_check_stmt(SemanticCtx *ctx, ASTNode *node);
+void sem_insert_implicit_cast(SemanticCtx *ctx, ASTNode **node_ptr, VarType target_type);
 
 SemSymbol* lookup_local_symbol(SemanticCtx *ctx, const char *name) {
     if (!ctx->current_scope) return NULL;
@@ -16,6 +17,35 @@ SemSymbol* lookup_local_symbol(SemanticCtx *ctx, const char *name) {
         sym = sym->next;
     }
     return NULL;
+}
+
+// ALIR ENHANCEMENT: AST Injection for implicit casts
+// Transforms the AST directly to insert explicit CastNodes.
+// This offloads type coercion tracking from ALIR generation, making it simpler and more robust.
+void sem_insert_implicit_cast(SemanticCtx *ctx, ASTNode **node_ptr, VarType target_type) {
+    if (!node_ptr || !*node_ptr) return;
+    VarType current = sem_get_node_type(ctx, *node_ptr);
+    
+    if (current.base == target_type.base && current.ptr_depth == target_type.ptr_depth) return;
+    if (current.base == TYPE_UNKNOWN || target_type.base == TYPE_UNKNOWN) return;
+    if (target_type.base == TYPE_VOID) return;
+
+    CastNode *cast = arena_alloc_type(ctx->compiler_ctx->arena, CastNode);
+    cast->base.type = NODE_CAST;
+    cast->base.line = (*node_ptr)->line;
+    cast->base.col = (*node_ptr)->col;
+    
+    // Preserve linked list iteration (e.g., function args)
+    cast->base.next = (*node_ptr)->next; 
+    (*node_ptr)->next = NULL; 
+    
+    cast->var_type = target_type;
+    cast->operand = *node_ptr;
+    
+    sem_set_node_type(ctx, (ASTNode*)cast, target_type);
+    
+    // Swap the pointer to the newly injected cast node
+    *node_ptr = (ASTNode*)cast;
 }
 
 void sem_register_builtins(SemanticCtx *ctx) {
@@ -195,10 +225,16 @@ void sem_check_call(SemanticCtx *ctx, CallNode *node) {
     }
     
     int arg_count = 0;
-    ASTNode *arg = node->args;
-    while(arg) {
-        sem_check_expr(ctx, arg);
-        arg = arg->next;
+    ASTNode **curr_arg = &node->args;
+    while(*curr_arg) {
+        sem_check_expr(ctx, *curr_arg);
+        
+        // ALIR ENHANCEMENT: Auto-cast AST call arguments dynamically
+        if (sym->kind == SYM_FUNC && sym->param_types && arg_count < sym->param_count) {
+            sem_insert_implicit_cast(ctx, curr_arg, sym->param_types[arg_count]);
+        }
+        
+        curr_arg = &(*curr_arg)->next;
         arg_count++;
     }
 
@@ -242,21 +278,36 @@ void sem_check_binary_op(SemanticCtx *ctx, BinaryOpNode *node) {
     if (node->op == TOKEN_EQ || node->op == TOKEN_NEQ || 
         node->op == TOKEN_LT || node->op == TOKEN_GT || 
         node->op == TOKEN_LTE || node->op == TOKEN_GTE) {
+        
+        // ALIR ENHANCEMENT: Cast operands so comparators don't need mixed-type logic
+        if (is_numeric(l) && is_numeric(r)) {
+            VarType target_type = {TYPE_INT, 0, NULL, 0, 0};
+            if (l.base == TYPE_LONG_DOUBLE || r.base == TYPE_LONG_DOUBLE) target_type.base = TYPE_LONG_DOUBLE;
+            else if (l.base == TYPE_DOUBLE || r.base == TYPE_DOUBLE) target_type.base = TYPE_DOUBLE;
+            else if (l.base == TYPE_FLOAT || r.base == TYPE_FLOAT) target_type.base = TYPE_FLOAT;
+            else if (l.base == TYPE_LONG || r.base == TYPE_LONG) target_type.base = TYPE_LONG;
+            
+            sem_insert_implicit_cast(ctx, &node->left, target_type);
+            sem_insert_implicit_cast(ctx, &node->right, target_type);
+        }
+        
         sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_BOOL});
         return;
     }
     
     if (is_numeric(l) && is_numeric(r)) {
-        if (l.base == TYPE_LONG_DOUBLE || r.base == TYPE_LONG_DOUBLE) 
-            sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_LONG_DOUBLE});
-        else if (l.base == TYPE_DOUBLE || r.base == TYPE_DOUBLE) 
-            sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_DOUBLE});
-        else if (l.base == TYPE_FLOAT || r.base == TYPE_FLOAT) 
-            sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_FLOAT});
-        else if (l.base == TYPE_LONG || r.base == TYPE_LONG) 
-            sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_LONG});
-        else 
-            sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_INT});
+        VarType target_type = {TYPE_INT, 0, NULL, 0, 0};
+        
+        if (l.base == TYPE_LONG_DOUBLE || r.base == TYPE_LONG_DOUBLE) target_type.base = TYPE_LONG_DOUBLE;
+        else if (l.base == TYPE_DOUBLE || r.base == TYPE_DOUBLE) target_type.base = TYPE_DOUBLE;
+        else if (l.base == TYPE_FLOAT || r.base == TYPE_FLOAT) target_type.base = TYPE_FLOAT;
+        else if (l.base == TYPE_LONG || r.base == TYPE_LONG) target_type.base = TYPE_LONG;
+        
+        // ALIR ENHANCEMENT: Balance binary AST operand types directly
+        sem_insert_implicit_cast(ctx, &node->left, target_type);
+        sem_insert_implicit_cast(ctx, &node->right, target_type);
+        
+        sem_set_node_type(ctx, (ASTNode*)node, target_type);
     } 
     else if (is_pointer(l) && is_integer(r)) {
          sem_set_node_type(ctx, (ASTNode*)node, l);
@@ -405,6 +456,7 @@ void sem_check_method_call(SemanticCtx *ctx, MethodCallNode *node) {
 
                         if (member->kind == SYM_FUNC) {
                             sem_set_node_type(ctx, (ASTNode*)node, member->type); 
+                            node->owner_class = current_class->name; // ALIR ENHANCEMENT: Tag class owner natively
                             found = 1;
                         } 
                         else if (member->kind == SYM_VAR && member->type.is_func_ptr) {
@@ -413,10 +465,18 @@ void sem_check_method_call(SemanticCtx *ctx, MethodCallNode *node) {
                         }
 
                         if (found) {
-                            ASTNode *arg = node->args;
-                            while(arg) {
-                                sem_check_expr(ctx, arg);
-                                arg = arg->next;
+                            int arg_count = 0;
+                            ASTNode **curr_arg = &node->args;
+                            while(*curr_arg) {
+                                sem_check_expr(ctx, *curr_arg);
+                                
+                                // ALIR ENHANCEMENT: Auto-cast AST method arguments dynamically
+                                if (member->kind == SYM_FUNC && member->param_types && arg_count < member->param_count) {
+                                    sem_insert_implicit_cast(ctx, curr_arg, member->param_types[arg_count]);
+                                }
+                                
+                                curr_arg = &(*curr_arg)->next;
+                                arg_count++;
                             }
                             goto done_method_search;
                         }
@@ -606,7 +666,8 @@ void sem_check_stmt(SemanticCtx *ctx, ASTNode *node) {
                     if (!sem_types_are_compatible(ctx->current_scope->expected_ret_type, val)) {
                         sem_error(ctx, node, "Return type mismatch");
                     } else {
-                         sem_check_implicit_cast(ctx, node, ctx->current_scope->expected_ret_type, val);
+                         // ALIR ENHANCEMENT: Pre-inject cast nodes to guarantee rigid types
+                         sem_insert_implicit_cast(ctx, &rn->value, ctx->current_scope->expected_ret_type);
                     }
                 }
             } else {
