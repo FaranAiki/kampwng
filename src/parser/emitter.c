@@ -570,8 +570,7 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
 char* parser_to_string(Parser *parser, ASTNode *root) {
     StringBuilder sb;
     sb_init(&sb, parser->ctx->arena);
-    if (!sb.data) return NULL;
-    
+
     ASTNode *curr = root;
     while (curr) {
         parser_emit_ast_node(&sb, curr, 0);

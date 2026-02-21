@@ -80,7 +80,6 @@ void semantic_emit_scope(StringBuilder *sb, SemScope *scope, int indent) {
 char* semantic_to_string(SemanticCtx *ctx) {
     StringBuilder sb;
     sb_init(&sb, ctx->compiler_ctx->arena);
-    if (!sb.data) return NULL;
     
     sb_append_fmt(&sb, "=== SEMANTIC SYMBOL TABLE ===\n");
     if (ctx->global_scope) {

@@ -9,7 +9,6 @@
 char* lexer_to_string(Lexer *l) {
     StringBuilder sb;
     sb_init(&sb, l->ctx->arena);
-    if (!sb.data) return NULL;
 
     Token t = lexer_next(l);
     while (t.type != TOKEN_EOF) {
@@ -44,7 +43,6 @@ void lexer_to_file(Lexer *l, const char *filename) {
             fputs(str, f);
             fclose(f);
         }
-        free(str); // str is allocated by StringBuilder (malloc), so we must free it
     }
 }
 

@@ -3,7 +3,7 @@ tainted int function() {
 }
 
 int main() {
-  pristine int t = function();
+  tainted int t = function();
 
   wash t as err {
     print "a";

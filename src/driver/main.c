@@ -10,11 +10,13 @@
 #define BASENAME "out"
 
 int main(int argc, char *argv[]) {
-  Arena arena;
-  CompilerContext comp_ctx;
+  Arena arena, arena_debug;
+  CompilerContext comp_ctx, comp_ctx_debug;
 
   arena_init(&arena);
+  arena_init(&arena_debug);
   context_init(&comp_ctx, &arena);
+  context_init(&comp_ctx_debug, &arena_debug);
   
   if (argc < 2) {
     printf("Usage: %s <file.aky> [-l<lib>]\n", argv[0]);
@@ -53,7 +55,7 @@ int main(int argc, char *argv[]) {
 
   // generate for debugging 
   Lexer l_debug;
-  lexer_init(&l_debug, &comp_ctx, filename, code);
+  lexer_init(&l_debug, &comp_ctx_debug, filename, code);
 
   to_token_out(&l_debug, BASENAME ".tok");
 
@@ -70,7 +72,7 @@ int main(int argc, char *argv[]) {
   parser_init(&p_debug, &l_debug);
   ASTNode *root_debug = parse_program(&p_debug);
 
-  to_ast_out(&p, root_debug, BASENAME ".ast");
+  to_ast_out(&p_debug, root_debug, BASENAME ".ast");
 
   debug_step("Start Semantic Analysis.");
   
