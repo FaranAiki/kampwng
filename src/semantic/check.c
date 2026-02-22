@@ -641,6 +641,54 @@ void sem_check_expr(SemanticCtx *ctx, ASTNode *node) {
             sem_set_node_type(ctx, node, elem_type);
             break;
         }
+        
+        // [FIX] Add missing expression trackers to prevent TYPE_UNKNOWN leakage to ALIR
+        case NODE_INC_DEC: {
+            IncDecNode *id = (IncDecNode*)node;
+            sem_check_expr(ctx, id->target);
+            VarType t = sem_get_node_type(ctx, id->target);
+            if (!is_numeric(t) && !is_pointer(t) && t.base != TYPE_UNKNOWN) {
+                sem_error(ctx, node, "Cannot increment/decrement non-numeric/non-pointer type");
+            }
+            if (sem_get_node_tainted(ctx, id->target)) sem_set_node_tainted(ctx, node, 1);
+            sem_set_node_type(ctx, node, t);
+            break;
+        }
+        case NODE_ASSIGN: {
+            AssignNode *an = (AssignNode*)node;
+            sem_check_assign(ctx, an); 
+            VarType t;
+            if (an->name) {
+                SemSymbol *sym = sem_symbol_lookup(ctx, an->name, NULL);
+                t = sym ? sym->type : (VarType){TYPE_UNKNOWN};
+            } else {
+                t = sem_get_node_type(ctx, an->target);
+            }
+            sem_set_node_type(ctx, node, t);
+            break;
+        }
+        case NODE_TRAIT_ACCESS: {
+            TraitAccessNode *ta = (TraitAccessNode*)node;
+            sem_check_expr(ctx, ta->object);
+            if (sem_get_node_tainted(ctx, ta->object)) sem_set_node_tainted(ctx, node, 1);
+            VarType res = {TYPE_CLASS, 1, arena_strdup(ctx->compiler_ctx->arena, ta->trait_name), 0, 0};
+            sem_set_node_type(ctx, node, res);
+            break;
+        }
+        case NODE_TYPEOF:
+        case NODE_HAS_METHOD:
+        case NODE_HAS_ATTRIBUTE: {
+            UnaryOpNode *un = (UnaryOpNode*)node;
+            sem_check_expr(ctx, un->operand);
+            if (sem_get_node_tainted(ctx, un->operand)) sem_set_node_tainted(ctx, node, 1);
+            
+            if (node->type == NODE_TYPEOF) {
+                sem_set_node_type(ctx, node, (VarType){TYPE_STRING, 0, NULL, 0, 0});
+            } else {
+                sem_set_node_type(ctx, node, (VarType){TYPE_BOOL, 0, NULL, 0, 0});
+            }
+            break;
+        }
         default: break;
     }
 }

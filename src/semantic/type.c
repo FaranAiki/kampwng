@@ -151,6 +151,16 @@ void sem_check_assign(SemanticCtx *ctx, AssignNode *node) {
     VarType lhs_type;
     int expr_tainted = sem_get_node_tainted(ctx, node->value);
     
+    if (lhs_type.base != TYPE_UNKNOWN && rhs_type.base != TYPE_UNKNOWN) {
+        if (!sem_types_are_compatible(lhs_type, rhs_type)) {
+             char *t1 = sem_type_to_str(lhs_type);
+             char *t2 = sem_type_to_str(rhs_type);
+             sem_error(ctx, (ASTNode*)node, "Invalid assignment. Cannot assign '%s' to '%s'", t2, t1);
+        } else {
+             sem_check_implicit_cast(ctx, (ASTNode*)node, lhs_type, rhs_type);
+        }
+    }
+
     // VOID CHECK: Cannot assign void
     if (rhs_type.base == TYPE_VOID && rhs_type.ptr_depth == 0) {
         sem_error(ctx, (ASTNode*)node, "Cannot assign value of type 'void' to variable");
