@@ -2,10 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <llvm-c/ExecutionEngine.h>
-#include <llvm-c/Target.h>
-#include <llvm-c/TargetMachine.h>
-#include <llvm-c/Analysis.h>
 
 #define BASENAME "out"
 
@@ -122,16 +118,17 @@ int main(int argc, char *argv[]) {
     printf("Error occured in alick.\n");
   }
 
-  exit(0);
+  // exit(0);
 
   LLVMInitializeNativeTarget();
   LLVMInitializeNativeAsmPrinter();
   LLVMInitializeNativeAsmParser();
 
-  debug_step("Finished alir check and analysis. Start Old Codegen (replace this).");
+  debug_step("Finished alir check and analysis. Start Codegen using LLVM Codegen");
   arena_reset(&arena);
   // Pass source code to codegen for error reporting
-  LLVMModuleRef module = codegen_generate(root, "alkyl_llvm", code);
+  CodegenCtx *cg_ctx = codegen_init(alir_module);
+  LLVMModuleRef module = codegen_generate(cg_ctx);
 
   char *error = NULL;
   if (LLVMVerifyModule(module, LLVMAbortProcessAction, &error)) {
@@ -173,7 +170,8 @@ int main(int argc, char *argv[]) {
     printf("Linking failed.\n");
   }
 
-  LLVMDisposeModule(module);
+  codegen_dispose(cg_ctx);
+  // LLVMDisposeModule(module);
   free(code);
  
   arena_free(&arena);

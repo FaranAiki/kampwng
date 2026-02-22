@@ -1,9 +1,10 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-#include <llvm-c/Core.h>
 #include <stdbool.h>
-#include "old/codegen/codegen.h"
+#include "../../include/llvm_codegen/codegen.h"
+#include "../../include/parser/parser.h"
+#include "../../include/semantic/semantic.h"
 #include "../../include/parser/parser.h"
 #include "../../include/semantic/semantic.h"
 #include "../../include/common/debug.h"

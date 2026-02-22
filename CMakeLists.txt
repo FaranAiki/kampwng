@@ -25,7 +25,7 @@ llvm_map_components_to_libnames(llvm_libs
 )
 
 include_directories(
-    src/old/codegen/ # fallback
+  # src/old/codegen/ # fallback
     include/
     include/lexer
     include/parser
@@ -77,6 +77,10 @@ set (ALICK_SOURCES
     src/alick/cfg.c
 )
 
+set (LLVM_CODEGEN_SOURCES
+    src/llvm_codegen/codegen.c
+)
+
 set(HELPER_SOURCES
     src/common/diagnostic.c
     src/common/common.c
@@ -115,8 +119,8 @@ set(COMMON_SOURCES
   ${SEMANTIC_SOURCES}
   ${ALIR_SOURCES}
   ${ALICK_SOURCES}
+  ${LLVM_CODEGEN_SOURCES}
   ${HELPER_SOURCES}
-  ${DEPRECATED_LLVM_CODEGEN_SOURCES}
 )
 
 add_executable(alkyl src/driver/main.c ${COMMON_SOURCES})
