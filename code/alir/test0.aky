@@ -1,0 +1,5 @@
+int main() {
+  let t = "5";
+  printf "%s\n", t;
+  return 0;
+}

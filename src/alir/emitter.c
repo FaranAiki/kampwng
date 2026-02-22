@@ -197,7 +197,11 @@ void alir_emit_stream(AlirModule *mod, FILE *f) {
         AlirGlobal *g = mod->globals;
         while(g) {
             char *esc = escape_string(g->string_content);
-            fprintf(f, "@%s = cstring \"%s\"\n", g->name, esc);
+            if (g->type.base == TYPE_STRING) {
+                fprintf(f, "@%s = string \"%s\"\n", g->name, esc);
+            } else {
+                fprintf(f, "@%s = cstring \"%s\"\n", g->name, esc);
+            }
             // escape string does not use arena
             free(esc);
             g = g->next;

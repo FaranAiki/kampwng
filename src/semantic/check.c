@@ -821,8 +821,24 @@ void sem_check_stmt(SemanticCtx *ctx, ASTNode *node) {
             sem_check_expr(ctx, fn->collection);
             ctx->in_loop++;
             
+            // Resolve Iterated Collection Type
+            VarType col_type = sem_get_node_type(ctx, fn->collection);
+            VarType iter_type = col_type;
+            if (iter_type.array_size > 0) {
+                iter_type.array_size = 0;
+            } else if (iter_type.ptr_depth > 0) {
+                iter_type.ptr_depth--;
+            } else if (iter_type.base == TYPE_STRING) {
+                iter_type.base = TYPE_CHAR;
+            } else {
+                sem_error(ctx, node, "Cannot iterate over non-iterable type");
+                iter_type = (VarType){TYPE_UNKNOWN, 0, NULL, 0, 0};
+            }
+            
+            // Reassign the iterator type to let ALIR know
+            fn->iter_type = iter_type; 
+            
             sem_scope_enter(ctx, 0, (VarType){0});
-            VarType iter_type = {TYPE_AUTO}; 
             SemSymbol *s = sem_symbol_add(ctx, fn->var_name, SYM_VAR, iter_type);
             s->is_initialized = 1; // Iterator is init
             
