@@ -176,6 +176,84 @@ typedef struct {
   int col;
 } Lexer;
 
+typedef struct {
+    const char *word;
+    TokenType type;
+} KeywordDef;
+
+static const KeywordDef keywords[] = {
+    {"as", TOKEN_AS},
+    {"bool", TOKEN_KW_BOOL},
+    {"break", TOKEN_BREAK},
+    {"case", TOKEN_CASE},
+    {"char", TOKEN_KW_CHAR},
+    {"class", TOKEN_CLASS},
+    {"clean", TOKEN_CLEAN},
+    {"closed", TOKEN_CLOSED},
+    {"const", TOKEN_CONST},
+    {"continue", TOKEN_CONTINUE},
+    {"default", TOKEN_DEFAULT},
+    {"define", TOKEN_DEFINE},
+    {"double", TOKEN_KW_DOUBLE},
+    {"elif", TOKEN_ELIF},
+    {"else", TOKEN_ELSE},
+    {"emit", TOKEN_EMIT},
+    {"enum", TOKEN_ENUM},
+    {"extern", TOKEN_EXTERN},
+    {"false", TOKEN_FALSE},
+    {"final", TOKEN_FINAL},
+    {"flux", TOKEN_FLUX},
+    {"for", TOKEN_FOR},
+    {"has", TOKEN_HAS},
+    {"hasattribute", TOKEN_HASATTRIBUTE},
+    {"hasmethod", TOKEN_HASMETHOD},
+    {"if", TOKEN_IF},
+    {"immutable", TOKEN_KW_IMUT},
+    {"import", TOKEN_IMPORT},
+    {"impure", TOKEN_IMPURE},
+    {"imut", TOKEN_KW_IMUT},
+    {"in", TOKEN_IN},
+    {"inert", TOKEN_INERT},
+    {"int", TOKEN_KW_INT},
+    {"is", TOKEN_IS},
+    {"leak", TOKEN_LEAK},
+    {"let", TOKEN_KW_LET},
+    {"link", TOKEN_LINK},
+    {"long", TOKEN_KW_LONG},
+    {"loop", TOKEN_LOOP},
+    {"mut", TOKEN_KW_MUT},
+    {"mutable", TOKEN_KW_MUT},
+    {"naked", TOKEN_NAKED},
+    {"namespace", TOKEN_NAMESPACE},
+    {"not", TOKEN_NOT},
+    {"once", TOKEN_ONCE},
+    {"open", TOKEN_OPEN},
+    {"private", TOKEN_PRIVATE},
+    {"pristine", TOKEN_PRISTINE},
+    {"public", TOKEN_PUBLIC},
+    {"pure", TOKEN_PURE},
+    {"reactive", TOKEN_REACTIVE},
+    {"return", TOKEN_RETURN},
+    {"short", TOKEN_KW_SHORT},
+    {"single", TOKEN_KW_SINGLE},
+    {"string", TOKEN_KW_STRING},
+    {"struct", TOKEN_STRUCT},
+    {"switch", TOKEN_SWITCH},
+    {"tainted", TOKEN_TAINTED},
+    {"then", TOKEN_THEN},
+    {"throw", TOKEN_THROW},
+    {"true", TOKEN_TRUE},
+    {"typedef", TOKEN_TYPEDEF},
+    {"typeof", TOKEN_TYPEOF},
+    {"union", TOKEN_UNION},
+    {"unsigned", TOKEN_KW_UNSIGNED},
+    {"untaint", TOKEN_UNTAINT},
+    {"void", TOKEN_KW_VOID},
+    {"wash", TOKEN_WASH},
+    {"while", TOKEN_WHILE}
+};
+
+
 // Initialize lexer with context. Context contains the arena for allocations.
 void lexer_init(Lexer *l, CompilerContext *ctx, const char *filename, const char *src);
 

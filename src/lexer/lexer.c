@@ -1,4 +1,6 @@
 #include "lexer.h"
+#include "common.h"
+#include "common/diagnostic.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -45,18 +47,14 @@ static char* intern_string(Lexer *l, const char *str) {
 }
 
 static char* intern_strndup(Lexer *l, const char *str, size_t len) {
-    char temp[4096];
-    if (len < sizeof(temp)) {
-        memcpy(temp, str, len);
-        temp[len] = '\0';
-        return intern_string(l, temp);
-    }
+    char *temp = malloc(len + 1);
+    if (!temp) return NULL;
     
-    char *big_temp = malloc(len + 1);
-    memcpy(big_temp, str, len);
-    big_temp[len] = '\0';
-    char* res = intern_string(l, big_temp);
-    free(big_temp);
+    memcpy(temp, str, len);
+    temp[len] = '\0';
+    char* res = intern_string(l, temp);
+    
+    free(temp);
     return res;
 }
 
@@ -65,7 +63,7 @@ void skip_whitespace_and_comments(Lexer *l) {
     char c = peek(l);
     if (c == '\0') break;
 
-    if (isspace(c)) {
+    if (isspace((unsigned char)c)) {
       advance(l);
       continue;
     }
@@ -86,9 +84,8 @@ void skip_whitespace_and_comments(Lexer *l) {
       while (1) {
           char next = peek(l);
           if (next == '\0') {
-              // Can't report easily without token, just log
-              if(l->ctx) l->ctx->error_count++;
-              fprintf(stderr, "Unclosed block comment at line %d\n", l->line);
+              Token dummy = {TOKEN_UNKNOWN, NULL, 0, 0, 0.0, l->line, l->col};
+              report_error(l, dummy, "Unclosed block comment");
               return; 
           }
           
@@ -226,19 +223,30 @@ static int lex_symbol(Lexer *l, Token *t) {
 static int lex_number(Lexer *l, Token *t) {
     if (!isdigit(peek(l))) return 0;
     
+    const char *start = &l->src[l->pos];
+    int length = 0;
     unsigned long long val = 0;
+    
     while (isdigit(peek(l))) {
-      val = val * 10 + (advance(l) - '0');
+      val = val * 10 + (peek(l) - '0');
+      advance(l);
+      length++;
     }
 
     if (peek(l) == '.') {
       advance(l);
-      double dval = (double)val;
-      double fraction = 1.0;
+      length++;
+      
       while (isdigit(peek(l))) {
-        fraction /= 10.0;
-        dval += (advance(l) - '0') * fraction;
+        advance(l);
+        length++;
       }
+      
+      char *buf = malloc(length + 1);
+      memcpy(buf, start, length);
+      buf[length] = '\0';
+      double dval = strtod(buf, NULL);
+      free(buf);
       
       t->type = TOKEN_FLOAT;
       t->double_val = dval;
@@ -300,12 +308,11 @@ static int lex_char(Lexer *l, Token *t) {
         }
     }
     
-    if (peek(l) == '\'') advance(l); 
-    else {
-        // We can't exit(1) nicely here without setjmp, but for now we rely on parser to catch unknown tokens
-        // Or check error recovery.
-        if (l->ctx) l->ctx->error_count++;
-        fprintf(stderr, "Lexer Error: Unclosed character literal at %d:%d\n", l->line, l->col);
+    if (peek(l) == '\'') {
+        advance(l); 
+    } else {
+        Token dummy = {TOKEN_UNKNOWN, NULL, 0, 0, 0.0, l->line, l->col};
+        report_error(l, dummy, "Unclosed character literal");
     }
     
     t->type = TOKEN_CHAR_LIT;
@@ -314,15 +321,12 @@ static int lex_char(Lexer *l, Token *t) {
     return 1;
 }
 
-// Uses a temporary stack buffer to parse the string, then uses the Hashmap intern pool
+// Dynamically scales using StringBuilder, eliminating hard limits and data loss.
 static char* consume_string_content(Lexer *l) {
-    char buffer[4096]; // Max literal size for now
-    size_t length = 0;
-    size_t cap = 4095;
+    StringBuilder sb;
+    sb_init(&sb, NULL);
 
     while (peek(l) != '"' && peek(l) != '\0') {
-      if (length >= cap) break; // Truncate safety
-
       char val = peek(l);
       if (val == '\\') {
         advance(l); 
@@ -342,14 +346,15 @@ static char* consume_string_content(Lexer *l) {
       } else {
         advance(l); 
       }
-      buffer[length++] = val;
+      sb_append_c(&sb, val);
     }
-    buffer[length] = '\0'; // Null terminate
     
     if (peek(l) == '"') advance(l);
     
-    // Check pool/allocate into pool
-    return intern_string(l, buffer);
+    // Check pool/allocate into pool safely 
+    char *final_str = intern_string(l, sb.data ? sb.data : "");
+    sb_free(&sb);
+    return final_str;
 }
 
 static int lex_string(Lexer *l, Token *t) {
@@ -375,14 +380,32 @@ static int lex_string(Lexer *l, Token *t) {
   return 0;
 }
 
+// O(log N) Keyword Definitions mapping 
+// CRITICAL: Array MUST remain sorted alphabetically for bsearch
+static const int num_keywords = sizeof(keywords) / sizeof(keywords[0]);
+
+static int compare_keywords(const void *a, const void *b) {
+    return strcmp((const char *)a, ((const KeywordDef *)b)->word);
+}
+
+static int is_ident_start(char c) {
+    unsigned char uc = (unsigned char)c;
+    return isalpha(uc) || uc == '_' || uc >= 0x80;
+}
+
+static int is_ident_part(char c) {
+    unsigned char uc = (unsigned char)c;
+    return isalnum(uc) || uc == '_' || uc >= 0x80;
+}
+
 static int lex_word(Lexer *l, Token *t) {
   char c = peek(l);
-  if (!isalpha(c) && c != '_') return 0;
+  if (!is_ident_start(c)) return 0;
   
   const char *start = &l->src[l->pos];
   size_t length = 0;
 
-  while (isalnum(peek(l)) || peek(l) == '_') {
+  while (is_ident_part(peek(l))) {
       advance(l);
       length++;
   }
@@ -391,102 +414,18 @@ static int lex_word(Lexer *l, Token *t) {
   if (length < 256) {
       strncpy(word, start, length);
       word[length] = '\0';
-  } else {
-      // Too long for a keyword, treat as identifier and intern it safely
-      t->type = TOKEN_IDENTIFIER;
-      t->text = intern_strndup(l, start, length);
-      return 1;
+      
+      // O(log N) Keyword Check
+      const KeywordDef *found = bsearch(word, keywords, num_keywords, sizeof(KeywordDef), compare_keywords);
+      if (found) {
+          t->type = found->type;
+          return 1;
+      }
   }
 
-  // Keyword Checks
-  if (strcmp(word, "loop") == 0) t->type = TOKEN_LOOP;
-  else if (strcmp(word, "while") == 0) t->type = TOKEN_WHILE;
-  else if (strcmp(word, "once") == 0) t->type = TOKEN_ONCE;
-  else if (strcmp(word, "if") == 0) t->type = TOKEN_IF;
-  else if (strcmp(word, "elif") == 0) t->type = TOKEN_ELIF;
-  else if (strcmp(word, "then") == 0) t->type = TOKEN_THEN;
-  else if (strcmp(word, "else") == 0) t->type = TOKEN_ELSE;
-  else if (strcmp(word, "return") == 0) t->type = TOKEN_RETURN;
-  else if (strcmp(word, "throw") == 0) t->type = TOKEN_THROW;
-  else if (strcmp(word, "break") == 0) t->type = TOKEN_BREAK;
-  else if (strcmp(word, "continue") == 0) t->type = TOKEN_CONTINUE;
-  
-  else if (strcmp(word, "switch") == 0) t->type = TOKEN_SWITCH; 
-  else if (strcmp(word, "case") == 0) t->type = TOKEN_CASE;     
-  else if (strcmp(word, "default") == 0) t->type = TOKEN_DEFAULT; 
-  else if (strcmp(word, "leak") == 0) t->type = TOKEN_LEAK;     
-  else if (strcmp(word, "wash") == 0) t->type = TOKEN_WASH;
-  else if (strcmp(word, "clean") == 0) t->type = TOKEN_CLEAN;
-  else if (strcmp(word, "untaint") == 0) t->type = TOKEN_UNTAINT;
-
-  else if (strcmp(word, "define") == 0) t->type = TOKEN_DEFINE;
-  else if (strcmp(word, "as") == 0) t->type = TOKEN_AS;
-  else if (strcmp(word, "typedef") == 0) t->type = TOKEN_TYPEDEF;
-  
-  else if (strcmp(word, "class") == 0) t->type = TOKEN_CLASS;
-  else if (strcmp(word, "struct") == 0) t->type = TOKEN_STRUCT;
-  else if (strcmp(word, "union") == 0) t->type = TOKEN_UNION;
-  else if (strcmp(word, "is") == 0) t->type = TOKEN_IS;
-  else if (strcmp(word, "has") == 0) t->type = TOKEN_HAS;
-  else if (strcmp(word, "open") == 0) t->type = TOKEN_OPEN;
-  else if (strcmp(word, "closed") == 0) t->type = TOKEN_CLOSED;
-  else if (strcmp(word, "public") == 0) t->type = TOKEN_PUBLIC;
-  else if (strcmp(word, "private") == 0) t->type = TOKEN_PRIVATE;
-  else if (strcmp(word, "final") == 0) t->type = TOKEN_FINAL;
-  else if (strcmp(word, "naked") == 0) t->type = TOKEN_NAKED;
-  else if (strcmp(word, "reactive") == 0) t->type = TOKEN_REACTIVE;
-  else if (strcmp(word, "inert") == 0) t->type = TOKEN_INERT;
-  
-  else if (strcmp(word, "pure") == 0) t->type = TOKEN_PURE;
-  else if (strcmp(word, "impure") == 0) t->type = TOKEN_IMPURE;
-  else if (strcmp(word, "tainted") == 0) t->type = TOKEN_TAINTED;
-  else if (strcmp(word, "pristine") == 0) t->type = TOKEN_PRISTINE;
-
-  // compiler macro (?)
-  else if (strcmp(word, "typeof") == 0) t->type = TOKEN_TYPEOF;
-  else if (strcmp(word, "hasmethod") == 0) t->type = TOKEN_HASMETHOD;
-  else if (strcmp(word, "hasattribute") == 0) t->type = TOKEN_HASATTRIBUTE;
-  else if (strcmp(word, "namespace") == 0) t->type = TOKEN_NAMESPACE;
-  
-  else if (strcmp(word, "enum") == 0) t->type = TOKEN_ENUM; 
-
-  else if (strcmp(word, "flux") == 0) t->type = TOKEN_FLUX;
-  else if (strcmp(word, "emit") == 0) t->type = TOKEN_EMIT;
-  else if (strcmp(word, "for") == 0) t->type = TOKEN_FOR;
-  else if (strcmp(word, "in") == 0) t->type = TOKEN_IN;
-
-  else if (strcmp(word, "void") == 0) t->type = TOKEN_KW_VOID;
-  else if (strcmp(word, "int") == 0) t->type = TOKEN_KW_INT;
-  else if (strcmp(word, "short") == 0) t->type = TOKEN_KW_SHORT;
-  else if (strcmp(word, "long") == 0) t->type = TOKEN_KW_LONG;
-  else if (strcmp(word, "unsigned") == 0) t->type = TOKEN_KW_UNSIGNED;
-  else if (strcmp(word, "char") == 0) t->type = TOKEN_KW_CHAR;
-  else if (strcmp(word, "bool") == 0) t->type = TOKEN_KW_BOOL;
-  else if (strcmp(word, "single") == 0) t->type = TOKEN_KW_SINGLE;
-  else if (strcmp(word, "double") == 0) t->type = TOKEN_KW_DOUBLE;
-  else if (strcmp(word, "string") == 0) t->type = TOKEN_KW_STRING;
-  else if (strcmp(word, "let") == 0) t->type = TOKEN_KW_LET;
-  
-  else if (strcmp(word, "mut") == 0) t->type = TOKEN_KW_MUT;
-  else if (strcmp(word, "mutable") == 0) t->type = TOKEN_KW_MUT;
-  else if (strcmp(word, "imut") == 0) t->type = TOKEN_KW_IMUT;
-  else if (strcmp(word, "immutable") == 0) t->type = TOKEN_KW_IMUT;
-  else if (strcmp(word, "const") == 0) t->type = TOKEN_CONST;
-  
-  else if (strcmp(word, "import") == 0) t->type = TOKEN_IMPORT;
-  else if (strcmp(word, "extern") == 0) t->type = TOKEN_EXTERN;
-  else if (strcmp(word, "link") == 0) t->type = TOKEN_LINK;
-
-  else if (strcmp(word, "true") == 0) t->type = TOKEN_TRUE;
-  else if (strcmp(word, "false") == 0) t->type = TOKEN_FALSE;
-  else if (strcmp(word, "not") == 0) t->type = TOKEN_NOT;
-  else {
-    t->type = TOKEN_IDENTIFIER;
-    // Uses the intern string pool!
-    t->text = intern_string(l, word);
-    return 1;
-  }
-  
+  // Fallback to identifier for unknown or extremely long strings
+  t->type = TOKEN_IDENTIFIER;
+  t->text = intern_strndup(l, start, length);
   return 1;
 }
 
