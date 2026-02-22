@@ -144,16 +144,9 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     int param_offset = 0;
     p_idx = 3;
     if (fn->class_name) {
-        // For simplicity, assuming args are mapped to %p0, %p1...
-        // TODO fix this
-        // Actually, ALIR uses named parameters in function def.
-        // We need to resolve param name to a value. 
-        // ALIR doesn't have a direct "get param N" op in current definition, 
-        // usually params are allocas. Here we just use ALIR_VAL_VAR or TEMP.
-        // The printer uses %p0, %p1. 
-        // Let's assume %p0 ...
         char arg_name[16]; sprintf(arg_name, "p%d", param_offset-1);
         AlirValue *arg_val = alir_val_var(ctx->module, arg_name); // Placeholder for arg value
+        arg_val->type = (VarType){TYPE_CLASS, 1, alir_strdup(ctx->module, fn->class_name)}; // [FIX] void store patch
         
         AlirValue *f_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 2, alir_strdup(ctx->module, fn->class_name)});
         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, f_ptr, ctx_ptr, alir_const_int(ctx->module, p_idx++)));
@@ -163,6 +156,7 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     while(p) {
         char arg_name[16]; sprintf(arg_name, "p%d", param_offset++);
         AlirValue *arg_val = alir_val_var(ctx->module, arg_name);
+        arg_val->type = p->type; // [FIX] void store patch
         
         VarType pt = p->type; pt.ptr_depth++;
         AlirValue *f_ptr = new_temp(ctx, pt);

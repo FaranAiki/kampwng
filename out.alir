@@ -60,9 +60,9 @@ entry:
 define func void @Hand_wave(%Hand ptr %p0, i32 %p1) {
 entry:
   %0 = onheap %Hand ptr
-  store void %p0, %0
+  store %Hand ptr %p0, %0
   %1 = onheap i32
-  store void %p1, %1
+  store i32 %p1, %1
   %2 = load any %1
   %3 = call %print (@str.0, %2)
   return void
@@ -78,7 +78,7 @@ entry:
 define func void @Person_introduce(%Person ptr %p0) {
 entry:
   %0 = onheap %Person ptr
-  store void %p0, %0
+  store %Person ptr %p0, %0
   %1 = load %Person ptr %0
   %2 = getptr any ptr %1, 0
   %3 = load any %2
@@ -92,9 +92,9 @@ entry:
 define func void @Person_setAge(%Person ptr %p0, i32 %p1) {
 entry:
   %0 = onheap %Person ptr
-  store void %p0, %0
+  store %Person ptr %p0, %0
   %1 = onheap i32
-  store void %p1, %1
+  store i32 %p1, %1
   %2 = load any %0
   %3 = getptr any ptr %2, 1
   %4 = load any %1
@@ -118,7 +118,7 @@ entry:
 define func void @Mahasiswa_introduce(%Mahasiswa ptr %p0) {
 entry:
   %0 = onheap %Mahasiswa ptr
-  store void %p0, %0
+  store %Mahasiswa ptr %p0, %0
   %1 = load %Mahasiswa ptr %0
   %2 = getptr any ptr %1, 0
   %3 = load any %2
@@ -151,7 +151,7 @@ entry:
   %1 = sizeof i32 type(Person)
   %2 = onheap i8 ptr %1
   %3 = bitcast %Person ptr %2
-  %4 = call %Person (%3, @str.3, 18)
+  %4 = call @Person (%3, @str.3, 18)
   store %Person ptr %3, %0
   %5 = load any %0
   %6 = getptr any ptr %5, 0
@@ -167,7 +167,7 @@ entry:
   %16 = load any %0
   %17 = getptr any ptr %16, 1
   %18 = load any %17
-  %19 = call %Mahasiswa (%12, %15, %18, 18225122)
+  %19 = call @Mahasiswa (%12, %15, %18, 18225122)
   store %Mahasiswa ptr %12, %9
   %20 = onheap i32 ptr
   %21 = onheap any

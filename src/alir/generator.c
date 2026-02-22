@@ -634,7 +634,6 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
 
     int p_idx = 0;
 
-    // Map 'this' parameter to local ALIR alloca reference
     if (class_name) {
         VarType this_t = {TYPE_CLASS, 1, alir_strdup(ctx->module, class_name)};
         AlirValue *ptr = new_temp(ctx, this_t);
@@ -643,6 +642,7 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
 
         char pname[16]; snprintf(pname, sizeof(pname), "p%d", p_idx++);
         AlirValue *pval = alir_val_var(ctx->module, pname);
+        pval->type = this_t; // [FIX] explicitly attach type for STORE
         emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, pval, ptr));
     }
 
@@ -655,6 +655,7 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
         
         char pname[16]; snprintf(pname, sizeof(pname), "p%d", p_idx++);
         AlirValue *pval = alir_val_var(ctx->module, pname); 
+        pval->type = p->type; // [FIX] explicitly attach type for STORE
         emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, pval, ptr));
         
         p = p->next;

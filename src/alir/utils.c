@@ -73,7 +73,8 @@ AlirValue* alir_lower_new_object(AlirCtx *ctx, const char *class_name, ASTNode *
 
     // 4. Call Constructor
     // Note: In a real compiler, we'd mangle the constructor name properly or look it up via SemCtx
-    AlirInst *call_init = mk_inst(ctx->module, ALIR_OP_CALL, NULL, alir_val_var(ctx->module, class_name), NULL);
+    // [FIX] ALIR_VAL_GLOBAL ensures the emitted name uses `@`
+    AlirInst *call_init = mk_inst(ctx->module, ALIR_OP_CALL, NULL, alir_val_global(ctx->module, class_name, (VarType){TYPE_VOID, 0, NULL}), NULL);
     
     int arg_count = 0; ASTNode *a = args; while(a) { arg_count++; a=a->next; }
     call_init->arg_count = arg_count + 1;
