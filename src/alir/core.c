@@ -112,7 +112,7 @@ AlirBlock* alir_add_block(AlirModule *mod, AlirFunction *func, const char *label
             b->label = alir_strdup(mod, label_hint); // First use gets the plain label
         } else {
             char buf[128];
-            snprintf(buf, sizeof(buf), "%s%d", label_hint, count); // Subsequents get enumerated (while_cond2, etc)
+            snprintf(buf, sizeof(buf), "%s%d", label_hint, count); // Subsequents get enumerated (while_cond2, etc)alir
             b->label = alir_strdup(mod, buf);
         }
     }
@@ -181,7 +181,7 @@ int alir_get_field_index(AlirModule *mod, const char *struct_name, const char *f
 
 const char* alir_op_str(AlirOpcode op) {
     switch(op) {
-        case ALIR_OP_ALLOCA: return "onheap";
+        case ALIR_OP_ALLOCA: return "onstack";
         case ALIR_OP_STORE: return "store";
         case ALIR_OP_LOAD: return "load";
         case ALIR_OP_GET_PTR: return "getptr";

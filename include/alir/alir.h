@@ -231,15 +231,6 @@ typedef struct AlirCtx {
     int current_col;
 } AlirCtx;
 
-// Core
-AlirModule* alir_create_module(CompilerContext *ctx, const char *name);
-AlirFunction* alir_add_function(AlirModule *mod, const char *name, VarType ret, int is_flux);
-void alir_func_add_param(AlirModule *mod, AlirFunction *func, const char *name, VarType type);
-AlirValue* alir_module_add_string_literal(AlirModule *mod, const char *content, VarType type, int id_hint);
-
-AlirBlock* alir_add_block(AlirModule *mod, AlirFunction *func, const char *label_hint);
-void alir_append_inst(AlirBlock *block, AlirInst *inst);
-
 // Struct & Enum Registry
 void alir_register_struct(AlirModule *mod, const char *name, AlirField *fields);
 AlirStruct* alir_find_struct(AlirModule *mod, const char *name);
@@ -255,10 +246,6 @@ AlirModule* alir_generate(SemanticCtx *sem, ASTNode *root);
 
 void alir_print(AlirModule *mod);
 void alir_emit_to_file(AlirModule *mod, const char *filename);
-
-// Internal gen prototypes
-AlirValue* alir_gen_expr(AlirCtx *ctx, ASTNode *node);
-void alir_gen_stmt(AlirCtx *ctx, ASTNode *node);
 
 void emit(AlirCtx *ctx, AlirInst *i);
 
@@ -286,8 +273,11 @@ const char* alir_op_str(AlirOpcode op);
 void* alir_alloc(AlirModule *mod, size_t size);
 char* alir_strdup(AlirModule *mod, const char *str);
 
-
 #include "lvalue.h"
 #include "const.h"
+#include "stmt.h"
+#include "generator.h"
+#include "core.h"
+#include "flux.h"
 
 #endif // ALIR_H

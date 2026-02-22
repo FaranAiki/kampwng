@@ -1,14 +1,6 @@
 #include "../../include/alick/alick_internal.h"
 #include <string.h>
 
-static int is_terminator(AlirOpcode op) {
-    return op == ALIR_OP_RET || 
-           op == ALIR_OP_JUMP || 
-           op == ALIR_OP_CONDI || 
-           op == ALIR_OP_SWITCH || 
-           op == ALIR_OP_YIELD;
-}
-
 static AlirBlock* find_block(AlirFunction *func, const char *label) {
     AlirBlock *b = func->blocks;
     while (b) {

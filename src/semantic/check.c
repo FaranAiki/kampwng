@@ -4,11 +4,6 @@
 #include <string.h>
 #include <stdarg.h>
 
-// --- Forward Declarations ---
-void sem_check_var_decl(SemanticCtx *ctx, VarDeclNode *node, int register_sym);
-void sem_check_stmt(SemanticCtx *ctx, ASTNode *node);
-void sem_insert_implicit_cast(SemanticCtx *ctx, ASTNode **node_ptr, VarType target_type);
-
 SemSymbol* lookup_local_symbol(SemanticCtx *ctx, const char *name) {
     if (!ctx->current_scope) return NULL;
     SemSymbol *sym = ctx->current_scope->symbols;
@@ -48,6 +43,7 @@ void sem_insert_implicit_cast(SemanticCtx *ctx, ASTNode **node_ptr, VarType targ
     *node_ptr = (ASTNode*)cast;
 }
 
+// register more builtin?
 void sem_register_builtins(SemanticCtx *ctx) {
     VarType int_t = {TYPE_INT, 0, NULL, 0, 0};
     sem_symbol_add(ctx, "printf", SYM_FUNC, int_t);

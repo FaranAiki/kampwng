@@ -68,6 +68,7 @@ set(ALIR_SOURCES
     src/alir/utils.c
     src/alir/lvalue.c
     src/alir/emitter.c
+    src/alir/stmt.c
 )
 
 set (ALICK_SOURCES
@@ -89,6 +90,7 @@ set(HELPER_SOURCES
     src/common/hashmap.c
 )
 
+# remove this in 1.0.0 release
 set(DEPRECATED_SEMANTIC_SOURCES
     src/old/semantic/semantic.c    
     src/old/semantic/check.c    
@@ -96,6 +98,7 @@ set(DEPRECATED_SEMANTIC_SOURCES
     src/old/semantic/utils.c 
 )
 
+# remove this in 1.0.0 release
 set(DEPRECATED_LLVM_CODEGEN_SOURCES
     src/old/codegen/stmt.c
     src/old/codegen/flow.c

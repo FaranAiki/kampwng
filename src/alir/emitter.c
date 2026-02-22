@@ -93,7 +93,7 @@ void alir_emit_function(AlirModule *mod, FILE *f) {
                   }
                   
                   if (inst->op == ALIR_OP_ALLOCA && inst->dest) {
-                      fprintf(f, "onheap ");
+                      fprintf(f, "onstack ");
                       alir_fprint_type(f, inst->dest->type);
                   } 
                   else {

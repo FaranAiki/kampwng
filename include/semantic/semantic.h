@@ -144,6 +144,9 @@ SemSymbol* lookup_local_symbol(SemanticCtx *ctx, const char *name);
 
 void sem_check_func_def(SemanticCtx *ctx, FuncDefNode *node);
 
+void sem_check_var_decl(SemanticCtx *ctx, VarDeclNode *node, int register_sym);
+void sem_check_stmt(SemanticCtx *ctx, ASTNode *node);
+void sem_insert_implicit_cast(SemanticCtx *ctx, ASTNode **node_ptr, VarType target_type);
 
 #include "emitter.h"
 #include "type.h"
