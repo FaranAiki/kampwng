@@ -51,12 +51,16 @@ void codegen_dispose(CodegenCtx *ctx) {
 }
 
 static LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t) {
+    if (t.ptr_depth > 0) {
+        return LLVMPointerType(LLVMInt8TypeInContext(ctx->llvm_ctx), 0);
+    }
+
     LLVMTypeRef base = NULL;
     switch (t.base) {
         case TYPE_VOID: base = LLVMVoidTypeInContext(ctx->llvm_ctx); break;
         case TYPE_INT: base = LLVMInt32TypeInContext(ctx->llvm_ctx); break;
         case TYPE_SHORT: base = LLVMInt16TypeInContext(ctx->llvm_ctx); break;
-        case TYPE_LONG: base = LLVMInt64TypeInContext(ctx->llvm_ctx); break;
+        case TYPE_LONG: 
         case TYPE_LONG_LONG: base = LLVMInt64TypeInContext(ctx->llvm_ctx); break;
         case TYPE_CHAR: base = LLVMInt8TypeInContext(ctx->llvm_ctx); break;
         case TYPE_BOOL: base = LLVMInt1TypeInContext(ctx->llvm_ctx); break;
@@ -72,22 +76,14 @@ static LLVMTypeRef get_llvm_type(CodegenCtx *ctx, VarType t) {
                     hashmap_put(&ctx->struct_map, t.class_name, base);
                 }
             } else {
-                base = LLVMInt8TypeInContext(ctx->llvm_ctx); // Opaque fallback
+                base = LLVMInt8TypeInContext(ctx->llvm_ctx); 
             }
             break;
         }
         case TYPE_ENUM: base = LLVMInt32TypeInContext(ctx->llvm_ctx); break;
-        default: base = LLVMInt32TypeInContext(ctx->llvm_ctx); break; // Fallback to int
+        default: base = LLVMInt32TypeInContext(ctx->llvm_ctx); break; 
     }
 
-    // Wrap with requested pointer depth
-    for (int i = 0; i < t.ptr_depth; i++) {
-        if (base == LLVMVoidTypeInContext(ctx->llvm_ctx)) {
-            base = LLVMInt8TypeInContext(ctx->llvm_ctx); // void* becomes i8* natively
-        }
-        base = LLVMPointerType(base, 0);
-    }
-    
     if (t.array_size > 0) {
         base = LLVMArrayType(base, t.array_size);
     }
@@ -158,10 +154,8 @@ static void translate_inst(CodegenCtx *ctx, AlirInst *inst) {
 
     switch (inst->op) {
         case ALIR_OP_ALLOCA: {
-            VarType elem_t = inst->dest->type;
-            // Removed ptr_depth decrement to allow allocating pointers (e.g. `FILE* f;` -> `FILE**`)
-            // and properly allocating normal arrays.
-            res = LLVMBuildAlloca(ctx->builder, get_llvm_type(ctx, elem_t), "alloc");
+            LLVMTypeRef ty = get_llvm_type(ctx, inst->dest->type);
+            res = LLVMBuildAlloca(ctx->builder, ty, "alloc");
             break;
         }
         case ALIR_OP_STORE: {
@@ -179,13 +173,12 @@ static void translate_inst(CodegenCtx *ctx, AlirInst *inst) {
             break;
         }
         case ALIR_OP_LOAD: {
-            VarType elem_t = inst->dest->type;
             if (op1) {
-                // Protect LLVMBuildLoad2 from integer base pointers caused by decayed values
+                LLVMTypeRef ty = get_llvm_type(ctx, inst->dest->type);
                 if (LLVMGetTypeKind(LLVMTypeOf(op1)) != LLVMPointerTypeKind) {
-                    op1 = LLVMBuildIntToPtr(ctx->builder, op1, LLVMPointerType(LLVMInt8TypeInContext(ctx->llvm_ctx), 0), "safe_ptr_cast");
+                    op1 = LLVMBuildIntToPtr(ctx->builder, op1, LLVMPointerType(LLVMInt8TypeInContext(ctx->llvm_ctx), 0), "load_cast");
                 }
-                res = LLVMBuildLoad2(ctx->builder, get_llvm_type(ctx, elem_t), op1, "load");
+                res = LLVMBuildLoad2(ctx->builder, ty, op1, "load");
             }
             break;
         }

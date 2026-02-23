@@ -38,34 +38,31 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
         case NODE_VAR_DECL: {
             VarDeclNode *vn = (VarDeclNode*)node;
             AlirValue *ptr = new_temp(ctx, vn->var_type);
+            
+            // FIX: If it's an array, make sure the alloca allocates the array type
+            // ensure ptr->type correctly reflects the array structure.
             emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, ptr, NULL, NULL));
             alir_add_symbol(ctx, vn->name, ptr, vn->var_type);
             
             if (vn->initializer) {
                 if (vn->initializer->type == NODE_ARRAY_LIT) {
-                    // [FIX] Unroll array literals to emit sequential memory element stores
                     ArrayLitNode *al = (ArrayLitNode*)vn->initializer;
                     ASTNode *elem = al->elements;
                     int idx = 0;
                     while(elem) {
                         AlirValue *eval = alir_gen_expr(ctx, elem);
-                        if (!eval) eval = alir_const_int(ctx->module, 0);
-                        
                         VarType elem_t = vn->var_type;
                         elem_t.array_size = 0;
                         elem_t.ptr_depth++;
                         
                         AlirValue *elem_ptr = new_temp(ctx, elem_t);
                         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, elem_ptr, ptr, alir_const_int(ctx->module, idx)));
-                        emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, eval, elem_ptr));
-                        
-                        elem = elem->next;
-                        idx++;
+                        emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, eval ? eval : alir_const_int(ctx->module, 0), elem_ptr));
+                        elem = elem->next; idx++;
                     }
                 } else {
                     AlirValue *val = alir_gen_expr(ctx, vn->initializer);
-                    if (!val) val = alir_const_int(ctx->module, 0); // Safety net
-                    emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, val, ptr));
+                    emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, val ? val : alir_const_int(ctx->module, 0), ptr));
                 }
             }
             break;
