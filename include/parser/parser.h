@@ -290,6 +290,18 @@ typedef struct {
   ASTNode *elements; 
 } ArrayLitNode;
 
+// TODO implement this!
+typedef struct {
+  ASTNode base;
+  ASTNode *target; 
+  ASTNode *index;
+} VectorAccessNode;
+
+typedef struct {
+  ASTNode base;
+  ASTNode *elements; 
+} VectorLitNode;
+
 typedef struct {
   ASTNode base;
   char *lib_name;

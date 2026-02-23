@@ -3,6 +3,7 @@
 
 int parse_modifiers(Parser* p) {
     int modifiers = 0;
+    // TODO switch this to switch
     while (1) {
         if (p->current_token.type == TOKEN_PUBLIC) {
             modifiers |= MODIFIER_PUBLIC;

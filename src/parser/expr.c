@@ -125,6 +125,7 @@ ASTNode* parse_postfix(Parser *p, ASTNode *node) {
     return node;
 }
 
+// TODO split this
 ASTNode* parse_factor(Parser *p) {
   ASTNode *node = NULL;
   int line = p->current_token.line;
