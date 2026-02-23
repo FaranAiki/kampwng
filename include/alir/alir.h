@@ -132,6 +132,7 @@ typedef struct AlirFunction {
     AlirBlock *blocks;
     int block_count;
     int is_flux;
+    int is_varargs;
     struct AlirFunction *next;
 } AlirFunction;
 

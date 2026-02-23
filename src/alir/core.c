@@ -41,6 +41,7 @@ AlirFunction* alir_add_function(AlirModule *mod, const char *name, VarType ret, 
     f->name = alir_strdup(mod, name);
     f->ret_type = ret;
     f->is_flux = is_flux;
+    f->is_varargs = 0;
     
     if (!mod->functions) {
         mod->functions = f;

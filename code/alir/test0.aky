@@ -1,7 +1,9 @@
 // import "std";
 
 int main(int argv, char **argv) {
-  let t = c"Hello World!"; 
+  int *t = malloc(5) as int*; 
   printf "%s\n", t;
+  free(t);
+  *t = 5;
   return 0;
 }

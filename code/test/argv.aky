@@ -1,7 +1,10 @@
 
 int main(int argc, char **argv) {
+  printf "%d\n", argc;
+  printf "0x%x\n", argv;
+  /*
   for i in argv {
-    print "%s\n", i;
-  }
+    printf "%s\n", i;
+  }*/
 }
 

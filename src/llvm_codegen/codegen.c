@@ -295,16 +295,25 @@ static void translate_inst(CodegenCtx *ctx, AlirInst *inst) {
                 if (!func || !func_ty) {
                     LLVMTypeRef ret_ty = inst->dest ? get_llvm_type(ctx, inst->dest->type) : LLVMVoidTypeInContext(ctx->llvm_ctx);
                     LLVMTypeRef *arg_tys = NULL;
+                    int num_fixed = 0;
+                    int is_vararg = 0;
+                    
+                    // Standard C ABI Varargs behavior
                     if (inst->arg_count > 0) {
-                        arg_tys = malloc(sizeof(LLVMTypeRef) * inst->arg_count);
-                        for (int i = 0; i < inst->arg_count; i++) {
-                            VarType arg_pty = inst->args[i]->type;
-                            if (arg_pty.array_size > 0) { arg_pty.array_size = 0; arg_pty.ptr_depth++; } // implicit param decay
-                            arg_tys[i] = get_llvm_type(ctx, arg_pty);
-                        }
+                        num_fixed = 1;
+                        is_vararg = 1;
+                        arg_tys = malloc(sizeof(LLVMTypeRef) * 1);
+                        VarType arg_pty = inst->args[0]->type;
+                        if (arg_pty.array_size > 0) { arg_pty.array_size = 0; arg_pty.ptr_depth++; } // implicit param decay
+                        arg_tys[0] = get_llvm_type(ctx, arg_pty);
                     }
-                    func_ty = LLVMFunctionType(ret_ty, arg_tys, inst->arg_count, 1);
+                    
+                    func_ty = LLVMFunctionType(ret_ty, arg_tys, num_fixed, is_vararg);
                     func = LLVMAddFunction(ctx->llvm_mod, inst->op1->str_val, func_ty);
+                    
+                    hashmap_put(&ctx->func_map, inst->op1->str_val, func);
+                    hashmap_put(&ctx->func_type_map, inst->op1->str_val, func_ty);
+                    
                     if (arg_tys) free(arg_tys);
                 }
             }
@@ -345,6 +354,18 @@ static void translate_inst(CodegenCtx *ctx, AlirInst *inst) {
                                 args[i] = (act_k == LLVMIntegerTypeKind) ? LLVMBuildSIToFP(ctx->builder, args[i], expected_ty, "arg_cast") : LLVMBuildFPCast(ctx->builder, args[i], expected_ty, "arg_cast");
                             } else {
                                 args[i] = LLVMBuildBitCast(ctx->builder, args[i], expected_ty, "arg_cast");
+                            }
+                        }
+                    } else {
+                        // Vararg promotion: Float to Double, small Int to i32
+                        LLVMTypeRef actual_ty = LLVMTypeOf(args[i]);
+                        LLVMTypeKind act_k = LLVMGetTypeKind(actual_ty);
+                        if (act_k == LLVMFloatTypeKind) {
+                            args[i] = LLVMBuildFPCast(ctx->builder, args[i], LLVMDoubleTypeInContext(ctx->llvm_ctx), "vararg_prom");
+                        } else if (act_k == LLVMIntegerTypeKind) {
+                            unsigned width = LLVMGetIntTypeWidth(actual_ty);
+                            if (width < 32) {
+                                args[i] = LLVMBuildSExt(ctx->builder, args[i], LLVMInt32TypeInContext(ctx->llvm_ctx), "vararg_prom");
                             }
                         }
                     }
@@ -505,7 +526,7 @@ LLVMModuleRef codegen_generate(CodegenCtx *ctx) {
             }
         }
         
-        LLVMTypeRef func_ty = LLVMFunctionType(ret_ty, param_tys, func->param_count, 0);
+        LLVMTypeRef func_ty = LLVMFunctionType(ret_ty, param_tys, func->param_count, func->is_varargs);
         LLVMValueRef llvm_func = LLVMAddFunction(ctx->llvm_mod, func->name, func_ty);
         
         hashmap_put(&ctx->func_map, func->name, llvm_func);

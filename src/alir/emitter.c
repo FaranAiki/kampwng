@@ -63,6 +63,10 @@ void alir_emit_function(AlirModule *mod, FILE *f) {
               if (p->next) fprintf(f, ", ");
               p = p->next;
           }
+          if (func->is_varargs) {
+              if (func->param_count > 0) fprintf(f, ", ");
+              fprintf(f, "...");
+          }
           fprintf(f, ")\n");
           
       } else {
@@ -77,6 +81,10 @@ void alir_emit_function(AlirModule *mod, FILE *f) {
               fprintf(f, " %%p%d", i++);
               if (p->next) fprintf(f, ", ");
               p = p->next;
+          }
+          if (func->is_varargs) {
+              if (func->param_count > 0) fprintf(f, ", ");
+              fprintf(f, "...");
           }
           fprintf(f, ") {\n");
           

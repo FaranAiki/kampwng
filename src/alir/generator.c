@@ -305,6 +305,7 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
     }
 
     ctx->current_func = alir_add_function(ctx->module, func_name, fn->ret_type, 0);
+    ctx->current_func->is_varargs = fn->is_varargs;
 
     // 1. Setup 'this' pointer as the primary parameter if it's a method/constructor
     if (class_name) {
