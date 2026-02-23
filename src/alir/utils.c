@@ -67,14 +67,14 @@ AlirValue* alir_lower_new_object(AlirCtx *ctx, const char *class_name, ASTNode *
     emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOC_HEAP, raw_mem, size_val, NULL));
 
     // 3. Bitcast to Class*
-    VarType cls_ptr_type = {TYPE_CLASS, 1, alir_strdup(ctx->module, class_name)};
+    VarType cls_ptr_type = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, class_name)};
     AlirValue *obj_ptr = new_temp(ctx, cls_ptr_type);
     emit(ctx, mk_inst(ctx->module, ALIR_OP_BITCAST, obj_ptr, raw_mem, NULL));
 
     // 4. Call Constructor
     // Note: In a real compiler, we'd mangle the constructor name properly or look it up via SemCtx
     // [FIX] ALIR_VAL_GLOBAL ensures the emitted name uses `@`
-    AlirInst *call_init = mk_inst(ctx->module, ALIR_OP_CALL, NULL, alir_val_global(ctx->module, class_name, (VarType){TYPE_VOID, 0, NULL}), NULL);
+    AlirInst *call_init = mk_inst(ctx->module, ALIR_OP_CALL, NULL, alir_val_global(ctx->module, class_name, (VarType){TYPE_VOID, 0, 0, NULL}), NULL);
     
     int arg_count = 0; ASTNode *a = args; while(a) { arg_count++; a=a->next; }
     call_init->arg_count = arg_count + 1;

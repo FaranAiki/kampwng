@@ -9,29 +9,50 @@ void semantic_emit_indent(StringBuilder *sb, int indent) {
 }
 
 void semantic_emit_type_str(StringBuilder *sb, VarType t) {
+    // 1. Explicitly mark Vectors
     for (int i = 0; i < t.vector_depth; i++) sb_append_fmt(sb, "vector ");
+    
     if (t.is_unsigned) sb_append_fmt(sb, "unsigned ");
+    
+    // 2. Explicitly handle C-Strings vs Char
+    if (t.base == TYPE_CHAR && t.ptr_depth > 0) {
+        sb_append_fmt(sb, "c-string");
+        // Decrement by 1 since we consumed one pointer depth for the c-string itself
+        for (int i = 0; i < t.ptr_depth - 1; i++) sb_append_fmt(sb, "*");
+        
+        if (t.array_size > 0) sb_append_fmt(sb, " array[%d]", t.array_size);
+        return;
+    }
     
     switch (t.base) {
         case TYPE_INT: sb_append_fmt(sb, "int"); break;
         case TYPE_SHORT: sb_append_fmt(sb, "short"); break;
         case TYPE_LONG: sb_append_fmt(sb, "long"); break;
         case TYPE_LONG_LONG: sb_append_fmt(sb, "long long"); break;
-        case TYPE_CHAR: sb_append_fmt(sb, "char"); break;
+        case TYPE_CHAR: sb_append_fmt(sb, "char"); break; // Single character
         case TYPE_BOOL: sb_append_fmt(sb, "bool"); break;
         case TYPE_FLOAT: sb_append_fmt(sb, "single"); break;
         case TYPE_DOUBLE: sb_append_fmt(sb, "double"); break;
         case TYPE_LONG_DOUBLE: sb_append_fmt(sb, "long double"); break;
         case TYPE_VOID: sb_append_fmt(sb, "void"); break;
-        case TYPE_STRING: sb_append_fmt(sb, "string"); break;
+        case TYPE_STRING: sb_append_fmt(sb, "string"); break; // Native String
         case TYPE_AUTO: sb_append_fmt(sb, "let"); break;
         case TYPE_CLASS: sb_append_fmt(sb, "%s", t.class_name ? t.class_name : "class"); break;
         case TYPE_ENUM: sb_append_fmt(sb, "enum %s", t.class_name ? t.class_name : ""); break;
+        case TYPE_ARRAY: sb_append_fmt(sb, "array"); break;
+        case TYPE_VECTOR: sb_append_fmt(sb, "vector"); break;
         default: sb_append_fmt(sb, "unknown"); break;
     }
 
+    // Output generic pointers
     for (int i = 0; i < t.ptr_depth; i++) sb_append_fmt(sb, "*");
-    if (t.array_size > 0) sb_append_fmt(sb, "[%d]", t.array_size);
+    
+    // 3. Emphasize explicit arrays
+    if (t.array_size > 0) {
+        sb_append_fmt(sb, " array[%d]", t.array_size);
+    } else if (t.array_size == -1) {
+        sb_append_fmt(sb, " array[]");
+    }
 }
 
 void semantic_emit_symbol(StringBuilder *sb, SemSymbol *sym, int indent) {

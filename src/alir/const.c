@@ -3,7 +3,7 @@
 AlirValue* alir_const_int(AlirModule *mod, long val) {
     AlirValue *v = alir_alloc(mod, sizeof(AlirValue));
     v->kind = ALIR_VAL_CONST;
-    v->type = (VarType){TYPE_INT, 0, NULL, 0, 0};
+    v->type = (VarType){TYPE_INT, 0};
     v->int_val = val;
     return v;
 }
@@ -11,7 +11,7 @@ AlirValue* alir_const_int(AlirModule *mod, long val) {
 AlirValue* alir_const_float(AlirModule *mod, double val) {
     AlirValue *v = alir_alloc(mod, sizeof(AlirValue));
     v->kind = ALIR_VAL_CONST;
-    v->type = (VarType){TYPE_DOUBLE, 0, NULL, 0, 0};
+    v->type = (VarType){TYPE_DOUBLE, 0};
     v->float_val = val;
     return v;
 }
@@ -50,7 +50,7 @@ AlirValue* alir_val_type(AlirModule *mod, const char *type_name) {
     AlirValue *v = alir_alloc(mod, sizeof(AlirValue));
     v->kind = ALIR_VAL_TYPE;
     v->str_val = alir_strdup(mod, type_name);
-    v->type = (VarType){TYPE_CLASS, 0, alir_strdup(mod, type_name), 0, 0};
+    v->type = (VarType){TYPE_CLASS, 0, 0, alir_strdup(mod, type_name), 0, 0};
     return v;
 }
 

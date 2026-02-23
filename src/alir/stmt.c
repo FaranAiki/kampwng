@@ -89,16 +89,16 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
                         if (idx != -1) {
                             AlirValue *this_ptr = new_temp(ctx, this_sym->type);
                             emit(ctx, mk_inst(ctx->module, ALIR_OP_LOAD, this_ptr, this_sym->ptr, NULL));
-                            ptr = new_temp(ctx, (VarType){TYPE_AUTO, 1, NULL});
+                            ptr = new_temp(ctx, (VarType){TYPE_AUTO, 1, 0, NULL});
                             emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr, this_ptr, alir_const_int(ctx->module, idx)));
                         }
                     }
-                    if (!ptr) ptr = alir_val_global(ctx->module, an->name, (VarType){TYPE_AUTO,0,NULL}); 
+                    if (!ptr) ptr = alir_val_global(ctx->module, an->name, (VarType){TYPE_AUTO, 0, 0, NULL}); 
                 }
             }
             
             if (!ptr) {
-                ptr = new_temp(ctx, (VarType){TYPE_INT, 1, NULL});
+                ptr = new_temp(ctx, (VarType){TYPE_INT, 1, 0, NULL});
                 emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, ptr, NULL, NULL));
             }
             
@@ -191,11 +191,11 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
             ForInNode *fn = (ForInNode*)node;
             AlirValue *col = alir_gen_expr(ctx, fn->collection);
             if (!col) {
-                col = new_temp(ctx, (VarType){TYPE_AUTO, 1, NULL, 0, 0});
+                col = new_temp(ctx, (VarType){TYPE_AUTO, 1, 0, NULL, 0, 0});
                 emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, col, NULL, NULL));
             }
             
-            AlirValue *iter = new_temp(ctx, (VarType){TYPE_VOID, 1, NULL, 0, 0}); 
+            AlirValue *iter = new_temp(ctx, (VarType){TYPE_VOID, 1, 0, NULL, 0, 0}); 
             emit(ctx, mk_inst(ctx->module, ALIR_OP_ITER_INIT, iter, col, NULL));
             
             AlirBlock *cond_bb = alir_add_block(ctx->module, ctx->current_func, "for_cond");
@@ -205,7 +205,7 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
             emit(ctx, mk_inst(ctx->module, ALIR_OP_JUMP, NULL, alir_val_label(ctx->module, cond_bb->label), NULL));
             
             ctx->current_block = cond_bb;
-            AlirValue *valid = new_temp(ctx, (VarType){TYPE_BOOL, 0, NULL, 0, 0});
+            AlirValue *valid = new_temp(ctx, (VarType){TYPE_BOOL, 0, 0, NULL, 0, 0});
             emit(ctx, mk_inst(ctx->module, ALIR_OP_ITER_VALID, valid, iter, NULL));
             
             AlirInst *br = mk_inst(ctx->module, ALIR_OP_CONDI, NULL, valid, alir_val_label(ctx->module, body_bb->label));
@@ -224,7 +224,7 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
                 FluxVar *fv = ctx->flux_vars;
                 while(fv) { if(strcmp(fv->name, fn->var_name)==0) break; fv=fv->next; }
                 if (fv) {
-                    AlirValue *ptr = new_temp(ctx, (VarType){TYPE_INT, 1, NULL, 0, 0}); 
+                    AlirValue *ptr = new_temp(ctx, (VarType){TYPE_INT, 1, 0, NULL, 0, 0}); 
                     emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr, ctx->flux_ctx_ptr, alir_const_int(ctx->module, fv->index)));
                     alir_add_symbol(ctx, fn->var_name, ptr, fn->iter_type);
                     emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, val, ptr));

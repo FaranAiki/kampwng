@@ -82,7 +82,7 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     if (fn->class_name) {
         AlirField *f = alir_alloc(ctx->module, sizeof(AlirField));
         f->name = alir_strdup(ctx->module, "this");
-        f->type = (VarType){TYPE_CLASS, 1, alir_strdup(ctx->module, fn->class_name)}; // Pointer to class
+        f->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; // Pointer to class
         f->index = p_idx++;
         *tail=f; tail=&f->next;
     }
@@ -112,7 +112,7 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     // 3. Generate INIT Function (The Generator Factory)
     ctx->current_func = alir_add_function(ctx->module, fn->name, (VarType){TYPE_CHAR, 1}, 0); // Returns char* (opaque ptr)
     // Add params to Init func
-    if (fn->class_name) alir_func_add_param(ctx->module, ctx->current_func, "this", (VarType){TYPE_CLASS, 1, alir_strdup(ctx->module, fn->class_name)});
+    if (fn->class_name) alir_func_add_param(ctx->module, ctx->current_func, "this", (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)});
     p = fn->params;
     while(p) {
         alir_func_add_param(ctx->module, ctx->current_func, p->name, p->type);
@@ -128,7 +128,7 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     AlirValue *raw_mem = new_temp(ctx, (VarType){TYPE_CHAR, 1});
     emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOC_HEAP, raw_mem, size_val, NULL));
     
-    AlirValue *ctx_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 1, alir_strdup(ctx->module, struct_name)});
+    AlirValue *ctx_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, struct_name)});
     emit(ctx, mk_inst(ctx->module, ALIR_OP_BITCAST, ctx_ptr, raw_mem, NULL));
     
     // Init Header: state=0, finished=0
@@ -146,9 +146,9 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     if (fn->class_name) {
         char arg_name[16]; sprintf(arg_name, "p%d", param_offset-1);
         AlirValue *arg_val = alir_val_var(ctx->module, arg_name); // Placeholder for arg value
-        arg_val->type = (VarType){TYPE_CLASS, 1, alir_strdup(ctx->module, fn->class_name)}; // [FIX] void store patch
+        arg_val->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; // [FIX] void store patch
         
-        AlirValue *f_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 2, alir_strdup(ctx->module, fn->class_name)});
+        AlirValue *f_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 2, 0, alir_strdup(ctx->module, fn->class_name)});
         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, f_ptr, ctx_ptr, alir_const_int(ctx->module, p_idx++)));
         emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, arg_val, f_ptr));
     }
@@ -182,7 +182,7 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     
     // Bitcast void* ctx to FluxCtx*
     AlirValue *void_ctx = alir_val_var(ctx->module, "p0"); // First arg
-    ctx->flux_ctx_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 1, alir_strdup(ctx->module, struct_name)});
+    ctx->flux_ctx_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, struct_name)});
     emit(ctx, mk_inst(ctx->module, ALIR_OP_BITCAST, ctx->flux_ctx_ptr, void_ctx, NULL));
     
     // Load State
@@ -210,14 +210,14 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     
     p_idx = 3;
     if (fn->class_name) {
-         VarType pt = {TYPE_CLASS, 1, alir_strdup(ctx->module, fn->class_name)}; pt.ptr_depth++; // Pointer to pointer
+         VarType pt = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; pt.ptr_depth++; // Pointer to pointer
          AlirValue *ptr = new_temp(ctx, pt);
          emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr, ctx->flux_ctx_ptr, alir_const_int(ctx->module, p_idx++)));
          // Deref once to get the 'this' pointer value? 
          // Logic in alir_gen_var_ref does LOAD. So we need the address of the variable.
          // 'this' is stored in the struct. 'ptr' is the address of 'this' in the struct.
          // So adding 'ptr' to symbol table is correct.
-         alir_add_symbol(ctx, "this", ptr, (VarType){TYPE_CLASS, 1, alir_strdup(ctx->module, fn->class_name)});
+         alir_add_symbol(ctx, "this", ptr, (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)});
     }
     p = fn->params;
     while(p) {

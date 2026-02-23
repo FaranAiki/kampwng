@@ -52,7 +52,7 @@ AlirValue* alir_gen_addr(AlirCtx *ctx, ASTNode *node) {
                 emit(ctx, mk_inst(ctx->module, ALIR_OP_LOAD, this_ptr, this_sym->ptr, NULL));
                 
                 VarType mem_type = sem_get_node_type(ctx->sem, node);
-                if (mem_type.base == TYPE_UNKNOWN) mem_type = (VarType){TYPE_AUTO, 0, NULL};
+                if (mem_type.base == TYPE_UNKNOWN) mem_type = (VarType){TYPE_AUTO, 0, 0, NULL};
                 mem_type.ptr_depth++;
                 
                 AlirValue *res = new_temp(ctx, mem_type); 
@@ -78,7 +78,7 @@ AlirValue* alir_gen_addr(AlirCtx *ctx, ASTNode *node) {
         }
 
         int idx = alir_robust_get_field_index(ctx, class_name, ma->member_name);
-        AlirValue *res = new_temp(ctx, (VarType){TYPE_AUTO, 1, NULL}); 
+        AlirValue *res = new_temp(ctx, (VarType){TYPE_AUTO, 1, 0, NULL}); 
         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, res, base_ptr, alir_const_int(ctx->module, idx)));
         return res;
     }
@@ -123,14 +123,14 @@ AlirValue* alir_gen_trait_access(AlirCtx *ctx, TraitAccessNode *ta) {
         int idx = alir_get_field_index(ctx->module, class_name, ta->trait_name);
         if (idx != -1) {
             // Found explicit field for trait
-            AlirValue *res = new_temp(ctx, (VarType){TYPE_CLASS, 1, alir_strdup(ctx->module, ta->trait_name)});
+            AlirValue *res = new_temp(ctx, (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, ta->trait_name)});
             emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, res, base_ptr, alir_const_int(ctx->module, idx)));
             return res;
         }
     }
     
     // 2. Fallback: Bitcast (Unsafe/Direct Cast)
-    VarType trait_ptr_t = {TYPE_CLASS, 1, alir_strdup(ctx->module, ta->trait_name)};
+    VarType trait_ptr_t = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, ta->trait_name)};
     AlirValue *cast_res = new_temp(ctx, trait_ptr_t);
     emit(ctx, mk_inst(ctx->module, ALIR_OP_BITCAST, cast_res, base_ptr, NULL));
     return cast_res;
