@@ -160,13 +160,11 @@ static void translate_inst(CodegenCtx *ctx, AlirInst *inst) {
         }
         case ALIR_OP_STORE: {
             if (op1 && op2) {
-                // ALIR places the Value in op1 and the Target Pointer in op2
                 LLVMValueRef val = op1;
                 LLVMValueRef ptr = op2;
                 
-                // Ensure the pointer operand is structurally sound
                 if (LLVMGetTypeKind(LLVMTypeOf(ptr)) != LLVMPointerTypeKind) {
-                    ptr = LLVMBuildIntToPtr(ctx->builder, ptr, LLVMPointerType(LLVMInt8TypeInContext(ctx->llvm_ctx), 0), "safe_ptr_cast");
+                    ptr = LLVMBuildIntToPtr(ctx->builder, ptr, LLVMPointerType(LLVMInt8TypeInContext(ctx->llvm_ctx), 0), "store_cast");
                 }
                 LLVMBuildStore(ctx->builder, val, ptr);
             }
@@ -274,104 +272,48 @@ static void translate_inst(CodegenCtx *ctx, AlirInst *inst) {
             LLVMValueRef func = NULL;
             LLVMTypeRef func_ty = NULL;
             
-            // Prefer querying the LLVM module directly to avoid pointer-hashmap key issues
             if (inst->op1 && inst->op1->str_val) {
                 func = LLVMGetNamedFunction(ctx->llvm_mod, inst->op1->str_val);
                 if (func) func_ty = LLVMGlobalGetValueType(func);
             }
 
-            // Implicit declaration builder (handles missing external refs like printf gracefully)
             if (!func && inst->op1 && inst->op1->str_val) {
                 func = hashmap_get(&ctx->func_map, inst->op1->str_val);
                 func_ty = hashmap_get(&ctx->func_type_map, inst->op1->str_val);
                 
-                if (!func || !func_ty) {
+                if (!func) {
                     LLVMTypeRef ret_ty = inst->dest ? get_llvm_type(ctx, inst->dest->type) : LLVMVoidTypeInContext(ctx->llvm_ctx);
-                    LLVMTypeRef *arg_tys = NULL;
-                    int num_fixed = 0;
-                    int is_vararg = 0;
-                    
-                    // Standard C ABI Varargs behavior
-                    if (inst->arg_count > 0) {
-                        num_fixed = 1;
-                        is_vararg = 1;
-                        arg_tys = malloc(sizeof(LLVMTypeRef) * 1);
-                        VarType arg_pty = inst->args[0]->type;
-                        if (arg_pty.array_size > 0) { arg_pty.array_size = 0; arg_pty.ptr_depth++; } // implicit param decay
-                        arg_tys[0] = get_llvm_type(ctx, arg_pty);
-                    }
-                    
-                    func_ty = LLVMFunctionType(ret_ty, arg_tys, num_fixed, is_vararg);
+                    func_ty = LLVMFunctionType(ret_ty, NULL, 0, 1); // Vararg fallback
                     func = LLVMAddFunction(ctx->llvm_mod, inst->op1->str_val, func_ty);
-                    
-                    hashmap_put(&ctx->func_map, inst->op1->str_val, func);
-                    hashmap_put(&ctx->func_type_map, inst->op1->str_val, func_ty);
-                    
-                    if (arg_tys) free(arg_tys);
                 }
             }
 
-            if (!func || !func_ty) {
-                fprintf(stderr, "Code-Gen Error: Unresolvable function call '%s'\n", inst->op1 ? inst->op1->str_val : "null");
-                break; 
-            }
+            if (!func) break;
             
-            LLVMValueRef *args = NULL;
-            if (inst->arg_count > 0) {
-                args = malloc(sizeof(LLVMValueRef) * inst->arg_count);
-                LLVMTypeRef *param_types = malloc(sizeof(LLVMTypeRef) * LLVMCountParamTypes(func_ty));
-                LLVMGetParamTypes(func_ty, param_types);
+            LLVMValueRef *args = malloc(sizeof(LLVMValueRef) * inst->arg_count);
+            for(int i = 0; i < inst->arg_count; i++) {
+                args[i] = get_llvm_value(ctx, inst->args[i]);
+                if (!args[i]) {
+                    // Safety for unresolved arguments
+                    args[i] = LLVMConstInt(LLVMInt64TypeInContext(ctx->llvm_ctx), 0, 0);
+                }
                 
-                for(unsigned int i = 0; (int) i < inst->arg_count; i++) {
-                    args[i] = get_llvm_value(ctx, inst->args[i]);
-                    if (!args[i]) {
-                        LLVMTypeRef arg_ty = get_llvm_type(ctx, inst->args[i]->type);
-                        args[i] = LLVMConstNull(arg_ty);
-                    }
-                    
-                    // Strong cast matching for parameters
-                    if (i < LLVMCountParamTypes(func_ty)) {
-                        LLVMTypeRef expected_ty = param_types[i];
-                        LLVMTypeRef actual_ty = LLVMTypeOf(args[i]);
-                        if (expected_ty != actual_ty) {
-                            LLVMTypeKind exp_k = LLVMGetTypeKind(expected_ty);
-                            LLVMTypeKind act_k = LLVMGetTypeKind(actual_ty);
-                            
-                            if (exp_k == LLVMPointerTypeKind && act_k == LLVMIntegerTypeKind) {
-                                args[i] = LLVMBuildIntToPtr(ctx->builder, args[i], expected_ty, "arg_cast");
-                            } else if (exp_k == LLVMIntegerTypeKind && act_k == LLVMPointerTypeKind) {
-                                args[i] = LLVMBuildPtrToInt(ctx->builder, args[i], expected_ty, "arg_cast");
-                            } else if (exp_k == LLVMIntegerTypeKind && act_k == LLVMIntegerTypeKind) {
-                                args[i] = LLVMBuildIntCast(ctx->builder, args[i], expected_ty, "arg_cast");
-                            } else if (exp_k == LLVMDoubleTypeKind || exp_k == LLVMFloatTypeKind) {
-                                args[i] = (act_k == LLVMIntegerTypeKind) ? LLVMBuildSIToFP(ctx->builder, args[i], expected_ty, "arg_cast") : LLVMBuildFPCast(ctx->builder, args[i], expected_ty, "arg_cast");
-                            } else {
-                                args[i] = LLVMBuildBitCast(ctx->builder, args[i], expected_ty, "arg_cast");
-                            }
-                        }
-                    } else {
-                        // Vararg promotion: Float to Double, small Int to i32
-                        LLVMTypeRef actual_ty = LLVMTypeOf(args[i]);
-                        LLVMTypeKind act_k = LLVMGetTypeKind(actual_ty);
-                        if (act_k == LLVMFloatTypeKind) {
-                            args[i] = LLVMBuildFPCast(ctx->builder, args[i], LLVMDoubleTypeInContext(ctx->llvm_ctx), "vararg_prom");
-                        } else if (act_k == LLVMIntegerTypeKind) {
-                            unsigned width = LLVMGetIntTypeWidth(actual_ty);
-                            if (width < 32) {
-                                args[i] = LLVMBuildSExt(ctx->builder, args[i], LLVMInt32TypeInContext(ctx->llvm_ctx), "vararg_prom");
-                            }
-                        }
+                // CRITICAL: Prevent truncation for varargs on 64-bit systems.
+                // If the argument is an integer, promote to 64-bit word size if it's potentially a pointer.
+                LLVMTypeRef arg_ty = LLVMTypeOf(args[i]);
+                if (LLVMGetTypeKind(arg_ty) == LLVMIntegerTypeKind) {
+                    if (inst->args[i]->type.base == TYPE_UNKNOWN || inst->args[i]->type.base == TYPE_AUTO) {
+                         if (LLVMGetIntTypeWidth(arg_ty) < 64) {
+                             args[i] = LLVMBuildZExt(ctx->builder, args[i], LLVMInt64TypeInContext(ctx->llvm_ctx), "prom_word");
+                         }
+                    } else if (LLVMGetIntTypeWidth(arg_ty) < 32) {
+                        args[i] = LLVMBuildSExt(ctx->builder, args[i], LLVMInt32TypeInContext(ctx->llvm_ctx), "prom_i32");
                     }
                 }
-                free(param_types);
             }
-            
-            LLVMTypeRef ret_ty = LLVMGetReturnType(func_ty);
-            int is_void = (ret_ty == LLVMVoidTypeInContext(ctx->llvm_ctx));
-            const char* call_name = (inst->dest && !is_void) ? "call" : "";
 
-            res = LLVMBuildCall2(ctx->builder, func_ty, func, args, inst->arg_count, call_name);
-            if (args) free(args);
+            res = LLVMBuildCall2(ctx->builder, func_ty, func, args, inst->arg_count, (LLVMGetReturnType(func_ty) == LLVMVoidTypeInContext(ctx->llvm_ctx)) ? "" : "call");
+            free(args);
             break;
         }
         case ALIR_OP_RET: {
@@ -432,18 +374,24 @@ static void translate_inst(CodegenCtx *ctx, AlirInst *inst) {
         // Low Level Memory Overrides
         case ALIR_OP_ALLOC_HEAP: {
             if (op1) {
-                LLVMTypeRef i8_ty = LLVMInt8TypeInContext(ctx->llvm_ctx);
-                res = LLVMBuildArrayMalloc(ctx->builder, i8_ty, op1, "malloc");
+                LLVMValueRef size = op1;
+                // malloc expects size_t (i64 on 64-bit systems)
+                if (LLVMGetTypeKind(LLVMTypeOf(size)) == LLVMIntegerTypeKind && LLVMGetIntTypeWidth(LLVMTypeOf(size)) < 64) {
+                    size = LLVMBuildZExt(ctx->builder, size, LLVMInt64TypeInContext(ctx->llvm_ctx), "sz_ext");
+                }
+                res = LLVMBuildArrayMalloc(ctx->builder, LLVMInt8TypeInContext(ctx->llvm_ctx), size, "malloc");
             }
+            break;
+        }
+        case ALIR_OP_SIZEOF: {
+            LLVMTypeRef ty = get_llvm_type(ctx, inst->op1->type);
+            res = LLVMSizeOf(ty);
+            LLVMTypeRef dest_ty = inst->dest ? get_llvm_type(ctx, inst->dest->type) : LLVMInt64TypeInContext(ctx->llvm_ctx);
+            res = LLVMBuildIntCast(ctx->builder, res, dest_ty, "sz_cast");
             break;
         }
         case ALIR_OP_FREE_HEAP: {
             if (op1) LLVMBuildFree(ctx->builder, op1);
-            break;
-        }
-        case ALIR_OP_SIZEOF: {
-            LLVMTypeRef ty = get_llvm_type(ctx, inst->op1->type); // the operand holds ALIR_VAL_TYPE info
-            res = LLVMSizeOf(ty);
             break;
         }
         case ALIR_OP_MOV: {

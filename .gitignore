@@ -19,6 +19,7 @@ output
 
 # valgrind
 *.valgrind*
+vgcore.*
 massif.out.*
 
 # files 
