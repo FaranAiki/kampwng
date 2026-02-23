@@ -58,6 +58,9 @@ set(SEMANTIC_SOURCES
     src/semantic/emitter.c
     src/semantic/type.c
     src/semantic/core.c
+
+    src/semantic/fragment/lookup.c
+    src/semantic/fragment/switch.c
 )
 
 set(ALIR_SOURCES
@@ -88,29 +91,6 @@ set(HELPER_SOURCES
     src/common/arena.c
     src/common/context.c
     src/common/hashmap.c
-)
-
-# remove this in 1.0.0 release
-set(DEPRECATED_SEMANTIC_SOURCES
-    src/old/semantic/semantic.c    
-    src/old/semantic/check.c    
-    src/old/semantic/scope.c    
-    src/old/semantic/utils.c 
-)
-
-# remove this in 1.0.0 release
-set(DEPRECATED_LLVM_CODEGEN_SOURCES
-    src/old/codegen/stmt.c
-    src/old/codegen/flow.c
-    src/old/codegen/flux.c
-    src/old/codegen/core.c
-    src/old/codegen/expr.c
-    src/old/codegen/builtin.c
-    src/old/codegen/utils.c
-
-    src/old/codegen/node/access.c
-    src/old/codegen/node/operator.c
-    src/old/codegen/node/cast.c
 )
 
 set_source_files_properties(${DEPRECATED_LLVM_CODEGEN_SOURCES} 

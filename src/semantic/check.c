@@ -401,73 +401,7 @@ void sem_check_method_call(SemanticCtx *ctx, MethodCallNode *node) {
     }
 
     if (obj_type.base == TYPE_CLASS && obj_type.class_name) {
-        SemSymbol *class_sym = sem_symbol_lookup(ctx, obj_type.class_name, NULL);
-        if (!class_sym || class_sym->kind != SYM_CLASS) {
-            sem_error(ctx, (ASTNode*)node, "Type '%s' is not a class/struct", obj_type.class_name);
-            sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_UNKNOWN, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0});
-            return;
-        }
-        
-        SemSymbol *current_class = class_sym;
-        int found = 0;
-        
-        while (current_class) {
-            if (current_class->inner_scope) {
-                SemSymbol *member = current_class->inner_scope->symbols;
-                while (member) {
-                    if (strcmp(member->name, node->method_name) == 0) {
-                        
-                        if (ctx->current_func_sym && ctx->current_func_sym->is_pure) {
-                            if (member->kind == SYM_FUNC && !member->is_pure) {
-                                sem_error(ctx, (ASTNode*)node, "Pure function '%s' cannot call impure method '%s'", ctx->current_func_sym->name, member->name);
-                            }
-                        }
-
-                        if (member->kind == SYM_FUNC && !member->is_pristine) {
-                            sem_set_node_tainted(ctx, (ASTNode*)node, 1);
-                        }
-
-                        if (member->kind == SYM_FUNC) {
-                            sem_set_node_type(ctx, (ASTNode*)node, member->type); 
-                            node->owner_class = current_class->name; 
-                            found = 1;
-                        } 
-                        else if (member->kind == SYM_VAR && member->type.is_func_ptr) {
-                             sem_set_node_type(ctx, (ASTNode*)node, *member->type.fp_ret_type);
-                             found = 1;
-                        }
-
-                        if (found) {
-                            int arg_count = 0;
-                            ASTNode **curr_arg = &node->args;
-                            while(*curr_arg) {
-                                sem_check_expr(ctx, *curr_arg);
-                                
-                                if (member->kind == SYM_FUNC && member->param_types && arg_count < member->param_count) {
-                                    sem_insert_implicit_cast(ctx, curr_arg, member->param_types[arg_count]);
-                                }
-                                
-                                curr_arg = &(*curr_arg)->next;
-                                arg_count++;
-                            }
-                            goto done_method_search;
-                        }
-                    }
-                    member = member->next;
-                }
-            }
-            if (current_class->parent_name) {
-                current_class = sem_symbol_lookup(ctx, current_class->parent_name, NULL);
-            } else {
-                current_class = NULL;
-            }
-        }
-        
-        done_method_search:
-        if (!found) {
-             sem_error(ctx, (ASTNode*)node, "Method '%s' not found in class '%s'", node->method_name, obj_type.class_name);
-             sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_UNKNOWN, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0});
-        }
+        sem_lookup_class_call(ctx, node);
     } else {
         sem_error(ctx, (ASTNode*)node, "Cannot call method on non-class type");
         sem_set_node_type(ctx, (ASTNode*)node, (VarType){TYPE_UNKNOWN, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0});
@@ -484,89 +418,17 @@ void sem_check_expr(SemanticCtx *ctx, ASTNode *node) {
             break;
         }
         case NODE_VAR_REF: {
-            VarRefNode *ref = (VarRefNode*)node;
-            SemScope *found_in_scope = NULL;
-            SemSymbol *sym = sem_symbol_lookup(ctx, ref->name, &found_in_scope);
-            
-            if (sym) {
-                sem_set_node_type(ctx, node, sym->type);
-                
-                if (ctx->current_func_sym && ctx->current_func_sym->is_pure) {
-                    if (found_in_scope == ctx->global_scope) {
-                        sem_error(ctx, node, "Pure function '%s' cannot read global variable '%s'", ctx->current_func_sym->name, ref->name);
-                    }
-                }
-
-                if (!sym->is_pristine) {
-                    sem_set_node_tainted(ctx, node, 1);
-                }
-
-                if (sym->kind == SYM_VAR && !sym->is_initialized) {
-                    sem_error(ctx, node, "Use of uninitialized variable '%s'", ref->name);
-                }
-
-                if (found_in_scope && found_in_scope->is_class_scope) {
-                    ref->is_class_member = 1;
-                } else {
-                    ref->is_class_member = 0;
-                }
-
-            } else {
-                sem_error(ctx, node, "Undefined variable '%s'", ref->name);
-                sem_set_node_type(ctx, node, (VarType){TYPE_UNKNOWN, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0});
-            }
+            sem_check_var_ref(ctx, node);
             break;
         }
         case NODE_BINARY_OP: sem_check_binary_op(ctx, (BinaryOpNode*)node); break;
-        case NODE_UNARY_OP: {
-            UnaryOpNode *un = (UnaryOpNode*)node;
-            sem_check_expr(ctx, un->operand);
-            VarType t = sem_get_node_type(ctx, un->operand);
-            
-            if (sem_get_node_tainted(ctx, un->operand)) {
-                sem_set_node_tainted(ctx, node, 1);
-            }
-            
-            if (t.base == TYPE_VOID && t.ptr_depth == 0) {
-                 sem_error(ctx, node, "Operand of unary expression cannot be 'void'");
-            }
-            
-            if (un->op == TOKEN_AND) { 
-                t.ptr_depth++;
-            } else if (un->op == TOKEN_STAR) { 
-                if (t.ptr_depth > 0) t.ptr_depth--;
-                else sem_error(ctx, node, "Cannot dereference non-pointer");
-            } else if (un->op == TOKEN_NOT) {
-                t = (VarType){TYPE_BOOL, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0};
-            }
-            sem_set_node_type(ctx, node, t);
+        case NODE_UNARY_OP:
+            sem_check_unary_op_switch(ctx, node);
             break;
-        }
         case NODE_CALL: sem_check_call(ctx, (CallNode*)node); break;
         case NODE_MEMBER_ACCESS: sem_check_member_access(ctx, (MemberAccessNode*)node); break;
         case NODE_ARRAY_ACCESS: {
-            ArrayAccessNode *aa = (ArrayAccessNode*)node;
-            sem_check_expr(ctx, aa->target);
-            sem_check_expr(ctx, aa->index);
-            
-            if (sem_get_node_tainted(ctx, aa->target)) {
-                sem_set_node_tainted(ctx, node, 1);
-            }
-            
-            VarType t = sem_get_node_type(ctx, aa->target);
-            if (t.array_size > 0) t.array_size = 0;
-            else if (t.ptr_depth > 0) t.ptr_depth--;
-            else if (t.vector_depth > 0) t.vector_depth--;
-            else if (t.base == TYPE_ENUM || t.base == TYPE_ARRAY || t.base == TYPE_STRING || t.base == TYPE_VECTOR 
-        || t.base == TYPE_HASHMAP) {
-                 sem_set_node_type(ctx, node, (VarType){TYPE_STRING, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0});
-                 return;
-            }
-            else {
-                sem_error(ctx, node, "Type is not a pointer, array, string, vector, hashmap, or enum");
-                t = (VarType){TYPE_UNKNOWN, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0};
-            }
-            sem_set_node_type(ctx, node, t);
+            sem_check_array_access(ctx, node);
             break;
         }
         case NODE_CAST: {
@@ -774,35 +636,7 @@ void sem_check_stmt(SemanticCtx *ctx, ASTNode *node) {
             break;
         }
         case NODE_FOR_IN: {
-            ForInNode *fn = (ForInNode*)node;
-            sem_check_expr(ctx, fn->collection);
-            ctx->in_loop++;
-            
-            VarType col_type = sem_get_node_type(ctx, fn->collection);
-            VarType iter_type = col_type;
-            if (iter_type.array_size > 0) {
-                iter_type.array_size = 0;
-            } else if (iter_type.ptr_depth > 0) {
-                iter_type.ptr_depth--;
-            } else if (iter_type.vector_depth > 0) {
-                iter_type.vector_depth--;
-            } else if (iter_type.base == TYPE_STRING) {
-                iter_type.base = TYPE_CHAR;
-            } else {
-                sem_error(ctx, node, "Cannot iterate over non-iterable type");
-                iter_type = (VarType){TYPE_UNKNOWN, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0};
-            }
-            
-            fn->iter_type = iter_type; 
-            
-            sem_scope_enter(ctx, 0, (VarType){0});
-            SemSymbol *s = sem_symbol_add(ctx, fn->var_name, SYM_VAR, iter_type);
-            s->is_initialized = 1; 
-            
-            sem_check_block(ctx, fn->body);
-            sem_scope_exit(ctx);
-            
-            ctx->in_loop--;
+            sem_check_for_in(ctx, node);
             break;
         }
         case NODE_BREAK:
