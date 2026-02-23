@@ -100,6 +100,7 @@ typedef enum {
   TOKEN_KW_DOUBLE, 
   TOKEN_KW_STRING, 
   TOKEN_KW_LET,    
+  TOKEN_KW_VECTOR, // NEW VECTOR TOKEN
 
   TOKEN_KW_SHORT,
   TOKEN_KW_LONG,
@@ -155,9 +156,6 @@ typedef enum {
 
 typedef struct {
   TokenType type;
-  // This string is allocated in the Arena, no need to free individually
-  // Make sure that strings exist as a part of text using hashmap so that
-  // duplicates do not need to be stored differently
   char *text;    
   int int_val;   
   unsigned long long long_val; 
@@ -167,7 +165,7 @@ typedef struct {
 } Token;
 
 typedef struct {
-  CompilerContext *ctx; // Reference to global compilation context (Arena, Recover, etc)
+  CompilerContext *ctx; 
   const char *src;
   const char *filename;
   int lexer_error_count;
@@ -181,6 +179,7 @@ typedef struct {
     TokenType type;
 } KeywordDef;
 
+// NOTE: Must be strictly alphabetical for bsearch
 static const KeywordDef keywords[] = {
     {"as", TOKEN_AS},
     {"bool", TOKEN_KW_BOOL},
@@ -248,19 +247,14 @@ static const KeywordDef keywords[] = {
     {"union", TOKEN_UNION},
     {"unsigned", TOKEN_KW_UNSIGNED},
     {"untaint", TOKEN_UNTAINT},
+    {"vector", TOKEN_KW_VECTOR},
     {"void", TOKEN_KW_VOID},
     {"wash", TOKEN_WASH},
     {"while", TOKEN_WHILE}
 };
 
-
-// Initialize lexer with context. Context contains the arena for allocations.
 void lexer_init(Lexer *l, CompilerContext *ctx, const char *filename, const char *src);
-
 Token lexer_next(Lexer *l);
-
-// Note: free_token is removed as tokens are arena-managed.
-
 void skip_whitespace_and_comments(Lexer *l);
 
 #include "emitter.h"

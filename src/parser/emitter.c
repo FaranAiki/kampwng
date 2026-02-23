@@ -12,6 +12,7 @@ void parser_emit_indent(StringBuilder *sb, int indent) {
 }
 
 void parser_emit_type(StringBuilder *sb, VarType t) {
+    for (int i = 0; i < t.vector_depth; i++) sb_append(sb, "vector ");
     if (t.is_unsigned) sb_append(sb, "unsigned ");
     
     switch (t.base) {
@@ -34,12 +35,10 @@ void parser_emit_type(StringBuilder *sb, VarType t) {
     for (int i = 0; i < t.ptr_depth; i++) sb_append(sb, "*");
     
     if (t.array_size > 0) {
-        // Simple fixed array notation for now
         sb_append_fmt(sb, "[%d]", t.array_size);
     }
 }
 
-// Helper to decide if a node needs a semicolon when acting as a statement
 int needs_semicolon(ASTNode *node) {
     if (!node) return 0;
     switch (node->type) {
@@ -83,7 +82,6 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
 
     switch (node->type) {
         case NODE_ROOT:
-            // Should not happen for individual nodes, but safe fallback
             break;
 
         case NODE_FUNC_DEF: {
@@ -134,9 +132,8 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
             if (!vn->is_pristine) sb_append(sb, "tainted ");
             
             if (vn->is_mutable) sb_append(sb, "mut ");
-            else if (!vn->is_const) sb_append(sb, "imut "); // only emit imut if not declared const
+            else if (!vn->is_const) sb_append(sb, "imut ");
 
-            
             parser_emit_type(sb, vn->var_type);
             sb_append_fmt(sb, " %s", vn->name);
             
@@ -229,7 +226,7 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
             if (in->else_body) {
                 sb_append(sb, " else ");
                 if (in->else_body->type == NODE_IF) {
-                    parser_emit_ast_node(sb, in->else_body, indent); // chain else if
+                    parser_emit_ast_node(sb, in->else_body, indent); 
                 } else {
                     parser_emit_block(sb, in->else_body, indent);
                 }
@@ -372,7 +369,6 @@ void parser_emit_ast_node(StringBuilder *sb, ASTNode *node, int indent) {
                 case TOKEN_ASSIGN: sb_append(sb, " = "); break;
                 case TOKEN_PLUS_ASSIGN: sb_append(sb, " += "); break;
                 case TOKEN_MINUS_ASSIGN: sb_append(sb, " -= "); break;
-                // Add more logic here if needed
                 default: sb_append(sb, " = "); break; 
             }
             parser_emit_ast_node(sb, an->value, 0);

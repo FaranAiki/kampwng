@@ -18,7 +18,6 @@ const char* diag_get_namespace(CompilerContext *ctx) {
     return ctx->current_namespace;
 }
 
-// Helper to shorten path to last 3 components
 static void get_short_path(const char *in, char *out, size_t size) {
     if (!in || strlen(in) == 0) { 
         out[0] = 0; 
@@ -51,7 +50,6 @@ static void get_short_path(const char *in, char *out, size_t size) {
     snprintf(out, size, ".../%s", p);
 }
 
-// --- Levenshtein Distance (Stateless) ---
 int min3(int a, int b, int c) {
     int m = a;
     if (b < m) m = b;
@@ -63,7 +61,6 @@ int levenshtein_dist(const char *s1, const char *s2) {
     if (!s1 || !s2) return 100;
     int len1 = strlen(s1);
     int len2 = strlen(s2);
-    // Note: VLA usage for matrix, acceptable for small keywords
     int matrix[len1 + 1][len2 + 1];
 
     for (int i = 0; i <= len1; i++) matrix[i][0] = i;
@@ -96,7 +93,7 @@ const char* find_closest_keyword(const char *ident) {
         "if", "else", "while", "loop", "break", "continue", "class", "struct",
         "namespace", "import", "link", "extern", "define", "has", "is",
         "open", "closed", "public", "private", "final", "naked", "reactive", "inert",
-        "pure", "impure", "tainted", "clean", "wash", "untaint",
+        "pure", "impure", "tainted", "clean", "wash", "untaint", "vector",
         "let", "mut", "imut", "const", "typeof", 
         "switch", "case", "default", "leak", 
         NULL
@@ -141,14 +138,12 @@ static void report_generic(Lexer *l, Token t, const char *label, const char *col
     if (!l || !l->ctx) return;
     CompilerContext *ctx = l->ctx;
 
-    // Check if Namespace context changed
     if (strcmp(ctx->current_namespace, ctx->last_reported_namespace) != 0) {
         fprintf(stderr, "at namespace %s%s%s:\n", DIAG_BOLD, ctx->current_namespace, DIAG_RESET);
         strncpy(ctx->last_reported_namespace, ctx->current_namespace, 255);
         ctx->last_reported_namespace[255] = '\0';
     }
     
-    // Check if File context changed
     if (l->filename) {
         if (strcmp(l->filename, ctx->last_reported_filename) != 0) {
             char short_path[256];
@@ -191,7 +186,6 @@ void report_reason(Lexer *l, Token t, const char *msg) {
     if (l) print_source_snippet(l, t);
 }
 
-// Token to String mappings (Stateless)
 const char* token_type_to_string(TokenType type) {
     switch (type) {
         case TOKEN_EOF: return "EOF";
@@ -284,6 +278,7 @@ const char* token_type_to_string(TokenType type) {
         case TOKEN_KW_DOUBLE: return "double";
         case TOKEN_KW_STRING: return "string";
         case TOKEN_KW_LET: return "let";
+        case TOKEN_KW_VECTOR: return "vector";
 
         case TOKEN_KW_SHORT: return "short";
         case TOKEN_KW_LONG: return "long";
@@ -338,7 +333,6 @@ const char* token_type_to_string(TokenType type) {
     }
 }
 
-// TODO who the fuck removed this
 const char* get_token_description(TokenType type) {
     switch(type) {
         case TOKEN_SEMICOLON: return ";";

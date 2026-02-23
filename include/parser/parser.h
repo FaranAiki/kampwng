@@ -43,8 +43,8 @@ typedef enum {
   NODE_CAST,
   NODE_EMIT,
   NODE_FOR_IN,
-  NODE_WASH, // Added for wash/clean/untaint error handling blocks
-  NODE_CLEAN // Added for wash/clean/untaint error handling blocks
+  NODE_WASH, 
+  NODE_CLEAN 
 } NodeType;
 
 typedef enum {
@@ -58,10 +58,10 @@ typedef enum {
   TYPE_FLOAT,
   TYPE_DOUBLE,
   TYPE_LONG_DOUBLE,
-  TYPE_ARRAY, // TODO not resolved
+  TYPE_ARRAY,
   TYPE_STRING,
-  TYPE_VECTOR, // TODO not resolved
-  TYPE_HASHMAP, // TODO not resolved
+  TYPE_VECTOR,
+  TYPE_HASHMAP,
   TYPE_AUTO,
   TYPE_CLASS, 
   TYPE_ENUM, 
@@ -70,19 +70,20 @@ typedef enum {
 
 typedef enum {
   IS_A_NONE,
-  IS_A_NAKED, // MUST be inherited, e.g. if there is no class/function inheriting/replacing it, throw semantic error
-  IS_A_FINAL, // CANNOT be inherited like in Java, e.g. final cannot be override
-} IsASemantic; // inheritance
+  IS_A_NAKED,
+  IS_A_FINAL,
+} IsASemantic; 
 
 typedef enum {
   HAS_A_NONE,
-  HAS_A_REACTIVE, // MUST be composed
-  HAS_A_INERT, // CANNOT be composed
-} HasASemantic; // composition
+  HAS_A_REACTIVE, 
+  HAS_A_INERT, 
+} HasASemantic; 
 
 typedef struct VarType {
   BaseType base;
   int ptr_depth; 
+  int vector_depth; // <--- VECTOR SUPPORT
   char *class_name;
   int array_size; 
   
@@ -90,7 +91,6 @@ typedef struct VarType {
   struct VarType *fp_param_types; 
   int fp_param_count;
 
-  // Packed bitfields
   bool is_unsigned : 1; 
   bool is_func_ptr : 1;
   bool fp_is_varargs : 1;
@@ -121,7 +121,6 @@ typedef struct {
   IsASemantic is_is_a;
   HasASemantic is_has_a;
 
-  // Modifier Bitfields (Packed)
   bool is_varargs : 1; 
   bool is_public : 1;
   bool is_open : 1;
@@ -146,7 +145,6 @@ typedef struct {
   IsASemantic is_is_a;
   HasASemantic is_has_a;
 
-  // Modifier Bitfields (Packed)
   bool is_open : 1; 
   bool is_public : 1; 
   bool is_extern : 1; 
@@ -227,14 +225,13 @@ typedef struct {
     ASTNode *default_case; 
 } SwitchNode;
 
-// Added for Wash/Clean/Untaint error handling
 typedef struct {
     ASTNode base;
     char *var_name;
-    char *err_name; // Optional, can be NULL
+    char *err_name; 
     ASTNode *body;
     ASTNode *else_body;
-    unsigned int wash_type : 2; // 0=wash, 1=clean, 2=untaint
+    unsigned int wash_type : 2; 
 } WashNode;
 
 typedef struct {
@@ -247,7 +244,6 @@ typedef struct {
   IsASemantic is_is_a;
   HasASemantic is_has_a;
 
-  // Modifier Bitfields (Packed)
   bool is_array : 1;   
   bool is_open : 1;
   bool is_public : 1;
@@ -366,7 +362,6 @@ typedef struct {
 
 // --- PARSER CONTEXT ---
 
-// Forward declarations for internal state structures
 typedef struct Macro Macro;
 typedef struct TypeName TypeName;
 typedef struct TypeAlias TypeAlias;
@@ -375,24 +370,15 @@ typedef struct Expansion Expansion;
 typedef struct Parser {
     Lexer *l;
     CompilerContext *ctx;
-    
     Token current_token;
-    
-    // Error Recovery
     jmp_buf *recover_buf;
-    
-    // Internal State (Lists)
     Macro *macro_head;
     TypeName *type_head;
     TypeAlias *alias_head;
     Expansion *expansion_head;
-    
 } Parser;
 
-// Initialize parser with an existing lexer (which holds the context)
 void parser_init(Parser *p, Lexer *l);
-
-// Parse the program using the provided parser instance
 ASTNode* parse_program(Parser *p);
 ASTNode* parse_expression(Parser *p);
 
@@ -400,4 +386,4 @@ ASTNode* parse_expression(Parser *p);
 #include "link.h"
 #include "modifier.h"
 
-#endif // PARSER_H
+#endif

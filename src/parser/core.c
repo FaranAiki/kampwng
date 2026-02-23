@@ -9,20 +9,18 @@ void parser_init(Parser *p, Lexer *l) {
     p->ctx = l ? l->ctx : NULL;
     p->recover_buf = NULL;
     
-    // Initialize lists
     p->macro_head = NULL;
     p->type_head = NULL;
     p->alias_head = NULL;
     p->expansion_head = NULL;
     
-    // Prime the first token
     if (l) {
         p->current_token.type = TOKEN_UNKNOWN;
     }
 }
 
 void* parser_alloc(Parser *p, size_t size) {
-    if (!p || !p->ctx || !p->ctx->arena) return calloc(1, size); // Fallback if no context
+    if (!p || !p->ctx || !p->ctx->arena) return calloc(1, size);
     void *ptr = arena_alloc(p->ctx->arena, size);
     if (ptr) memset(ptr, 0, size);
     return ptr;
@@ -30,7 +28,7 @@ void* parser_alloc(Parser *p, size_t size) {
 
 char* parser_strdup(Parser *p, const char *str) {
     if (!str) return NULL;
-    if (!p || !p->ctx || !p->ctx->arena) return strdup(str); // Fallback
+    if (!p || !p->ctx || !p->ctx->arena) return strdup(str); 
     return arena_strdup(p->ctx->arena, str);
 }
 
@@ -88,8 +86,6 @@ VarType* get_alias(Parser *p, const char *name) {
     return NULL;
 }
 
-// --- MACROS ---
-
 Token token_clone(Parser *p, Token t) {
     Token new_t = t;
     if (t.text) new_t.text = parser_strdup(p, t.text);
@@ -129,7 +125,6 @@ Token get_next_token_expanded(Parser *p) {
             return token_clone(p, p->expansion_head->tokens[p->expansion_head->pos++]);
         } else {
             p->expansion_head = p->expansion_head->next;
-            // No need to free expansion tokens explicitly with arena
             return get_next_token_expanded(p);
         }
     }
@@ -201,7 +196,6 @@ void eat(Parser *p, TokenType type) {
             if (peek.type != TOKEN_LPAREN) {
                 parser_fail(p, "Function-like macro requires arguments list '('.");
             }
-            // peek.text is arena allocated now
 
             args = parser_alloc(p, sizeof(Token*) * m->param_count);
             arg_lens = parser_alloc(p, m->param_count * sizeof(int));
@@ -298,7 +292,13 @@ void eat(Parser *p, TokenType type) {
 
 // Composite type parsing helper
 VarType parse_type(Parser *p) {
-  VarType t = {TYPE_UNKNOWN, 0}; 
+  VarType t = {0}; 
+  t.base = TYPE_UNKNOWN;
+
+  while (p->current_token.type == TOKEN_KW_VECTOR) {
+      t.vector_depth++;
+      eat(p, TOKEN_KW_VECTOR);
+  }
 
   if (p->current_token.type == TOKEN_KW_UNSIGNED) {
       t.is_unsigned = 1;
@@ -308,8 +308,11 @@ VarType parse_type(Parser *p) {
   if (p->current_token.type == TOKEN_IDENTIFIER) {
       VarType *alias = get_alias(p, p->current_token.text);
       if (alias) {
-          t = *alias; 
-          if (t.class_name) t.class_name = parser_strdup(p, t.class_name);
+          t.base = alias->base;
+          t.ptr_depth += alias->ptr_depth; 
+          t.vector_depth += alias->vector_depth;
+          t.array_size = alias->array_size;
+          if (alias->class_name) t.class_name = parser_strdup(p, alias->class_name);
           eat(p, TOKEN_IDENTIFIER);
       }
       else {
@@ -431,7 +434,6 @@ VarType parse_func_ptr_decl(Parser *p, VarType ret_type, char **out_name) {
             
             if (vt.fp_param_count >= cap) {
                 cap *= 2;
-                // Simplified realloc
                 VarType *new_params = parser_alloc(p, sizeof(VarType) * cap);
                 memcpy(new_params, vt.fp_param_types, sizeof(VarType) * vt.fp_param_count);
                 vt.fp_param_types = new_params;
@@ -500,7 +502,6 @@ ASTNode* parse_program(Parser *p) {
   }
   
   p->recover_buf = NULL;
-  *current = NULL; // have to cut off
+  *current = NULL;
   return head;
 }
-

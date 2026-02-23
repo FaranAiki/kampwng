@@ -9,6 +9,7 @@ void semantic_emit_indent(StringBuilder *sb, int indent) {
 }
 
 void semantic_emit_type_str(StringBuilder *sb, VarType t) {
+    for (int i = 0; i < t.vector_depth; i++) sb_append_fmt(sb, "vector ");
     if (t.is_unsigned) sb_append_fmt(sb, "unsigned ");
     
     switch (t.base) {
@@ -54,7 +55,6 @@ void semantic_emit_symbol(StringBuilder *sb, SemSymbol *sym, int indent) {
     
     sb_append_fmt(sb, "\n");
 
-    // Recurse if this symbol has an inner scope (Class, Namespace, Function)
     if (sym->inner_scope) {
         semantic_emit_scope(sb, sym->inner_scope, indent + 1);
     }
@@ -70,7 +70,6 @@ void semantic_emit_scope(StringBuilder *sb, SemScope *scope, int indent) {
         return;
     }
 
-    // Traverse linked list
     while (sym) {
         semantic_emit_symbol(sb, sym, indent);
         sym = sym->next;
