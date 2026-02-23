@@ -85,8 +85,17 @@ AlirValue* alir_gen_addr(AlirCtx *ctx, ASTNode *node) {
     
     if (node->type == NODE_ARRAY_ACCESS) {
         ArrayAccessNode *aa = (ArrayAccessNode*)node;
-        AlirValue *base_ptr = alir_gen_expr(ctx, aa->target);
+        AlirValue *base_ptr = alir_gen_addr(ctx, aa->target);
+        if (!base_ptr) base_ptr = alir_gen_expr(ctx, aa->target);
         if (!base_ptr) return NULL;
+
+        // [FIX] Load the pointer if target is a dynamic pointer, not an in-place array alloca
+        VarType tgt_type = sem_get_node_type(ctx->sem, aa->target);
+        if (tgt_type.array_size == 0 && tgt_type.ptr_depth > 0) {
+            AlirValue *loaded = new_temp(ctx, tgt_type);
+            emit(ctx, mk_inst(ctx->module, ALIR_OP_LOAD, loaded, base_ptr, NULL));
+            base_ptr = loaded;
+        }
 
         AlirValue *index = alir_gen_expr(ctx, aa->index);
         if (!index) index = alir_const_int(ctx->module, 0); 
