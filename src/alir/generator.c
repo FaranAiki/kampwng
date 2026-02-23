@@ -64,7 +64,6 @@ long alir_eval_constant_int(AlirCtx *ctx, ASTNode *node) {
     return 0; // Fallback / Error
 }
 
-// move this to the parser or semantic
 ClassNode* find_class_node(ASTNode *root, const char *name) {
     ASTNode *curr = root;
     while(curr) {
@@ -85,6 +84,7 @@ void build_struct_fields(AlirCtx *ctx, ASTNode *root, ClassNode *cn, AlirStruct 
     AlirField *head = NULL;
     AlirField **tail = &head;
     
+    // 1. Inherit Fields from Parent Class
     if (cn->parent_name) {
         AlirStruct *parent_st = alir_find_struct(ctx->module, cn->parent_name);
         if (parent_st) {
@@ -105,7 +105,30 @@ void build_struct_fields(AlirCtx *ctx, ASTNode *root, ClassNode *cn, AlirStruct 
             }
         }
     }
+    
+    // 2. Inherit Fields from Traits
+    for (int i = 0; i < cn->traits.count; i++) {
+        AlirStruct *trait_st = alir_find_struct(ctx->module, cn->traits.names[i]);
+        if (trait_st) {
+            if (trait_st->field_count == -1) {
+                ClassNode *tcn = find_class_node(root, cn->traits.names[i]);
+                if (tcn) build_struct_fields(ctx, root, tcn, trait_st);
+            }
+            AlirField *tf = trait_st->fields;
+            while(tf) {
+                AlirField *nf = alir_alloc(ctx->module, sizeof(AlirField));
+                nf->name = alir_strdup(ctx->module, tf->name);
+                nf->type = tf->type;
+                nf->index = idx++;
+                
+                *tail = nf;
+                tail = &nf->next;
+                tf = tf->next;
+            }
+        }
+    }
 
+    // 3. Current Class Fields
     ASTNode *mem = cn->members;
     while(mem) {
         if (mem->type == NODE_VAR_DECL) {
@@ -113,6 +136,13 @@ void build_struct_fields(AlirCtx *ctx, ASTNode *root, ClassNode *cn, AlirStruct 
             AlirField *f = alir_alloc(ctx->module, sizeof(AlirField));
             f->name = alir_strdup(ctx->module, vd->name);
             f->type = vd->var_type;
+            
+            // [FIX] Decay inline arrays to pointers to prevent struct bloat and truncation crashes
+            if (f->type.array_size > 0) {
+                f->type.array_size = 0;
+                f->type.ptr_depth++;
+            }
+            
             f->index = idx++;
             
             *tail = f;
@@ -125,7 +155,6 @@ void build_struct_fields(AlirCtx *ctx, ASTNode *root, ClassNode *cn, AlirStruct 
     st->field_count = idx;
 }
 
-// what is this used for?
 void pass1_register(AlirCtx *ctx, ASTNode *n) {
     while(n) {
         if (n->type == NODE_CLASS) {
@@ -236,15 +265,12 @@ void alir_gen_switch(AlirCtx *ctx, SwitchNode *sn) {
     ctx->current_block = end_bb;
 }
 
-// Generate an implicit Default Constructor for Classes
-// [FIX] Update Implicit Constructor to map fields correctly
 void alir_gen_implicit_constructor(AlirCtx *ctx, ClassNode *cn) {
     ctx->current_func = alir_add_function(ctx->module, cn->name, (VarType){TYPE_VOID, 0}, 0);
     
     VarType this_t = {TYPE_CLASS, 1, alir_strdup(ctx->module, cn->name)};
     alir_func_add_param(ctx->module, ctx->current_func, "this", this_t);
 
-    // Expand signature to match all fields initialized by caller
     AlirStruct *st = alir_find_struct(ctx->module, cn->name);
     if (st) {
         AlirField *f = st->fields;
@@ -256,19 +282,18 @@ void alir_gen_implicit_constructor(AlirCtx *ctx, ClassNode *cn) {
 
     ctx->current_block = alir_add_block(ctx->module, ctx->current_func, "entry");
     
-    // Bind 'this' pointer
     AlirValue *this_ptr = new_temp(ctx, this_t);
     emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, this_ptr, NULL, NULL));
     alir_add_symbol(ctx, "this", this_ptr, this_t);
     emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, alir_val_var(ctx->module, "p0"), this_ptr));
 
-    // Map passed arguments sequentially to struct fields
     if (st) {
         AlirField *f = st->fields;
         int p_idx = 1;
         while(f) {
             char pname[16]; snprintf(pname, 16, "p%d", p_idx++);
             AlirValue *arg_val = alir_val_var(ctx->module, pname);
+            arg_val->type = f->type; // [FIX] Attach type to prevent untyped store
             
             AlirValue *loaded_this = new_temp(ctx, this_t);
             emit(ctx, mk_inst(ctx->module, ALIR_OP_LOAD, loaded_this, this_ptr, NULL));
@@ -285,7 +310,6 @@ void alir_gen_implicit_constructor(AlirCtx *ctx, ClassNode *cn) {
     emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, NULL, NULL));
 }
 
-// Generate the definition of a standard Function or Class Method
 void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
     if (fn->is_flux) {
         alir_gen_flux_def(ctx, fn);
@@ -294,7 +318,6 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
 
     char func_name[256];
     if (class_name) {
-        // Intercept methods inside Class scope. `init` -> `@ClassName`. Else `ClassName_MethodName`
         if (strcmp(fn->name, "init") == 0 || strcmp(fn->name, class_name) == 0) {
             snprintf(func_name, sizeof(func_name), "%s", class_name);
         } else {
@@ -307,13 +330,11 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
     ctx->current_func = alir_add_function(ctx->module, func_name, fn->ret_type, 0);
     ctx->current_func->is_varargs = fn->is_varargs;
 
-    // 1. Setup 'this' pointer as the primary parameter if it's a method/constructor
     if (class_name) {
         VarType this_t = {TYPE_CLASS, 1, alir_strdup(ctx->module, class_name)};
         alir_func_add_param(ctx->module, ctx->current_func, "this", this_t);
     }
 
-    // 2. Setup user-defined explicit parameters
     Parameter *p = fn->params;
     while(p) {
         alir_func_add_param(ctx->module, ctx->current_func, p->name, p->type);
@@ -330,17 +351,17 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
 
     if (class_name) {
         VarType this_t = {TYPE_CLASS, 1, alir_strdup(ctx->module, class_name)};
-        AlirValue *ptr = new_temp(ctx, this_t);
-        emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, ptr, NULL, NULL));
-        alir_add_symbol(ctx, "this", ptr, this_t);
-
+        
         char pname[16]; snprintf(pname, sizeof(pname), "p%d", p_idx++);
         AlirValue *pval = alir_val_var(ctx->module, pname);
-        pval->type = this_t; // [FIX] explicitly attach type for STORE
-        emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, pval, ptr));
+        pval->type = this_t;
+        
+        // [FIX] Alias 'this' directly to the argument instead of re-allocating.
+        // Because method calls pass the object's lvalue (Class**), this allows 
+        // the implicit AST LOAD to automatically dereference down to Class* safely.
+        alir_add_symbol(ctx, "this", pval, this_t);
     }
 
-    // Map explicit parameters
     p = fn->params;
     while(p) {
         AlirValue *ptr = new_temp(ctx, p->type);
@@ -349,7 +370,7 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
         
         char pname[16]; snprintf(pname, sizeof(pname), "p%d", p_idx++);
         AlirValue *pval = alir_val_var(ctx->module, pname); 
-        pval->type = p->type; // [FIX] explicitly attach type for STORE
+        pval->type = p->type;
         emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, pval, ptr));
         
         p = p->next;
@@ -358,7 +379,6 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
     ASTNode *stmt = fn->body;
     while(stmt) { alir_gen_stmt(ctx, stmt); stmt = stmt->next; }
 
-    // Enforce implicit block termination (e.g. adding `return 0` to main or void blocks)
     if (ctx->current_block) {
         AlirInst *tail = ctx->current_block->tail;
         int has_term = tail && is_terminator(tail->op);
@@ -371,6 +391,75 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
                 emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, alir_const_int(ctx->module, 0), NULL));
             } else if (fn->ret_type.base == TYPE_VOID || (class_name && (strcmp(fn->name, "init") == 0 || strcmp(fn->name, class_name) == 0))) {
                 emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, NULL, NULL));
+            }
+        }
+    }
+}
+
+// Emits inherited methods from parent and traits down to the derived class scope
+void alir_gen_inherited_methods(AlirCtx *ctx, ASTNode *root, ClassNode *cn, const char *target_class) {
+    if (!cn) return;
+    
+    // 1. Traverse Parent
+    if (cn->parent_name) {
+        ClassNode *pcn = find_class_node(root, cn->parent_name);
+        if (pcn) {
+            alir_gen_inherited_methods(ctx, root, pcn, target_class); // Deepest first
+            
+            ASTNode *mem = pcn->members;
+            while (mem) {
+                if (mem->type == NODE_FUNC_DEF) {
+                    FuncDefNode *fn = (FuncDefNode*)mem;
+                    if (strcmp(fn->name, pcn->name) != 0 && strcmp(fn->name, "init") != 0) {
+                        ClassNode *tcn = find_class_node(root, target_class);
+                        int is_overridden = 0;
+                        if (tcn) {
+                            ASTNode *tmem = tcn->members;
+                            while(tmem) {
+                                if (tmem->type == NODE_FUNC_DEF && strcmp(((FuncDefNode*)tmem)->name, fn->name) == 0) {
+                                    is_overridden = 1; break;
+                                }
+                                tmem = tmem->next;
+                            }
+                        }
+                        if (!is_overridden) {
+                            alir_gen_function_def(ctx, fn, target_class);
+                        }
+                    }
+                }
+                mem = mem->next;
+            }
+        }
+    }
+    
+    // 2. Traverse Traits
+    for (int i = 0; i < cn->traits.count; i++) {
+        ClassNode *tcn = find_class_node(root, cn->traits.names[i]);
+        if (tcn) {
+            alir_gen_inherited_methods(ctx, root, tcn, target_class);
+            
+            ASTNode *mem = tcn->members;
+            while (mem) {
+                if (mem->type == NODE_FUNC_DEF) {
+                    FuncDefNode *fn = (FuncDefNode*)mem;
+                    if (strcmp(fn->name, tcn->name) != 0 && strcmp(fn->name, "init") != 0) {
+                        ClassNode *target_node = find_class_node(root, target_class);
+                        int is_overridden = 0;
+                        if (target_node) {
+                            ASTNode *tmem = target_node->members;
+                            while(tmem) {
+                                if (tmem->type == NODE_FUNC_DEF && strcmp(((FuncDefNode*)tmem)->name, fn->name) == 0) {
+                                    is_overridden = 1; break;
+                                }
+                                tmem = tmem->next;
+                            }
+                        }
+                        if (!is_overridden) {
+                            alir_gen_function_def(ctx, fn, target_class);
+                        }
+                    }
+                }
+                mem = mem->next;
             }
         }
     }
@@ -397,6 +486,9 @@ void alir_gen_functions_recursive(AlirCtx *ctx, ASTNode *root) {
                 }
                 mem = mem->next;
             }
+
+            // Generate Inherited and Traited Methods for this specific Class
+            alir_gen_inherited_methods(ctx, root, cn, cn->name);
             
             // Emit an implicit constructor if the user hasn't explicitly supplied `init`
             if (!has_constructor) {

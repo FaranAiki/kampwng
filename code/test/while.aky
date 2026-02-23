@@ -1,0 +1,9 @@
+int main() {
+  int i = 0;
+  int prime[10] = [2,3,5,7,9,11,13,17,19,23];
+  printf "%d\n", prime[9];
+  /*
+  while i++ < 10 {
+    printf "%d\n", prime[i];
+  }*/
+}
