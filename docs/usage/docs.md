@@ -106,22 +106,6 @@ loop 5 {
 }
 ```
 
-**Switch Statement:**
-Alkyl supports `switch` with explicit fallthrough syntax (`leak`).
-
-```alkyl
-switch (val) {
-    case 1: 
-        print("One");
-    case 2, 3: 
-        print("Two or Three");
-    leak case 4: 
-        print("Four (leaks to default)");
-    default:
-        print("Default");
-}
-```
-
 ## 3. Functions
 
 Functions are defined with a return type, name, and parameter list. Alkyl supports function overloading.
