@@ -111,6 +111,7 @@ ASTNode* parse_enum(Parser *p) {
   return (ASTNode*)en;
 }
 
+// MODULATE THIS WTF
 static ASTNode* parse_class_impl(Parser *p, int modifiers) {  
   int is_open = 0;
   if (modifiers & MODIFIER_OPEN) is_open = 1;

@@ -87,6 +87,7 @@ AlirValue* alir_module_add_string_literal(AlirModule *mod, const char *content, 
 }
 
 // Track labels locally per function to prevent collisions (e.g., "while_cond", "while_cond2")
+// TODO change this
 static HashMap label_map;
 static AlirFunction *current_tracked_func = NULL;
 

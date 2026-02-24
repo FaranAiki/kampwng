@@ -282,4 +282,7 @@ char* alir_strdup(AlirModule *mod, const char *str);
 #include "core.h"
 #include "flux.h"
 
+#include "fragment/generate.h"
+#include "fragment/addr.h"
+
 #endif // ALIR_H

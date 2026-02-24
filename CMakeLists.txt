@@ -72,6 +72,9 @@ set(ALIR_SOURCES
     src/alir/lvalue.c
     src/alir/emitter.c
     src/alir/stmt.c
+
+    src/alir/fragment/generate.c
+    src/alir/fragment/addr.c
 )
 
 set (ALICK_SOURCES
