@@ -356,10 +356,11 @@ void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name
         AlirValue *pval = alir_val_var(ctx->module, pname);
         pval->type = this_t;
         
-        // [FIX] Alias 'this' directly to the argument instead of re-allocating.
-        // Because method calls pass the object's lvalue (Class**), this allows 
-        // the implicit AST LOAD to automatically dereference down to Class* safely.
-        alir_add_symbol(ctx, "this", pval, this_t);
+        // [FIX] Actually allocate a local pointer for `this` to preserve standard calling conventions
+        AlirValue *ptr = new_temp(ctx, this_t);
+        emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, ptr, NULL, NULL));
+        alir_add_symbol(ctx, "this", ptr, this_t);
+        emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, pval, ptr));
     }
 
     p = fn->params;

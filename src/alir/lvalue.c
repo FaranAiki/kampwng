@@ -37,7 +37,7 @@ AlirValue* alir_gen_addr(AlirCtx *ctx, ASTNode *node) {
         if (!base_ptr) base_ptr = alir_gen_expr(ctx, aa->target);
         if (!base_ptr) return NULL;
 
-        // [FIX] Load the pointer if target is a dynamic pointer, not an in-place array alloca
+        // Load the pointer if target is a dynamic pointer, not an in-place array alloca
         VarType tgt_type = sem_get_node_type(ctx->sem, aa->target);
         if (tgt_type.array_size == 0 && tgt_type.ptr_depth > 0) {
             AlirValue *loaded = new_temp(ctx, tgt_type);
@@ -90,12 +90,10 @@ AlirValue* alir_gen_trait_access(AlirCtx *ctx, TraitAccessNode *ta) {
     return cast_res;
 }
 
-// Replace alir_gen_literal (around line 69) to capture C-Strings
 AlirValue* alir_gen_literal(AlirCtx *ctx, LiteralNode *ln) {
     if (ln->var_type.base == TYPE_INT) return alir_const_int(ctx->module, ln->val.int_val);
     if (ln->var_type.base == TYPE_FLOAT) return alir_const_float(ctx->module, ln->val.double_val);
     
-    // [FIX] Route both TYPE_STRING and TYPE_CHAR* (c-strings) to the global literal pool
     if (ln->var_type.base == TYPE_STRING || (ln->var_type.base == TYPE_CHAR && ln->var_type.ptr_depth > 0)) {
         return alir_module_add_string_literal(ctx->module, ln->val.str_val, ln->var_type, ctx->str_counter++);
     }
@@ -110,6 +108,21 @@ AlirValue* alir_gen_var_ref(AlirCtx *ctx, VarRefNode *vn) {
     
     // Get precise type from Semantics
     VarType t = sem_get_node_type(ctx->sem, (ASTNode*)vn);
+    
+    // [FIX] Infer type correctly separating Local Variables (ALLOCA) from Struct Fields (GET_PTR)
+    AlirSymbol *sym = alir_find_symbol(ctx, vn->name);
+    if (sym && sym->ptr == ptr) {
+        // Address came directly from an ALLOCA. Type is intact.
+        if (sym->type.base != TYPE_UNKNOWN && sym->type.base != TYPE_AUTO) {
+            t = sym->type;
+        }
+    } else {
+        // Address came from a GET_PTR (e.g. implicit `this.` field indexing). It's a T*.
+        if (ptr->type.base != TYPE_UNKNOWN && ptr->type.base != TYPE_AUTO) {
+            t = ptr->type;
+            if (t.ptr_depth > 0) t.ptr_depth--;
+        }
+    }
     
     AlirValue *val = new_temp(ctx, t);
     emit(ctx, mk_inst(ctx->module, ALIR_OP_LOAD, val, ptr, NULL));
@@ -130,9 +143,16 @@ AlirValue* alir_gen_access(AlirCtx *ctx, ASTNode *node) {
     }
 
     AlirValue *ptr = alir_gen_addr(ctx, node);
-    if (!ptr) return NULL; // [BUGFIX]: Prevents generating invalid empty `load `
+    if (!ptr) return NULL; 
     
     VarType t = sem_get_node_type(ctx->sem, node);
+    
+    // [FIX] ALWAYS trust GET_PTR's physical type over Semantic Analyzer inference bounds.
+    // Address returned here is a GET_PTR so it represents a T*. We dynamically extract T.
+    if (ptr->type.base != TYPE_UNKNOWN && ptr->type.base != TYPE_AUTO) {
+        t = ptr->type;
+        if (t.ptr_depth > 0) t.ptr_depth--;
+    }
     
     AlirValue *val = new_temp(ctx, t); 
     emit(ctx, mk_inst(ctx->module, ALIR_OP_LOAD, val, ptr, NULL));
@@ -322,19 +342,19 @@ AlirValue* alir_gen_call(AlirCtx *ctx, CallNode *cn) {
 }
 
 AlirValue* alir_gen_method_call(AlirCtx *ctx, MethodCallNode *mc) {
-    AlirValue *this_ptr = alir_gen_addr(ctx, mc->object);
-    if (!this_ptr) this_ptr = alir_gen_expr(ctx, mc->object); 
-    if (!this_ptr) {
-         this_ptr = new_temp(ctx, (VarType){TYPE_INT, 0});
-         emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, this_ptr, NULL, NULL));
+    // ALWAYS GET THE VALUE (Class* instead of Class**)
+    AlirValue *this_val = alir_gen_expr(ctx, mc->object); 
+    if (!this_val) {
+         this_val = new_temp(ctx, (VarType){TYPE_INT, 0});
+         emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, this_val, NULL, NULL));
     }
 
     VarType obj_t = sem_get_node_type(ctx->sem, mc->object);
     char *cname = obj_t.class_name;
     
     // [BUGFIX] Mangling Failure Recovery: Check IR types and Local Symtable dynamically
-    if (!cname && this_ptr && this_ptr->type.class_name) {
-        cname = this_ptr->type.class_name;
+    if (!cname && this_val && this_val->type.class_name) {
+        cname = this_val->type.class_name;
     }
     if (!cname && mc->object->type == NODE_VAR_REF) {
         AlirSymbol *sym = alir_find_symbol(ctx, ((VarRefNode*)mc->object)->name);
@@ -351,7 +371,7 @@ AlirValue* alir_gen_method_call(AlirCtx *ctx, MethodCallNode *mc) {
     call->arg_count = count + 1;
     call->args = alir_alloc(ctx->module, sizeof(AlirValue*) * (count + 1));
     
-    call->args[0] = this_ptr;
+    call->args[0] = this_val;
     int i = 1; a = mc->args;
     while(a) {
         AlirValue *arg_val = alir_gen_expr(ctx, a);
@@ -378,10 +398,6 @@ AlirValue* alir_gen_array_lit(AlirCtx *ctx, ASTNode *node) {
     // Allocate space for the array to act as the base pointer operand
     AlirValue *arr_ptr = new_temp(ctx, t);
     emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, arr_ptr, NULL, NULL));
-    
-    // Note: To fully lower array literals, you would iterate over the ArrayLitNode's 
-    // expression elements here, emit expressions, and map ALIR_OP_STORE into offsets using GEP.
-    // For ALICK purposes, returning the allocated array pointer fulfills the `STORE` value requirement!
 
     return arr_ptr;
 }

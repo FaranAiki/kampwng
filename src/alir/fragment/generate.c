@@ -2,6 +2,12 @@
 
 void alir_stmt_vardecl(AlirCtx *ctx, ASTNode *node) {
     VarDeclNode *vn = (VarDeclNode*)node;
+    
+    // [FIX] Classes are heap-allocated by default; force local variables to be pointers
+    if (vn->var_type.base == TYPE_CLASS && vn->var_type.ptr_depth == 0) {
+        vn->var_type.ptr_depth = 1;
+    }
+    
     AlirValue *ptr = new_temp(ctx, vn->var_type);
     
     // FIX: If it's an array, make sure the alloca allocates the array type
@@ -27,6 +33,20 @@ void alir_stmt_vardecl(AlirCtx *ctx, ASTNode *node) {
             }
         } else {
             AlirValue *val = alir_gen_expr(ctx, vn->initializer);
+            
+            // [FIX] Dynamically override semantic erasure (e.g. `let` resolving to TYPE_AUTO)
+            AlirSymbol *sym = alir_find_symbol(ctx, vn->name);
+            if (sym && val) {
+                if (sym->type.base == TYPE_AUTO || sym->type.base == TYPE_UNKNOWN) {
+                    sym->type = val->type;
+                    ptr->type = val->type;
+                } else if (sym->type.base == TYPE_CLASS && val->type.base == TYPE_CLASS) {
+                    // Always propagate pointer depth for classes
+                    sym->type.ptr_depth = val->type.ptr_depth;
+                    ptr->type.ptr_depth = val->type.ptr_depth;
+                }
+            }
+            
             emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, val ? val : alir_const_int(ctx->module, 0), ptr));
         }
     }
@@ -38,7 +58,6 @@ void alir_stmt_assign(AlirCtx *ctx, ASTNode *node) {
     
     if (an->target) {
         ptr = alir_gen_addr(ctx, an->target);
-        // ... fallback logic remains ...
     } else if (an->name) {
         AlirSymbol *s = alir_find_symbol(ctx, an->name);
         if (s) { 
@@ -51,7 +70,19 @@ void alir_stmt_assign(AlirCtx *ctx, ASTNode *node) {
                 if (idx != -1) {
                     AlirValue *this_ptr = new_temp(ctx, this_sym->type);
                     emit(ctx, mk_inst(ctx->module, ALIR_OP_LOAD, this_ptr, this_sym->ptr, NULL));
-                    ptr = new_temp(ctx, (VarType){TYPE_AUTO, 1, 0, NULL});
+                    
+                    VarType field_type = {TYPE_AUTO, 0, 0, NULL};
+                    AlirStruct *st = alir_find_struct(ctx->module, this_sym->type.class_name);
+                    if (st) {
+                        AlirField *f = st->fields;
+                        while(f) {
+                            if (strcmp(f->name, an->name) == 0) { field_type = f->type; break; }
+                            f = f->next;
+                        }
+                    }
+                    field_type.ptr_depth++;
+                    
+                    ptr = new_temp(ctx, field_type);
                     emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr, this_ptr, alir_const_int(ctx->module, idx)));
                 }
             }
@@ -70,9 +101,16 @@ void alir_stmt_assign(AlirCtx *ctx, ASTNode *node) {
     // [FIX] Reconstruct lost Semantic Analyzer typing dynamically
     if (an->name) {
         AlirSymbol *sym = alir_find_symbol(ctx, an->name);
-        if (sym && !sym->type.class_name && val->type.class_name) {
-            sym->type.class_name = alir_strdup(ctx->module, val->type.class_name);
-            sym->type.base = val->type.base;
+        if (sym && val) {
+            if (((!sym->type.class_name && val->type.class_name) || sym->type.base == TYPE_AUTO || sym->type.base == TYPE_UNKNOWN)) {
+                sym->type.class_name = val->type.class_name ? alir_strdup(ctx->module, val->type.class_name) : NULL;
+                sym->type.base = val->type.base;
+                sym->type.ptr_depth = val->type.ptr_depth;
+                if (ptr && sym->ptr == ptr) ptr->type = sym->type;
+            } else if (sym->type.base == TYPE_CLASS && val->type.base == TYPE_CLASS) {
+                sym->type.ptr_depth = val->type.ptr_depth;
+                if (ptr && sym->ptr == ptr) ptr->type.ptr_depth = val->type.ptr_depth;
+            }
         }
     }
     
@@ -84,7 +122,6 @@ void alir_stmt_while(AlirCtx *ctx, ASTNode *node) {
     AlirBlock *cond_bb = alir_add_block(ctx->module, ctx->current_func, "while_cond");
     AlirBlock *body_bb = alir_add_block(ctx->module, ctx->current_func, "while_body");
     AlirBlock *end_bb = alir_add_block(ctx->module, ctx->current_func, "while_end");
-
 
     if (wn->is_do_while) {
         emit(ctx, mk_inst(ctx->module, ALIR_OP_JUMP, NULL, alir_val_label(ctx->module, body_bb->label), NULL));
@@ -157,6 +194,11 @@ void alir_stmt_for_in(AlirCtx *ctx, ASTNode *node) {
     
     ctx->current_block = body_bb;
     push_loop(ctx, cond_bb, end_bb);
+    
+    // Ensure class types default to pointers inside iterations
+    if (fn->iter_type.base == TYPE_CLASS && fn->iter_type.ptr_depth == 0) {
+        fn->iter_type.ptr_depth = 1;
+    }
     
     AlirValue *val = new_temp(ctx, fn->iter_type); 
     emit(ctx, mk_inst(ctx->module, ALIR_OP_ITER_GET, val, iter, NULL));
