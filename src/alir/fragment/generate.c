@@ -4,14 +4,67 @@ void alir_stmt_vardecl(AlirCtx *ctx, ASTNode *node) {
     VarDeclNode *vn = (VarDeclNode*)node;
     
     // [FIX] Classes are heap-allocated by default; force local variables to be pointers
-    if (vn->var_type.base == TYPE_CLASS && vn->var_type.ptr_depth == 0) {
+    // EXCEPT when they are inline arrays, which must remain value types [N x %Class]
+    if (vn->var_type.base == TYPE_CLASS && vn->var_type.ptr_depth == 0 && vn->var_type.array_size <= 0) {
         vn->var_type.ptr_depth = 1;
     }
     
-    AlirValue *ptr = new_temp(ctx, vn->var_type);
+    // [FIX] Pre-calculate exact array sizes and auto types BEFORE allocating 
+    // the stack pointer to prevent stack smashing and SIGSEGV on returns.
+    if (vn->initializer) {
+        if (vn->initializer->type == NODE_ARRAY_LIT) {
+            ArrayLitNode *al = (ArrayLitNode*)vn->initializer;
+            int count = 0;
+            ASTNode *elem = al->elements;
+            while(elem) { count++; elem = elem->next; }
+            
+            if (vn->var_type.array_size <= 0) {
+                vn->var_type.array_size = count;
+            }
+            
+            if (vn->var_type.base == TYPE_AUTO || vn->var_type.base == TYPE_UNKNOWN) {
+                VarType elem_type = {TYPE_INT, 0, 0, NULL}; 
+                if (al->elements) {
+                    elem_type = sem_get_node_type(ctx->sem, al->elements);
+                    if (elem_type.base == TYPE_UNKNOWN || elem_type.base == TYPE_AUTO) {
+                        if (al->elements->type == NODE_LITERAL) {
+                            elem_type = ((LiteralNode*)al->elements)->var_type;
+                        }
+                    }
+                }
+                vn->var_type.base = elem_type.base;
+                vn->var_type.ptr_depth = elem_type.ptr_depth;
+                if (elem_type.class_name) {
+                    vn->var_type.class_name = alir_strdup(ctx->module, elem_type.class_name);
+                }
+            }
+        } else if (vn->var_type.base == TYPE_AUTO || vn->var_type.base == TYPE_UNKNOWN) {
+            VarType init_t = sem_get_node_type(ctx->sem, vn->initializer);
+            if (init_t.base != TYPE_UNKNOWN && init_t.base != TYPE_AUTO) {
+                vn->var_type = init_t;
+            } else if (vn->initializer->type == NODE_LITERAL) {
+                vn->var_type = ((LiteralNode*)vn->initializer)->var_type;
+            } else if (vn->initializer->type == NODE_CALL) {
+                // Inherit type from constructor if possible
+                CallNode *cn = (CallNode*)vn->initializer;
+                if (alir_find_struct(ctx->module, cn->name)) {
+                    vn->var_type.base = TYPE_CLASS;
+                    vn->var_type.ptr_depth = 1;
+                    vn->var_type.class_name = alir_strdup(ctx->module, cn->name);
+                }
+            }
+        }
+    }
     
-    // FIX: If it's an array, make sure the alloca allocates the array type
-    // ensure ptr->type correctly reflects the array structure.
+    // [CRITICAL FIX] If it's an inline stack array, it MUST NOT have ptr_depth > 0.
+    // Otherwise, LLVM opaque pointers erase the array type into a generic ptr,
+    // causing GEP to fail with "Invalid indices for GEP pointer type".
+    if (vn->var_type.array_size > 0) {
+        vn->var_type.ptr_depth = 0;
+    }
+    
+    // Now allocate with the CORRECT fully-sized and typed variable
+    AlirValue *ptr = new_temp(ctx, vn->var_type);
     emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOCA, ptr, NULL, NULL));
     alir_add_symbol(ctx, vn->name, ptr, vn->var_type);
     
@@ -106,6 +159,7 @@ void alir_stmt_assign(AlirCtx *ctx, ASTNode *node) {
                 sym->type.class_name = val->type.class_name ? alir_strdup(ctx->module, val->type.class_name) : NULL;
                 sym->type.base = val->type.base;
                 sym->type.ptr_depth = val->type.ptr_depth;
+                sym->type.array_size = val->type.array_size;
                 if (ptr && sym->ptr == ptr) ptr->type = sym->type;
             } else if (sym->type.base == TYPE_CLASS && val->type.base == TYPE_CLASS) {
                 sym->type.ptr_depth = val->type.ptr_depth;
