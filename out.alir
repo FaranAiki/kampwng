@@ -1,287 +1,223 @@
 ; Module: main_module
 
 ; Struct Definitions
-%struct.LifeSupport = type { i8 ptr*:name, i8 ptr*:status, i32:oxygen_level, i32:crew_count }
-%struct.Engine = type { i8 ptr*:name, i8 ptr*:status, i32:fuel, i32:thrust }
-%struct.Module = type { i8 ptr*:name, i8 ptr*:status }
-%struct.Logger = type {  }
+%struct.Mahasiswa = type { i8 ptr*:name, i32:age, i32:nim }
+%struct.Person = type { i8 ptr*:name, i32:age }
+%struct.Hand = type {  }
+%struct.File = type { string:filename, string:mode, %FILE ptr:fd_ptr, i32:is_closed }
+%struct.FILE = type {  }
 
 ; Globals
-@str.21 = string "Systems Nominal"
-@str.20 = string "CRITICAL ALERT: Low Oxygen"
-@str.19 = string "\n--- Simulation Day 1 ---\n"
-@str.18 = string "Orbit achieved."
-@str.17 = string "LIFTOFF!\n"
-@str.16 = string "T-Minus %d...\n"
-@str.15 = string "\n--- Ignition Sequence ---\n"
-@str.14 = string "Initiating pre-flight checks..."
-@str.13 = string "active"
-@str.12 = string "Habitation Module"
-@str.11 = string "standby"
-@str.10 = string "Thruster Alpha"
-@str.9 = string "Module '%s' is currently: %s\n"
-@str.8 = string "[SYSTEM LOG]: %s\n"
-@str.7 = string ">> Daily cycle complete. Oxygen levels at %d%%\n"
-@str.6 = string "Module '%s' is currently: %s\n"
-@str.5 = string "[SYSTEM LOG]: %s\n"
-@str.4 = string ">> WARNING: Insufficient fuel to burn %d units!\n"
-@str.3 = string ">> Engine burned %d fuel units. Fuel remaining: %d\n"
-@str.2 = string "[SYSTEM LOG]: %s\n"
-@str.1 = string "Module '%s' is currently: %s\n"
-@str.0 = string "[SYSTEM LOG]: %s\n"
+@str.9 = string "%d\n"
+@str.8 = string "%d\n"
+@str.7 = string "%d!\n"
+@str.6 = string "%s\n"
+@str.5 = string "Muhammad Faran Aiki"
+@str.4 = string "I am waving %d times\n"
+@str.3 = string "My name is %s with nim %d\n"
+@str.2 = string "I am waving %d times\n"
+@str.1 = string "My name is %s\n and I am %d years old\n"
+@str.0 = string "I am waving %d times\n"
 
-define func void @Logger_log(%Logger ptr %p0, i8 ptr %p1) {
+define func void @FILE(%FILE ptr %p0) {
 entry:
-  %0 = onstack i8 ptr
-  store i8 ptr %p1, %0
-  %1 = load any %0
-  %2 = call %printf (@str.0, %1)
+  %0 = onstack %FILE ptr
+  store void %p0, %0
   return void
 }
 
-define func void @Logger(%Logger ptr %p0) {
+promise %FILE ptr @fopen(i8 ptr, i8 ptr)
+
+promise i32 @fclose(%FILE ptr)
+
+promise any @fread(void ptr, any, any, %FILE ptr)
+
+promise i32 @fgetc(%FILE ptr)
+
+promise i8 ptr @fgets(i8 ptr, i32, %FILE ptr)
+
+promise string @File_read(%File ptr)
+
+promise string @File_readline(%File ptr)
+
+define func void @File(%File ptr %p0, string %p1, string %p2, %FILE ptr %p3, i32 %p4) {
 entry:
-  %3 = onstack %Logger ptr
-  store void %p0, %3
+  %1 = onstack %File ptr
+  store void %p0, %1
+  %2 = load %File ptr %1
+  %3 = getptr string ptr %2, 0
+  store string %p1, %3
+  %4 = load %File ptr %1
+  %5 = getptr string ptr %4, 1
+  store string %p2, %5
+  %6 = load %File ptr %1
+  %7 = getptr %FILE ptr* %6, 2
+  store %FILE ptr %p3, %7
+  %8 = load %File ptr %1
+  %9 = getptr i32 ptr %8, 3
+  store i32 %p4, %9
   return void
 }
 
-define func void @Module_report_status(%Module ptr %p0) {
-entry:
-  %0 = load %Module ptr %p0
-  %1 = getptr any ptr %0, 0
-  %2 = load any %1
-  %3 = load %Module ptr %p0
-  %4 = getptr any ptr %3, 1
-  %5 = load any %4
-  %6 = call %printf (@str.1, %2, %5)
-  return void
-}
-
-define func void @Module_log(%Module ptr %p0, i8 ptr %p1) {
-entry:
-  %0 = onstack i8 ptr
-  store i8 ptr %p1, %0
-  %1 = load any %0
-  %2 = call %printf (@str.2, %1)
-  return void
-}
-
-define func void @Module(%Module ptr %p0, i8 ptr* %p1, i8 ptr* %p2) {
-entry:
-  %3 = onstack %Module ptr
-  store void %p0, %3
-  %4 = load %Module ptr %3
-  %5 = getptr i8 ptr** %4, 0
-  store i8 ptr* %p1, %5
-  %6 = load %Module ptr %3
-  %7 = getptr i8 ptr** %6, 1
-  store i8 ptr* %p2, %7
-  return void
-}
-
-define func void @Engine_burn(%Engine ptr %p0, i32 %p1) {
+define func void @Hand_wave(%Hand ptr %p0, i32 %p1) {
 entry:
   %0 = onstack i32
   store i32 %p1, %0
-  %1 = load %Engine ptr %p0
-  %2 = getptr any ptr %1, 2
-  %3 = load any %2
-  %4 = load any %0
-  %5 = gte i1 %3, %4
-  condition %5, then (else)
-then:
-  %6 = load %Engine ptr %p0
-  %7 = getptr any ptr %6, 2
-  %8 = load %Engine ptr %p0
-  %9 = getptr any ptr %8, 2
-  %10 = load any %9
-  %11 = load any %0
-  %12 = sub i32 %10, %11
-  store i32 %12, %7
-  %13 = load any %0
-  %14 = load %Engine ptr %p0
-  %15 = getptr any ptr %14, 2
-  %16 = load any %15
-  %17 = call %printf (@str.3, %13, %16)
-  jump merge
-else:
-  %18 = load any %0
-  %19 = call %printf (@str.4, %18)
-  jump merge
-merge:
-  return void
-}
-
-define func void @Engine_log(%Engine ptr %p0, i8 ptr %p1) {
-entry:
-  %0 = onstack i8 ptr
-  store i8 ptr %p1, %0
   %1 = load any %0
-  %2 = call %printf (@str.5, %1)
+  %2 = call %print (@str.0, %1)
   return void
 }
 
-define func void @Engine_report_status(%Engine ptr %p0) {
+define func void @Hand(%Hand ptr %p0) {
 entry:
-  %0 = load %Engine ptr %p0
+  %3 = onstack %Hand ptr
+  store void %p0, %3
+  return void
+}
+
+define func void @Person_introduce(%Person ptr %p0) {
+entry:
+  %0 = load %Person ptr %p0
   %1 = getptr any ptr %0, 0
   %2 = load any %1
-  %3 = load %Engine ptr %p0
+  %3 = load %Person ptr %p0
   %4 = getptr any ptr %3, 1
   %5 = load any %4
-  %6 = call %printf (@str.6, %2, %5)
+  %6 = call %print (@str.1, %2, %5)
   return void
 }
 
-define func void @Engine(%Engine ptr %p0, i8 ptr* %p1, i8 ptr* %p2, i32 %p3, i32 %p4) {
+define func void @Person_setAge(%Person ptr %p0, i32 %p1) {
 entry:
-  %7 = onstack %Engine ptr
-  store void %p0, %7
-  %8 = load %Engine ptr %7
-  %9 = getptr i8 ptr** %8, 0
-  store i8 ptr* %p1, %9
-  %10 = load %Engine ptr %7
-  %11 = getptr i8 ptr** %10, 1
-  store i8 ptr* %p2, %11
-  %12 = load %Engine ptr %7
-  %13 = getptr i32 ptr %12, 2
-  store i32 %p3, %13
-  %14 = load %Engine ptr %7
-  %15 = getptr i32 ptr %14, 3
-  store i32 %p4, %15
+  %0 = onstack i32
+  store i32 %p1, %0
+  %1 = load any %p0
+  %2 = getptr any ptr %1, 1
+  %3 = load any %0
+  store any %3, %2
   return void
 }
 
-define func void @LifeSupport_daily_cycle(%LifeSupport ptr %p0) {
+define func void @Person_wave(%Person ptr %p0, i32 %p1) {
 entry:
-  %0 = load %LifeSupport ptr %p0
-  %1 = getptr any ptr %0, 2
-  %2 = load %LifeSupport ptr %p0
-  %3 = getptr any ptr %2, 2
-  %4 = load any %3
-  %5 = load %LifeSupport ptr %p0
-  %6 = getptr any ptr %5, 3
-  %7 = load any %6
-  %8 = sub i32 %4, %7
-  store i32 %8, %1
-  %9 = load %LifeSupport ptr %p0
-  %10 = getptr any ptr %9, 2
-  %11 = load any %10
-  %12 = call %printf (@str.7, %11)
-  return void
-}
-
-define func void @LifeSupport_log(%LifeSupport ptr %p0, i8 ptr %p1) {
-entry:
-  %0 = onstack i8 ptr
-  store i8 ptr %p1, %0
+  %0 = onstack i32
+  store i32 %p1, %0
   %1 = load any %0
-  %2 = call %printf (@str.8, %1)
+  %2 = call %print (@str.2, %1)
   return void
 }
 
-define func void @LifeSupport_report_status(%LifeSupport ptr %p0) {
+define func void @Person(%Person ptr %p0, i8 ptr* %p1, i32 %p2) {
 entry:
-  %0 = load %LifeSupport ptr %p0
+  %3 = onstack %Person ptr
+  store void %p0, %3
+  %4 = load %Person ptr %3
+  %5 = getptr i8 ptr** %4, 0
+  store i8 ptr* %p1, %5
+  %6 = load %Person ptr %3
+  %7 = getptr i32 ptr %6, 1
+  store i32 %p2, %7
+  return void
+}
+
+define func void @Mahasiswa_introduce(%Mahasiswa ptr %p0) {
+entry:
+  %0 = load %Mahasiswa ptr %p0
   %1 = getptr any ptr %0, 0
   %2 = load any %1
-  %3 = load %LifeSupport ptr %p0
-  %4 = getptr any ptr %3, 1
+  %3 = load %Mahasiswa ptr %p0
+  %4 = getptr any ptr %3, 2
   %5 = load any %4
-  %6 = call %printf (@str.9, %2, %5)
+  %6 = call %print (@str.3, %2, %5)
   return void
 }
 
-define func void @LifeSupport(%LifeSupport ptr %p0, i8 ptr* %p1, i8 ptr* %p2, i32 %p3, i32 %p4) {
+define func void @Mahasiswa_wave(%Mahasiswa ptr %p0, i32 %p1) {
 entry:
-  %7 = onstack %LifeSupport ptr
-  store void %p0, %7
-  %8 = load %LifeSupport ptr %7
-  %9 = getptr i8 ptr** %8, 0
-  store i8 ptr* %p1, %9
-  %10 = load %LifeSupport ptr %7
-  %11 = getptr i8 ptr** %10, 1
-  store i8 ptr* %p2, %11
-  %12 = load %LifeSupport ptr %7
-  %13 = getptr i32 ptr %12, 2
-  store i32 %p3, %13
-  %14 = load %LifeSupport ptr %7
-  %15 = getptr i32 ptr %14, 3
-  store i32 %p4, %15
+  %0 = onstack i32
+  store i32 %p1, %0
+  %1 = load any %0
+  %2 = call %print (@str.4, %1)
+  return void
+}
+
+define func void @Mahasiswa_setAge(%Mahasiswa ptr %p0, i32 %p1) {
+entry:
+  %0 = onstack i32
+  store i32 %p1, %0
+  %1 = load any %p0
+  %2 = getptr any ptr %1, 1
+  %3 = load any %0
+  store any %3, %2
+  return void
+}
+
+define func void @Mahasiswa(%Mahasiswa ptr %p0, i8 ptr* %p1, i32 %p2, i32 %p3) {
+entry:
+  %4 = onstack %Mahasiswa ptr
+  store void %p0, %4
+  %5 = load %Mahasiswa ptr %4
+  %6 = getptr i8 ptr** %5, 0
+  store i8 ptr* %p1, %6
+  %7 = load %Mahasiswa ptr %4
+  %8 = getptr i32 ptr %7, 1
+  store i32 %p2, %8
+  %9 = load %Mahasiswa ptr %4
+  %10 = getptr i32 ptr %9, 2
+  store i32 %p3, %10
   return void
 }
 
 define func i32 @main() {
 entry:
-  %0 = onstack %Engine ptr
-  %1 = sizeof i32 type(Engine)
+  %0 = onstack %Person ptr
+  %1 = sizeof i32 type(Person)
   %2 = onheap i8 ptr %1
-  %3 = bitcast %Engine ptr %2
-  %4 = call @Engine (%3, @str.10, @str.11, 5000, 2000)
-  store %Engine ptr %3, %0
-  %5 = onstack %LifeSupport ptr
-  %6 = sizeof i32 type(LifeSupport)
-  %7 = onheap i8 ptr %6
-  %8 = bitcast %LifeSupport ptr %7
-  %9 = call @LifeSupport (%8, @str.12, @str.13, 98, 4)
-  store %LifeSupport ptr %8, %5
-  %10 = load any %0
-  %11 = bitcast %Logger ptr %10
-  %12 = call %Logger_log (%11, @str.14)
-  %13 = call %Engine_report_status (%0)
-  %14 = call %LifeSupport_report_status (%5)
-  %15 = call %printf (@str.15)
-  %16 = onstack i32 ptr
-  %17 = getptr i32 ptr* %16, 0
-  store i32 5, %17
-  %18 = getptr i32 ptr* %16, 1
-  store i32 4, %18
-  %19 = getptr i32 ptr* %16, 2
-  store i32 3, %19
-  %20 = getptr i32 ptr* %16, 3
-  store i32 2, %20
-  %21 = getptr i32 ptr* %16, 4
+  %3 = bitcast %Person ptr %2
+  %4 = call @Person (%3, @str.5, 18)
+  store %Person ptr %3, %0
+  %5 = load any %0
+  %6 = getptr any ptr %5, 0
+  %7 = load any %6
+  %8 = call %print (@str.6, %7)
+  %9 = onstack %Mahasiswa ptr
+  %10 = sizeof i32 type(Mahasiswa)
+  %11 = onheap i8 ptr %10
+  %12 = bitcast %Mahasiswa ptr %11
+  %13 = load any %0
+  %14 = getptr any ptr %13, 0
+  %15 = load any %14
+  %16 = load any %0
+  %17 = getptr any ptr %16, 1
+  %18 = load any %17
+  %19 = call @Mahasiswa (%12, %15, %18, 18225122)
+  store %Mahasiswa ptr %12, %9
+  %20 = onstack i32 ptr
+  %21 = getptr i32 ptr* %20, 0
   store i32 1, %21
-  %22 = onstack i32
-  store i32 0, %22
-  jump while_cond
-while_cond:
-  %23 = load any %22
-  %24 = lt i1 %23, 5
-  condition %24, while_body (while_end)
-while_body:
-  %25 = load any %22
-  %26 = getptr any ptr %16, %25
-  %27 = load any %26
-  %28 = call %printf (@str.16, %27)
-  %29 = load any %22
-  %30 = add i32 %29, 1
-  store i32 %30, %22
-  jump while_cond
-while_end:
-  %31 = call %printf (@str.17)
-  %32 = call %Engine_burn (%0, 250)
-  %33 = load any %0
-  %34 = bitcast %Logger ptr %33
-  %35 = call %Logger_log (%34, @str.18)
-  %36 = call %printf (@str.19)
-  %37 = call %LifeSupport_daily_cycle (%5)
-  %38 = load any %5
-  %39 = getptr any ptr %38, 2
-  %40 = load any %39
-  %41 = lt i1 %40, 20
-  condition %41, then (else)
-then:
-  %42 = load any %5
-  %43 = bitcast %Logger ptr %42
-  %44 = call %Logger_log (%43, @str.20)
-  jump merge
-else:
-  %45 = load any %5
-  %46 = bitcast %Logger ptr %45
-  %47 = call %Logger_log (%46, @str.21)
-  jump merge
-merge:
+  %22 = getptr i32 ptr* %20, 1
+  store i32 2, %22
+  %23 = getptr i32 ptr* %20, 2
+  store i32 3, %23
+  %24 = getptr any ptr %20, 2
+  %25 = load any %24
+  %26 = call %print (@str.7, %25)
+  %27 = call %Person_introduce (%0)
+  %28 = load any %0
+  %29 = bitcast %Hand ptr %28
+  %30 = call %Hand_wave (%29, 5)
+  %31 = load any %9
+  %32 = bitcast %Hand ptr %31
+  %33 = call %Hand_wave (%32, 5)
+  %34 = call %Mahasiswa_introduce (%9)
+  %35 = load any %9
+  %36 = getptr any ptr %35, 1
+  %37 = load any %36
+  %38 = call %print (@str.8, %37)
+  %39 = call %Mahasiswa_setAge (%9, 5)
+  %40 = load any %9
+  %41 = getptr any ptr %40, 1
+  %42 = load any %41
+  %43 = call %print (@str.9, %42)
   return i32 0
 }

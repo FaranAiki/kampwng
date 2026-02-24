@@ -140,6 +140,10 @@ typedef enum {
   TOKEN_XOR,     // ^
   TOKEN_LSHIFT,  // <<
   TOKEN_RSHIFT,  // >>
+  // TODO add this using AI idk 
+  // but this operator maps to llvm.fshl and llvm.fshr
+  TOKEN_LROTATE,  // %>>
+  TOKEN_RROTATE,  // <<% 
   
   TOKEN_AND_AND, // &&
   TOKEN_OR_OR,   // ||
