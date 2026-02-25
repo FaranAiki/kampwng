@@ -22,20 +22,20 @@ open class Person has Hand {
   char name[256] = "unnamed";
   int age = 0;
   void introduce() {
-    print "My name is %s\n and I am %d years old\n", this.name, this.age;
+    printf "My name is %s\n and I am %d years old\n", this.name, this.age;
   }
 }
 
 open class Mahasiswa is Person {
   int nim = 0;
   void introduce() {
-    print "My name is %s with nim %d\n", this.name, this.nim;
+    printf "My name is %s with nim %d\n", this.name, this.nim;
   }
 }
 
 int main() {
   let Faran = Person ("Muhammad Faran Aiki", 18);
-  print("%s\n", Faran.name);
+  printf("%s\n", Faran.name);
   let Faran_Mahasiswa = Mahasiswa (
     Faran.name,
     Faran.age,
@@ -43,10 +43,10 @@ int main() {
   );
   // suggest: let Faran_Mahasiswa be Mahasiswa[Faran](18225122)
   int a[12] = [1,2,3];
-  print "%d!\n", a[2];
+  printf "%d!\n", a[2];
   Faran.introduce();
   Faran[Hand].wave(5);
   Faran_Mahasiswa[Hand].wave(5);
   Faran_Mahasiswa.introduce();
-  print "%d\n", Faran_Mahasiswa.age;
+  printf "%d\n", Faran_Mahasiswa.age;
 }

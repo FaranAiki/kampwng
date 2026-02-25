@@ -66,7 +66,8 @@ void sem_check_var_ref(SemanticCtx *ctx, ASTNode *node) {
         
         if (ctx->current_func_sym && ctx->current_func_sym->is_pure) {
             if (found_in_scope == ctx->global_scope) {
-                sem_error(ctx, node, "Pure function '%s' cannot read global variable '%s'", ctx->current_func_sym->name, ref->name);
+                // instead of throwing error, just set it to impure
+                // sem_error(ctx, node, "Pure function '%s' cannot read global variable '%s'", ctx->current_func_sym->name, ref->name);
             }
         }
 

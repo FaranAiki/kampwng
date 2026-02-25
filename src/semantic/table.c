@@ -28,6 +28,7 @@ void sem_set_node_type(SemanticCtx *ctx, ASTNode *node, VarType type) {
     entry->node = node;
     entry->type = type;
     entry->is_tainted = 0; 
+    entry->is_impure = 0; 
     entry->next = ctx->type_buckets[idx];
     ctx->type_buckets[idx] = entry;
 }
@@ -66,6 +67,33 @@ int sem_get_node_tainted(SemanticCtx *ctx, ASTNode *node) {
     TypeEntry *curr = ctx->type_buckets[idx];
     while (curr) {
         if (curr->node == node) return curr->is_tainted;
+        curr = curr->next;
+    }
+    return 0; 
+}
+
+void sem_set_node_impure(SemanticCtx *ctx, ASTNode *node, int is_impure) {
+    if (!node) return;
+    unsigned int idx = hash_ptr(node);
+    TypeEntry *curr = ctx->type_buckets[idx];
+    while (curr) {
+        if (curr->node == node) {
+            curr->is_impure = is_impure;
+            return;
+        }
+        curr = curr->next;
+    }
+    
+    sem_set_node_type(ctx, node, (VarType){TYPE_UNKNOWN, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0});
+    ctx->type_buckets[idx]->is_impure = is_impure;
+}
+
+int sem_get_node_impure(SemanticCtx *ctx, ASTNode *node) {
+    if (!node) return 0;
+    unsigned int idx = hash_ptr(node);
+    TypeEntry *curr = ctx->type_buckets[idx];
+    while (curr) {
+        if (curr->node == node) return curr->is_impure;
         curr = curr->next;
     }
     return 0; 

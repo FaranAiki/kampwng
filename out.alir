@@ -1,309 +1,48 @@
 ; Module: main_module
 
-; Struct Definitions
-%struct.LifeSupport = type { i8 ptr*:name, i8 ptr*:status, i32:oxygen_level, i32:crew_count }
-%struct.Engine = type { i8 ptr*:name, i8 ptr*:status, i32:fuel, i32:thrust }
-%struct.Module = type { i8 ptr*:name, i8 ptr*:status }
-%struct.Logger = type {  }
+; Enum Definitions
+; enum Minuman { Teh=0, Kopi=1, Susu=2 }
+; enum Makanan { Ayam=0, Burger=1, Sapi=2, Daging=3 }
 
 ; Globals
-@str.21 = string "Systems Nominal"
-@str.20 = string "CRITICAL ALERT: Low Oxygen"
-@str.19 = string "\n--- Simulation Day 1 ---\n"
-@str.18 = string "Orbit achieved."
-@str.17 = string "LIFTOFF!\n"
-@str.16 = string "T-Minus %d...\n"
-@str.15 = string "\n--- Ignition Sequence ---\n"
-@str.14 = string "Initiating pre-flight checks..."
-@str.13 = string "active"
-@str.12 = string "Habitation Module"
-@str.11 = string "standby"
-@str.10 = string "Thruster Alpha"
-@str.9 = string "Module '%s' is currently: %s\n"
-@str.8 = string "[SYSTEM LOG]: %s\n"
-@str.7 = string ">> Daily cycle complete. Oxygen levels at %d%%\n"
-@str.6 = string "Module '%s' is currently: %s\n"
-@str.5 = string "[SYSTEM LOG]: %s\n"
-@str.4 = string ">> WARNING: Insufficient fuel to burn %d units!\n"
-@str.3 = string ">> Engine burned %d fuel units. Fuel remaining: %d\n"
-@str.2 = string "[SYSTEM LOG]: %s\n"
-@str.1 = string "Module '%s' is currently: %s\n"
-@str.0 = string "[SYSTEM LOG]: %s\n"
-
-define func void @Logger_log(%Logger ptr %p0, i8 ptr %p1) {
-entry:
-  %0 = onstack %Logger ptr
-  store %Logger ptr %p0, %0
-  %1 = onstack i8 ptr
-  store i8 ptr %p1, %1
-  %2 = load i8 ptr %1
-  %3 = call %printf (@str.0, %2)
-  return void
-}
-
-define func void @Logger(%Logger ptr %p0) {
-entry:
-  %4 = onstack %Logger ptr
-  store void %p0, %4
-  return void
-}
-
-define func void @Module_report_status(%Module ptr %p0) {
-entry:
-  %0 = onstack %Module ptr
-  store %Module ptr %p0, %0
-  %1 = load %Module ptr %0
-  %2 = getptr i8 ptr** %1, 0
-  %3 = load i8 ptr* %2
-  %4 = load %Module ptr %0
-  %5 = getptr i8 ptr** %4, 1
-  %6 = load i8 ptr* %5
-  %7 = call %printf (@str.1, %3, %6)
-  return void
-}
-
-define func void @Module_log(%Module ptr %p0, i8 ptr %p1) {
-entry:
-  %0 = onstack %Module ptr
-  store %Module ptr %p0, %0
-  %1 = onstack i8 ptr
-  store i8 ptr %p1, %1
-  %2 = load i8 ptr %1
-  %3 = call %printf (@str.2, %2)
-  return void
-}
-
-define func void @Module(%Module ptr %p0, i8 ptr* %p1, i8 ptr* %p2) {
-entry:
-  %4 = onstack %Module ptr
-  store void %p0, %4
-  %5 = load %Module ptr %4
-  %6 = getptr i8 ptr** %5, 0
-  store i8 ptr* %p1, %6
-  %7 = load %Module ptr %4
-  %8 = getptr i8 ptr** %7, 1
-  store i8 ptr* %p2, %8
-  return void
-}
-
-define func void @Engine_burn(%Engine ptr %p0, i32 %p1) {
-entry:
-  %0 = onstack %Engine ptr
-  store %Engine ptr %p0, %0
-  %1 = onstack i32
-  store i32 %p1, %1
-  %2 = load %Engine ptr %0
-  %3 = getptr i32 ptr %2, 2
-  %4 = load i32 %3
-  %5 = load i32 %1
-  %6 = gte i1 %4, %5
-  condition %6, then (else)
-then:
-  %7 = load %Engine ptr %0
-  %8 = getptr i32 ptr %7, 2
-  %9 = load %Engine ptr %0
-  %10 = getptr i32 ptr %9, 2
-  %11 = load i32 %10
-  %12 = load i32 %1
-  %13 = sub i32 %11, %12
-  store i32 %13, %8
-  %14 = load i32 %1
-  %15 = load %Engine ptr %0
-  %16 = getptr i32 ptr %15, 2
-  %17 = load i32 %16
-  %18 = call %printf (@str.3, %14, %17)
-  jump merge
-else:
-  %19 = load i32 %1
-  %20 = call %printf (@str.4, %19)
-  jump merge
-merge:
-  return void
-}
-
-define func void @Engine_log(%Engine ptr %p0, i8 ptr %p1) {
-entry:
-  %0 = onstack %Engine ptr
-  store %Engine ptr %p0, %0
-  %1 = onstack i8 ptr
-  store i8 ptr %p1, %1
-  %2 = load i8 ptr %1
-  %3 = call %printf (@str.5, %2)
-  return void
-}
-
-define func void @Engine_report_status(%Engine ptr %p0) {
-entry:
-  %0 = onstack %Engine ptr
-  store %Engine ptr %p0, %0
-  %1 = load %Engine ptr %0
-  %2 = getptr i8 ptr** %1, 0
-  %3 = load i8 ptr* %2
-  %4 = load %Engine ptr %0
-  %5 = getptr i8 ptr** %4, 1
-  %6 = load i8 ptr* %5
-  %7 = call %printf (@str.6, %3, %6)
-  return void
-}
-
-define func void @Engine(%Engine ptr %p0, i8 ptr* %p1, i8 ptr* %p2, i32 %p3, i32 %p4) {
-entry:
-  %8 = onstack %Engine ptr
-  store void %p0, %8
-  %9 = load %Engine ptr %8
-  %10 = getptr i8 ptr** %9, 0
-  store i8 ptr* %p1, %10
-  %11 = load %Engine ptr %8
-  %12 = getptr i8 ptr** %11, 1
-  store i8 ptr* %p2, %12
-  %13 = load %Engine ptr %8
-  %14 = getptr i32 ptr %13, 2
-  store i32 %p3, %14
-  %15 = load %Engine ptr %8
-  %16 = getptr i32 ptr %15, 3
-  store i32 %p4, %16
-  return void
-}
-
-define func void @LifeSupport_daily_cycle(%LifeSupport ptr %p0) {
-entry:
-  %0 = onstack %LifeSupport ptr
-  store %LifeSupport ptr %p0, %0
-  %1 = load %LifeSupport ptr %0
-  %2 = getptr i32 ptr %1, 2
-  %3 = load %LifeSupport ptr %0
-  %4 = getptr i32 ptr %3, 2
-  %5 = load i32 %4
-  %6 = load %LifeSupport ptr %0
-  %7 = getptr i32 ptr %6, 3
-  %8 = load i32 %7
-  %9 = sub i32 %5, %8
-  store i32 %9, %2
-  %10 = load %LifeSupport ptr %0
-  %11 = getptr i32 ptr %10, 2
-  %12 = load i32 %11
-  %13 = call %printf (@str.7, %12)
-  return void
-}
-
-define func void @LifeSupport_log(%LifeSupport ptr %p0, i8 ptr %p1) {
-entry:
-  %0 = onstack %LifeSupport ptr
-  store %LifeSupport ptr %p0, %0
-  %1 = onstack i8 ptr
-  store i8 ptr %p1, %1
-  %2 = load i8 ptr %1
-  %3 = call %printf (@str.8, %2)
-  return void
-}
-
-define func void @LifeSupport_report_status(%LifeSupport ptr %p0) {
-entry:
-  %0 = onstack %LifeSupport ptr
-  store %LifeSupport ptr %p0, %0
-  %1 = load %LifeSupport ptr %0
-  %2 = getptr i8 ptr** %1, 0
-  %3 = load i8 ptr* %2
-  %4 = load %LifeSupport ptr %0
-  %5 = getptr i8 ptr** %4, 1
-  %6 = load i8 ptr* %5
-  %7 = call %printf (@str.9, %3, %6)
-  return void
-}
-
-define func void @LifeSupport(%LifeSupport ptr %p0, i8 ptr* %p1, i8 ptr* %p2, i32 %p3, i32 %p4) {
-entry:
-  %8 = onstack %LifeSupport ptr
-  store void %p0, %8
-  %9 = load %LifeSupport ptr %8
-  %10 = getptr i8 ptr** %9, 0
-  store i8 ptr* %p1, %10
-  %11 = load %LifeSupport ptr %8
-  %12 = getptr i8 ptr** %11, 1
-  store i8 ptr* %p2, %12
-  %13 = load %LifeSupport ptr %8
-  %14 = getptr i32 ptr %13, 2
-  store i32 %p3, %14
-  %15 = load %LifeSupport ptr %8
-  %16 = getptr i32 ptr %15, 3
-  store i32 %p4, %16
-  return void
-}
+@str.6 = string "anjay aman bosku!\n"
+@str.5 = string "Huh!\n"
+@str.4 = string "Yeay!\n"
+@str.3 = string "Ayam ato ngak daging!\n"
+@str.2 = string "%s is %d\n"
+@str.1 = string "%s is %d\n"
+@str.0 = string "buat"
 
 define func i32 @main() {
 entry:
-  %0 = onstack %Engine ptr
-  %1 = sizeof i32 type(Engine)
-  %2 = onheap i8 ptr %1
-  %3 = bitcast %Engine ptr %2
-  %4 = call @Engine (%3, @str.10, @str.11, 5000, 2000)
-  store %Engine ptr %3, %0
-  %5 = onstack %LifeSupport ptr
-  %6 = sizeof i32 type(LifeSupport)
-  %7 = onheap i8 ptr %6
-  %8 = bitcast %LifeSupport ptr %7
-  %9 = call @LifeSupport (%8, @str.12, @str.13, 98, 4)
-  store %LifeSupport ptr %8, %5
-  %10 = load %Engine ptr %0
-  %11 = bitcast %Logger ptr %10
-  %12 = call %Logger_log (%11, @str.14)
-  %13 = load %Engine ptr %0
-  %14 = call %Engine_report_status (%13)
-  %15 = load %LifeSupport ptr %5
-  %16 = call %LifeSupport_report_status (%15)
-  %17 = call %printf (@str.15)
-  %18 = onstack i32
-  %19 = getptr i32 ptr %18, 0
-  store i32 5, %19
-  %20 = getptr i32 ptr %18, 1
-  store i32 4, %20
-  %21 = getptr i32 ptr %18, 2
-  store i32 3, %21
-  %22 = getptr i32 ptr %18, 3
-  store i32 2, %22
-  %23 = getptr i32 ptr %18, 4
-  store i32 1, %23
-  %24 = onstack i32
-  store i32 0, %24
-  jump while_cond
-while_cond:
-  %25 = load i32 %24
-  %26 = lt i1 %25, 5
-  condition %26, while_body (while_end)
-while_body:
-  %27 = load i32 %24
-  %28 = getptr any ptr %18, %27
-  %29 = load any %28
-  %30 = call %printf (@str.16, %29)
-  %31 = load i32 %24
-  %32 = add i32 %31, 1
-  store i32 %32, %24
-  jump while_cond
-while_end:
-  %33 = call %printf (@str.17)
-  %34 = load %Engine ptr %0
-  %35 = call %Engine_burn (%34, 250)
-  %36 = load %Engine ptr %0
-  %37 = bitcast %Logger ptr %36
-  %38 = call %Logger_log (%37, @str.18)
-  %39 = call %printf (@str.19)
-  %40 = load %LifeSupport ptr %5
-  %41 = call %LifeSupport_daily_cycle (%40)
-  %42 = load %LifeSupport ptr %5
-  %43 = getptr i32 ptr %42, 2
-  %44 = load i32 %43
-  %45 = lt i1 %44, 20
-  condition %45, then (else)
-then:
-  %46 = load %LifeSupport ptr %5
-  %47 = bitcast %Logger ptr %46
-  %48 = call %Logger_log (%47, @str.20)
-  jump merge
-else:
-  %49 = load %LifeSupport ptr %5
-  %50 = bitcast %Logger ptr %49
-  %51 = call %Logger_log (%50, @str.21)
-  jump merge
-merge:
+  %0 = onstack i8 ptr
+  store string @str.0, %0
+  %1 = onstack i32
+  store i32 0, %1
+  %2 = onstack i32
+  %3 = load i32 %1
+  %4 = call %printf (@str.1, %2, %3)
+  %5 = load any %1
+  %6 = add any %5, 1
+  store any %6, %1
+  %7 = onstack i32
+  %8 = load i32 %1
+  %9 = call %printf (@str.2, %7, %8)
+  store i32 0, %1
+  %10 = load i32 %1
+  jumpint %10 { 0: case,  3: case2,  1: case3,  2: case4, } default switch_end
+switch_end:
+  %14 = call %printf (@str.6)
   return i32 0
+case:
+  jump case2
+case2:
+  %11 = call %printf (@str.3)
+  jump switch_end
+case3:
+  %12 = call %printf (@str.4)
+  jump case4
+case4:
+  %13 = call %printf (@str.5)
+  jump switch_end
 }

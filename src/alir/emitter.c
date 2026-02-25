@@ -128,13 +128,13 @@ void alir_emit_function(AlirModule *mod, FILE *f) {
                       }
 
                       if (inst->op == ALIR_OP_SWITCH) {
-                          fprintf(f, " [");
+                          fprintf(f, " {");
                           AlirSwitchCase *c = inst->cases;
                           while(c) {
-                              fprintf(f, " %ld: %s ", c->value, c->label);
+                              fprintf(f, " %ld: %s, ", c->value, c->label);
                               c = c->next;
                           }
-                          fprintf(f, "] else ");
+                          fprintf(f, "} default ");
                           if (inst->op2) alir_fprint_val(f, inst->op2);
                       } else {
                           if (inst->op2) {

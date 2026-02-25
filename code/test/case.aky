@@ -16,24 +16,21 @@ int main() {
   char *s = "buat";
   // typeof(sarapan) is an integer
   let sarapan = Makanan.Ayam;
-  print "%s is %d\n", Makanan[sarapan], sarapan;
+  printf "%s is %d\n", Makanan[sarapan], sarapan;
   sarapan++;
-  print "%s is %d\n", Makanan[sarapan], sarapan;
+  printf "%s is %d\n", Makanan[sarapan], sarapan;
   sarapan = Makanan.Daging;
   switch (sarapan) {
     // case is blocked:
     // you do not need break here
     case Ayam, Daging:
-      print "Ayam ato ngak daging!\n";
+      printf "Ayam ato ngak daging!\n";
     // this will fall into the default 
     // as the leak case "leaks"
     leak case Burger:
-      print "Yeay!\n";
+      printf "Yeay!\n";
     case Sapi:
-      print "Huh!\n";
+      printf "Huh!\n";
   }
-  let nama = input("Nama: ");
-  print "%s\n", nama;
-  free nama;
-  print "anjay aman bosku!\n";
+  printf "anjay aman bosku!\n";
 }

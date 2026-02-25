@@ -68,6 +68,7 @@ typedef struct TypeEntry {
     ASTNode *node;         // KEY: The pointer to the AST node
     VarType type;          // VALUE: The resolved type
     int is_tainted;        // VALUE: The evaluated taint status
+    int is_impure;        // VALUE: The evaluated impure status
     struct TypeEntry *next;
 } TypeEntry;
 
@@ -122,7 +123,9 @@ void sem_set_node_type(SemanticCtx *ctx, ASTNode *node, VarType type);
 VarType sem_get_node_type(SemanticCtx *ctx, ASTNode *node);
 
 void sem_set_node_tainted(SemanticCtx *ctx, ASTNode *node, int is_tainted);
+void sem_set_node_impure(SemanticCtx *ctx, ASTNode *node, int is_impure);
 int sem_get_node_tainted(SemanticCtx *ctx, ASTNode *node);
+int sem_get_node_impure(SemanticCtx *ctx, ASTNode *node);
 
 // Helpers
 int sem_types_are_compatible(VarType dest, VarType src);

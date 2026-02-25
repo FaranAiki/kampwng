@@ -21,8 +21,6 @@ char* alir_strdup(AlirModule *mod, const char *str) {
 }
 
 AlirModule* alir_create_module(CompilerContext *ctx, const char *name) {
-    // Note: We use calloc for the module struct itself if context/arena not yet linked,
-    // but here we are initializing it. If ctx->arena is available, use it.
     AlirModule *m;
     if (ctx && ctx->arena) {
         m = arena_alloc_type(ctx->arena, AlirModule);
@@ -77,7 +75,6 @@ AlirValue* alir_module_add_string_literal(AlirModule *mod, const char *content, 
     g->name = alir_strdup(mod, label);
     g->string_content = alir_strdup(mod, content);
     
-    // [FIX] Accept the specific type (TYPE_STRING vs TYPE_CHAR*)
     g->type = type; 
     
     g->next = mod->globals;
