@@ -9,36 +9,37 @@ flux int gen(int max) {
 int main() {
   let t = gen(100);
   let my_arr = [1,2,3,4];
-  print "%s\n", typeof(t);
-  print "%s\n", typeof(my_arr);
+  // printf "%s\n", typeof(t);
+  // printf "%s\n", typeof(my_arr);
 
   // print i to 500
   for i in 50 {
-    print "%d\n", i;
+    printf "%d\n", i;
   }
 
   // character looping
+  /*
   print "This will loop hello world!\n";
   for c in "Hello, World!" {
-    print "%c:%s\n", c, typeof(c);
-  }
+    printf "%c:%s\n", c, typeof(c);
+  }*/
 
   // integer array looping 
-  print "This will loop integer\n";
+  // printf "This will loop integer\n";
   /*
   for i in [1,2,3,4] {
-    print "%d\n:%s", i, typeof(i);
+    printf "%d\n:%s", i, typeof(i);
   }*/
 
   // string looping
   /*
   for s in ["Hey", "My", "Name", "Is", "Faran"] {
-    print "%s\n", s;
+    printf "%s\n", s;
   }*/
 
-  print "Emit!\n";
+  printf "Emit!\n";
   
   for emitted in gen(10000) {
-    print "%d\n", emitted;
+    printf "%d\n", emitted;
   }
 }

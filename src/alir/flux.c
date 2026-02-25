@@ -26,8 +26,8 @@ void collect_flux_vars_recursive(AlirCtx *ctx, ASTNode *node, int *idx_ptr) {
         ForInNode *fn = (ForInNode*)node;
         FluxVar *fv = alir_alloc(ctx->module, sizeof(FluxVar));
         fv->name = alir_strdup(ctx->module, fn->var_name);
-        fv->type = fn->iter_type; // Usually AUTO, should be resolved
-        if (fv->type.base == TYPE_AUTO) fv->type = (VarType){TYPE_INT}; // Fallback if not resolved
+        fv->type = fn->iter_type; 
+        if (fv->type.base == TYPE_AUTO) fv->type = (VarType){TYPE_INT}; 
         fv->index = (*idx_ptr)++;
         fv->next = ctx->flux_vars;
         ctx->flux_vars = fv;
@@ -49,14 +49,11 @@ void collect_flux_vars_recursive(AlirCtx *ctx, ASTNode *node, int *idx_ptr) {
 void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     // 1. Collect Variables to Capture
     ctx->flux_vars = NULL;
-    int struct_idx = 3; // 0=state, 1=finished, 2=result
-    
-    // Count Params
+    int struct_idx = 3; 
     int param_count = 0;
     Parameter *p = fn->params;
     while(p) { param_count++; p = p->next; }
     
-    // Total struct start index for locals = 3 + param_count + (1 if class member)
     int start_locals = struct_idx + param_count + (fn->class_name ? 1 : 0);
     int current_idx = start_locals;
     
@@ -69,20 +66,15 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     AlirField *fields = NULL;
     AlirField **tail = &fields;
     
-    // Add Header Fields
-    // Field 0: state (int)
     { AlirField *f = alir_alloc(ctx->module, sizeof(AlirField)); f->name = alir_strdup(ctx->module, "state"); f->type = (VarType){TYPE_INT}; f->index=0; *tail=f; tail=&f->next; }
-    // Field 1: finished (bool)
     { AlirField *f = alir_alloc(ctx->module, sizeof(AlirField)); f->name = alir_strdup(ctx->module, "finished"); f->type = (VarType){TYPE_BOOL}; f->index=1; *tail=f; tail=&f->next; }
-    // Field 2: result (ret_type)
     { AlirField *f = alir_alloc(ctx->module, sizeof(AlirField)); f->name = alir_strdup(ctx->module, "result"); f->type = fn->ret_type; f->index=2; *tail=f; tail=&f->next; }
     
-    // Add Params
     int p_idx = 3;
     if (fn->class_name) {
         AlirField *f = alir_alloc(ctx->module, sizeof(AlirField));
         f->name = alir_strdup(ctx->module, "this");
-        f->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; // Pointer to class
+        f->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; 
         f->index = p_idx++;
         *tail=f; tail=&f->next;
     }
@@ -96,7 +88,6 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
         p = p->next;
     }
     
-    // Add Locals
     FluxVar *fv = ctx->flux_vars;
     while(fv) {
         AlirField *f = alir_alloc(ctx->module, sizeof(AlirField));
@@ -110,8 +101,9 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     alir_register_struct(ctx->module, struct_name, fields);
     
     // 3. Generate INIT Function (The Generator Factory)
-    ctx->current_func = alir_add_function(ctx->module, fn->name, (VarType){TYPE_CHAR, 1}, 0); // Returns char* (opaque ptr)
-    // Add params to Init func
+    VarType ret_type = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, struct_name)};
+    ctx->current_func = alir_add_function(ctx->module, fn->name, ret_type, 0); 
+    
     if (fn->class_name) alir_func_add_param(ctx->module, ctx->current_func, "this", (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)});
     p = fn->params;
     while(p) {
@@ -121,17 +113,15 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     
     ctx->current_block = alir_add_block(ctx->module, ctx->current_func, "entry");
     
-    // Allocate Struct
     AlirValue *size_val = new_temp(ctx, (VarType){TYPE_INT});
     emit(ctx, mk_inst(ctx->module, ALIR_OP_SIZEOF, size_val, alir_val_type(ctx->module, struct_name), NULL));
     
     AlirValue *raw_mem = new_temp(ctx, (VarType){TYPE_CHAR, 1});
     emit(ctx, mk_inst(ctx->module, ALIR_OP_ALLOC_HEAP, raw_mem, size_val, NULL));
     
-    AlirValue *ctx_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, struct_name)});
+    AlirValue *ctx_ptr = new_temp(ctx, ret_type);
     emit(ctx, mk_inst(ctx->module, ALIR_OP_BITCAST, ctx_ptr, raw_mem, NULL));
     
-    // Init Header: state=0, finished=0
     AlirValue *ptr_state = new_temp(ctx, (VarType){TYPE_INT, 1});
     emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr_state, ctx_ptr, alir_const_int(ctx->module, 0)));
     emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, alir_const_int(ctx->module, 0), ptr_state));
@@ -140,13 +130,12 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr_fin, ctx_ptr, alir_const_int(ctx->module, 1)));
     emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, alir_const_int(ctx->module, 0), ptr_fin));
     
-    // Store Params into Struct
     int param_offset = 0;
     p_idx = 3;
     if (fn->class_name) {
         char arg_name[16]; sprintf(arg_name, "p%d", param_offset-1);
-        AlirValue *arg_val = alir_val_var(ctx->module, arg_name); // Placeholder for arg value
-        arg_val->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; // [FIX] void store patch
+        AlirValue *arg_val = alir_val_var(ctx->module, arg_name); 
+        arg_val->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; 
         
         AlirValue *f_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 2, 0, alir_strdup(ctx->module, fn->class_name)});
         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, f_ptr, ctx_ptr, alir_const_int(ctx->module, p_idx++)));
@@ -156,7 +145,7 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     while(p) {
         char arg_name[16]; sprintf(arg_name, "p%d", param_offset++);
         AlirValue *arg_val = alir_val_var(ctx->module, arg_name);
-        arg_val->type = p->type; // [FIX] void store patch
+        arg_val->type = p->type; 
         
         VarType pt = p->type; pt.ptr_depth++;
         AlirValue *f_ptr = new_temp(ctx, pt);
@@ -165,58 +154,35 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
         p = p->next;
     }
     
-    // Return Context Ptr
-    emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, raw_mem, NULL));
+    emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, ctx_ptr, NULL));
     
     // 4. Generate RESUME Function
     char resume_name[256]; snprintf(resume_name, 256, "%s_Resume", fn->name);
     ctx->current_func = alir_add_function(ctx->module, resume_name, (VarType){TYPE_VOID}, 0);
-    alir_func_add_param(ctx->module, ctx->current_func, "ctx", (VarType){TYPE_CHAR, 1}); // void* ctx
+    alir_func_add_param(ctx->module, ctx->current_func, "ctx", ret_type); 
     
     ctx->current_block = alir_add_block(ctx->module, ctx->current_func, "entry");
     
-    // Prepare Flux Context
     ctx->in_flux_resume = 1;
     ctx->flux_struct_name = alir_strdup(ctx->module, struct_name);
-    ctx->flux_yield_count = 1; // State 0 is entry, next is 1
+    ctx->flux_yield_count = 1;
     
-    // Bitcast void* ctx to FluxCtx*
-    AlirValue *void_ctx = alir_val_var(ctx->module, "p0"); // First arg
-    ctx->flux_ctx_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, struct_name)});
-    emit(ctx, mk_inst(ctx->module, ALIR_OP_BITCAST, ctx->flux_ctx_ptr, void_ctx, NULL));
+    // [CRITICAL FIX] Bind the exact struct type to the parameter to prevent ALIR backend
+    // from defaulting to `void ptr` when processing field accesses!
+    ctx->flux_ctx_ptr = alir_val_var(ctx->module, "p0"); 
+    ctx->flux_ctx_ptr->type = ret_type;
     
-    // Load State
     AlirValue *ptr_st = new_temp(ctx, (VarType){TYPE_INT, 1});
     emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr_st, ctx->flux_ctx_ptr, alir_const_int(ctx->module, 0)));
     AlirValue *current_state = new_temp(ctx, (VarType){TYPE_INT});
     emit(ctx, mk_inst(ctx->module, ALIR_OP_LOAD, current_state, ptr_st, NULL));
-    
-    // Create Switch
-    AlirBlock *start_bb = alir_add_block(ctx->module, ctx->current_func, "flux_start");
-    AlirBlock *end_bb = alir_add_block(ctx->module, ctx->current_func, "flux_end");
-    
-    AlirInst *sw = mk_inst(ctx->module, ALIR_OP_SWITCH, NULL, current_state, alir_val_label(ctx->module, end_bb->label));
-    ctx->flux_resume_switch = sw;
-    
-    // Case 0 -> Start
-    AlirSwitchCase *c0 = alir_alloc(ctx->module, sizeof(AlirSwitchCase));
-    c0->value = 0; c0->label = start_bb->label;
-    sw->cases = c0;
-    emit(ctx, sw);
-    
-    // Populate Symbols for Parameters in Resume
-    ctx->current_block = start_bb;
-    ctx->symbols = NULL; // Clear symbols from Init func
-    
+
+    ctx->symbols = NULL; 
     p_idx = 3;
     if (fn->class_name) {
-         VarType pt = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; pt.ptr_depth++; // Pointer to pointer
+         VarType pt = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; pt.ptr_depth++;
          AlirValue *ptr = new_temp(ctx, pt);
          emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr, ctx->flux_ctx_ptr, alir_const_int(ctx->module, p_idx++)));
-         // Deref once to get the 'this' pointer value? 
-         // Logic in alir_gen_var_ref does LOAD. So we need the address of the variable.
-         // 'this' is stored in the struct. 'ptr' is the address of 'this' in the struct.
-         // So adding 'ptr' to symbol table is correct.
          alir_add_symbol(ctx, "this", ptr, (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)});
     }
     p = fn->params;
@@ -228,13 +194,32 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
         p = p->next;
     }
     
-    // Generate Body
+    fv = ctx->flux_vars;
+    while(fv) {
+        VarType pt = fv->type; pt.ptr_depth++;
+        AlirValue *ptr = new_temp(ctx, pt);
+        emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr, ctx->flux_ctx_ptr, alir_const_int(ctx->module, fv->index)));
+        alir_add_symbol(ctx, fv->name, ptr, fv->type);
+        fv = fv->next;
+    }
+    
+    AlirBlock *start_bb = alir_add_block(ctx->module, ctx->current_func, "flux_start");
+    AlirBlock *end_bb = alir_add_block(ctx->module, ctx->current_func, "flux_end");
+    
+    AlirInst *sw = mk_inst(ctx->module, ALIR_OP_SWITCH, NULL, current_state, alir_val_label(ctx->module, end_bb->label));
+    ctx->flux_resume_switch = sw;
+    
+    AlirSwitchCase *c0 = alir_alloc(ctx->module, sizeof(AlirSwitchCase));
+    c0->value = 0; c0->label = start_bb->label;
+    sw->cases = c0;
+    emit(ctx, sw);
+    
+    ctx->current_block = start_bb;
+    
     ASTNode *stmt = fn->body;
     while(stmt) { alir_gen_stmt(ctx, stmt); stmt = stmt->next; }
     
-    // Default Finish (if fallthrough)
     if (!ctx->current_block->tail || ctx->current_block->tail->op != ALIR_OP_RET) {
-        // Set finished=1
         AlirValue *p_fin = new_temp(ctx, (VarType){TYPE_BOOL, 1});
         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, p_fin, ctx->flux_ctx_ptr, alir_const_int(ctx->module, 1)));
         emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, alir_const_int(ctx->module, 1), p_fin));
@@ -244,7 +229,6 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     ctx->current_block = end_bb;
     emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, NULL, NULL));
     
-    // Cleanup
     ctx->in_flux_resume = 0;
     ctx->flux_vars = NULL;
     ctx->flux_resume_switch = NULL;
@@ -252,31 +236,27 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
 
 void alir_gen_flux_yield(AlirCtx *ctx, EmitNode *en) {
     if (ctx->in_flux_resume) {
-        // --- FLUX YIELD LOWERING ---
-        // 1. Evaluate Value
         AlirValue *val = alir_gen_expr(ctx, en->value);
+        if (!val) val = alir_const_int(ctx->module, 0); // Safety net
         
-        // 2. Store to Context->Result (Index 2)
-        // struct { state, finished, result, ... }
-        AlirValue *res_ptr = new_temp(ctx, val->type); // Should correspond to yield type
+        // [CRITICAL FIX] Must be a pointer to the value, not the value type itself
+        VarType res_t = val->type; res_t.ptr_depth++;
+        
+        AlirValue *res_ptr = new_temp(ctx, res_t); 
         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, res_ptr, ctx->flux_ctx_ptr, alir_const_int(ctx->module, 2)));
         emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, val, res_ptr));
         
-        // 3. Update State
         int next_state = ctx->flux_yield_count++;
         AlirValue *state_ptr = new_temp(ctx, (VarType){TYPE_INT, 1});
         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, state_ptr, ctx->flux_ctx_ptr, alir_const_int(ctx->module, 0)));
         emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, alir_const_int(ctx->module, next_state), state_ptr));
         
-        // 4. Return Void
         emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, NULL, NULL));
         
-        // 5. Create Resume Block for Next State
         char label[32]; sprintf(label, "resume_%d", next_state);
         AlirBlock *resume_bb = alir_add_block(ctx->module, ctx->current_func, label);
         ctx->current_block = resume_bb;
         
-        // 6. Patch Switch
         AlirSwitchCase *nc = alir_alloc(ctx->module, sizeof(AlirSwitchCase));
         nc->value = next_state;
         nc->label = resume_bb->label;
@@ -284,7 +264,6 @@ void alir_gen_flux_yield(AlirCtx *ctx, EmitNode *en) {
         ctx->flux_resume_switch->cases = nc;
         
     } else {
-        // Fallback for non-lowered yield (if supported directly)
         AlirValue *val = alir_gen_expr(ctx, en->value);
         emit(ctx, mk_inst(ctx->module, ALIR_OP_YIELD, NULL, val, NULL));
     }

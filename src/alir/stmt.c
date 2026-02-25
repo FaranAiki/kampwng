@@ -15,17 +15,11 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
         }
         
         if (fv) {
-            VarType ptr_type = vn->var_type;
-            ptr_type.ptr_depth++;
-            AlirValue *ptr = new_temp(ctx, ptr_type);
-            emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr, ctx->flux_ctx_ptr, alir_const_int(ctx->module, fv->index)));
-            
-            alir_add_symbol(ctx, vn->name, ptr, vn->var_type);
-            
-            if (vn->initializer) {
+            AlirSymbol *sym = alir_find_symbol(ctx, vn->name);
+            if (sym && vn->initializer) {
                 AlirValue *val = alir_gen_expr(ctx, vn->initializer);
                 if (!val) val = alir_const_int(ctx->module, 0); // Safety net
-                emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, val, ptr));
+                emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, val, sym->ptr));
             }
             return; 
         }
@@ -70,6 +64,7 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
         }
 
         case NODE_FOR_IN: {
+            alir_stmt_for_in(ctx, node);
             break;
         }
 
@@ -138,12 +133,17 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
             
             ctx->current_block = then_bb;
             ASTNode *s = in->then_body; while(s){ alir_gen_stmt(ctx,s); s=s->next; }
-            emit(ctx, mk_inst(ctx->module, ALIR_OP_JUMP, NULL, alir_val_label(ctx->module, merge_bb->label), NULL));
+            
+            if (!ctx->current_block->tail || !is_terminator(ctx->current_block->tail->op)) {
+                emit(ctx, mk_inst(ctx->module, ALIR_OP_JUMP, NULL, alir_val_label(ctx->module, merge_bb->label), NULL));
+            }
             
             if (in->else_body) {
                 ctx->current_block = else_bb;
                 s = in->else_body; while(s){ alir_gen_stmt(ctx,s); s=s->next; }
-                emit(ctx, mk_inst(ctx->module, ALIR_OP_JUMP, NULL, alir_val_label(ctx->module, merge_bb->label), NULL));
+                if (!ctx->current_block->tail || !is_terminator(ctx->current_block->tail->op)) {
+                    emit(ctx, mk_inst(ctx->module, ALIR_OP_JUMP, NULL, alir_val_label(ctx->module, merge_bb->label), NULL));
+                }
             }
             
             ctx->current_block = merge_bb;
@@ -160,4 +160,3 @@ void alir_gen_stmt(AlirCtx *ctx, ASTNode *node) {
             break;
     }
 }
-
