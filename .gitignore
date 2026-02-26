@@ -2,10 +2,12 @@
 build/
 
 # outshit 
-out 
+out.*
 output
 
 # exes
+mout
+out
 *.o
 *.out
 *.elf 
@@ -22,12 +24,16 @@ output
 vgcore.*
 massif.out.*
 
-# files 
+# files pre
 kampwng-comp
 kampwng 
+faranaiki
 
 # llvm specific
 *.ll
+
+# assembly specific
+out.s
 
 # alkyl specific
 alkyl
