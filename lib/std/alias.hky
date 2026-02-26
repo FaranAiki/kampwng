@@ -8,6 +8,11 @@ define locked as final;
 define priv as private;
 define pub as public;
 
+// To respect Indonesian's ITB's Algorithmic Notation
+// Well, this is optimized so it is possible
+define iterate as while true;
+define stop (stmt) as if (stmt) then break; 
+
 // TODO loose, hollow, shared, contract, family
 define virtual as loose;
 define abstract as hollow;

@@ -6,8 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// --- ALIR TYPES ---
-
 typedef enum {
     ALIR_VAL_VOID,
     ALIR_VAL_INT,
@@ -25,7 +23,6 @@ typedef struct AlirValue {
     AlirValueKind kind;
     VarType type;       // Reuse Parser's VarType for type info
     
-    // Value storage
     union {
         long int_val;
         double float_val;
@@ -35,7 +32,6 @@ typedef struct AlirValue {
 } AlirValue;
 
 typedef enum {
-    // Memory & Access
     ALIR_OP_ALLOCA,
     ALIR_OP_FREE_STACK,
     ALIR_OP_STORE,
@@ -184,9 +180,6 @@ typedef struct AlirModule {
     const char *filename;
 } AlirModule;
 
-// --- GENERATION CONTEXT ---
-
-// Internal Map: Name -> ALIR Value (Pointer to Alloca)
 typedef struct AlirSymbol {
     char *name;
     AlirValue *ptr; 
@@ -194,7 +187,6 @@ typedef struct AlirSymbol {
     struct AlirSymbol *next;
 } AlirSymbol;
 
-// Flux Variable Tracking
 typedef struct FluxVar {
     char *name;
     VarType type;
@@ -215,12 +207,10 @@ typedef struct AlirCtx {
     int label_counter;
     int str_counter;        // For naming global strings
     
-    // Loop Context
     AlirBlock *loop_continue;
     AlirBlock *loop_break;
     struct AlirCtx *loop_parent;
 
-    // Flux Generation Context
     int in_flux_resume;
     FluxVar *flux_vars;
     AlirValue *flux_ctx_ptr;       // The %ctx pointer in Resume
@@ -228,7 +218,6 @@ typedef struct AlirCtx {
     int flux_yield_count;
     AlirInst *flux_resume_switch;  // The switch instruction being built
 
-    // AST Source Tracking 
     int current_line;
     int current_col;
 } AlirCtx;
@@ -242,7 +231,6 @@ void alir_register_enum(AlirModule *mod, const char *name, AlirEnumEntry *entrie
 AlirEnum* alir_find_enum(AlirModule *mod, const char *name);
 int alir_get_enum_value(AlirModule *mod, const char *enum_name, const char *entry_name, long *out_val);
 
-// Generator Entry
 // REQUIRES: Semantic Context (populated via sem_check_program)
 AlirModule* alir_generate(SemanticCtx *sem, ASTNode *root);
 
@@ -261,7 +249,6 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn);
 void alir_gen_flux_yield(AlirCtx *ctx, EmitNode *en);
 void collect_flux_vars_recursive(AlirCtx *ctx, ASTNode *node, int *idx_ptr);
 
-// Constant Folding / Eval
 long alir_eval_constant_int(AlirCtx *ctx, ASTNode *node);
 
 AlirValue* alir_lower_new_object(AlirCtx *ctx, const char *class_name, ASTNode *args);
@@ -271,7 +258,6 @@ void alir_scan_and_register_classes(AlirCtx *ctx, ASTNode *root);
 
 const char* alir_op_str(AlirOpcode op);
 
-// Helpers to access arena
 void* alir_alloc(AlirModule *mod, size_t size);
 char* alir_strdup(AlirModule *mod, const char *str);
 

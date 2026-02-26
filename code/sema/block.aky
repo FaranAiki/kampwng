@@ -1,0 +1,14 @@
+int k() {
+  int p = 5;
+}
+
+// TODO differentiate this block
+int main() {
+  int t = 3;
+  {
+    int t = 5;
+    printf "%d", t;
+  }
+
+  printf "%d", t;
+}

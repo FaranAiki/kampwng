@@ -1,5 +1,5 @@
 int main() {
-  let x = "Hello!";
-  x[0] = 'a';
-  printf "%s", typeof(x);
+  char x[] = "Hello!";
+  x[0] = 'c';
+  printf "%s", x;
 }

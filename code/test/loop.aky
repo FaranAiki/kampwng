@@ -7,7 +7,7 @@ int main() {
     while ++j <= 4 {
       t = 0;
       while ++t <= 4 {
-        print "tuple %d %d %d\n", i, j, t;
+        printf "tuple %d %d %d\n", i, j, t;
       }
     }
   }

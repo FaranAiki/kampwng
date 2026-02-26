@@ -4,8 +4,8 @@ import "std";
 
 open class Hand {
   void wave(int n) {
-    // Standard function: printf or print
-    print("I am waving %d times\n", n);
+    // Standard function: printff or print
+    printf("I am waving %d times\n", n);
   }
 }
 
@@ -16,7 +16,7 @@ open class Person has Hand {
   void introduce() {
     // 'name' and 'age' are implicitly accessing this.name and this.age
     // Logic: Analyzer finds 'name' in class Person, prepends 'this.'
-    print("My name is %s\n and I am %d years old\n", name, age);
+    printf("My name is %s\n and I am %d years old\n", name, age);
   }
  
   void setAge(int age) {
@@ -29,7 +29,7 @@ open class Mahasiswa is Person {
   
   void introduce() {
     // 'name' is resolved via 'is Person' lookup
-    print("My name is %s with nim %d\n", name, nim);
+    printf("My name is %s with nim %d\n", name, nim);
   }
 }
 
@@ -37,7 +37,7 @@ int main() {
   // Assuming constructor syntax: Type(args...)
   let Faran = Person("Muhammad Faran Aiki", 18);
   
-  print("%s\n", Faran.name);
+  printf("%s\n", Faran.name);
   
   let Faran_Mahasiswa = Mahasiswa(
     Faran.name,
@@ -46,7 +46,7 @@ int main() {
   );
 
   int a[12] = [1,2,3];
-  print("%d!\n", a[2]);
+  printf("%d!\n", a[2]);
   
   Faran.introduce();
   
@@ -55,8 +55,8 @@ int main() {
   Faran_Mahasiswa[Hand].wave(5);
   
   Faran_Mahasiswa.introduce();
-  print("%d\n", Faran_Mahasiswa.age);
+  printf("%d\n", Faran_Mahasiswa.age);
 
   Faran_Mahasiswa.setAge(5);
-  print("%d\n", Faran_Mahasiswa.age);
+  printf("%d\n", Faran_Mahasiswa.age);
 }

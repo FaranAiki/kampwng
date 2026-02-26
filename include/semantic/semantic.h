@@ -7,11 +7,6 @@
 #include "../common/context.h"
 #include <stdbool.h>
 
-// ==========================================
-// PART 1: SYMBOL TABLE (For Scoping)
-// Maps "Name" -> "Symbol Info"
-// ==========================================
-
 typedef enum {
     SYM_VAR,
     SYM_FUNC,
@@ -72,53 +67,36 @@ typedef struct TypeEntry {
     struct TypeEntry *next;
 } TypeEntry;
 
-// ==========================================
-// PART 3: THE CONTEXT
-// ==========================================
-
 typedef struct {
-    // Shared Compiler Context (Arena, Diagnostics)
     CompilerContext *compiler_ctx;
 
-    // 1. Symbol Table State (Scopes)
     SemScope *current_scope;
     SemScope *global_scope;
     
-    // Track the current function for `pure` validations
     SemSymbol *current_func_sym;
     
-    // Track nested scope for `untaint` validations
     int in_wash_block;
     
-    // 2. Side Table State (Expression Types)
     TypeEntry *type_buckets[TYPE_TABLE_SIZE];
 
-    // Contextual information for error reporting
     const char *current_source; 
     const char *current_filename; 
     
-    // Contextual flags
     int in_loop;
     int in_switch;
 } SemanticCtx;
 
-// Lifecycle
 void sem_init(SemanticCtx *ctx, CompilerContext *compiler_ctx);
-// sem_cleanup is largely unnecessary with Arena, but kept for consistency/resetting non-arena state
 void sem_cleanup(SemanticCtx *ctx);
 
-// Analysis Entry Point
 int sem_check_program(SemanticCtx *ctx, ASTNode *root);
 
-// Symbol Table Operations
 void sem_scope_enter(SemanticCtx *ctx, int is_func, VarType ret_type);
 void sem_scope_exit(SemanticCtx *ctx);
 SemSymbol* sem_symbol_add(SemanticCtx *ctx, const char *name, SymbolKind kind, VarType type);
 
-// Lookup: optionally returns the scope where the symbol was found
 SemSymbol* sem_symbol_lookup(SemanticCtx *ctx, const char *name, SemScope **out_scope);
 
-// Side Table Operations
 void sem_set_node_type(SemanticCtx *ctx, ASTNode *node, VarType type);
 VarType sem_get_node_type(SemanticCtx *ctx, ASTNode *node);
 
@@ -127,11 +105,9 @@ void sem_set_node_impure(SemanticCtx *ctx, ASTNode *node, int is_impure);
 int sem_get_node_tainted(SemanticCtx *ctx, ASTNode *node);
 int sem_get_node_impure(SemanticCtx *ctx, ASTNode *node);
 
-// Helpers
 int sem_types_are_compatible(VarType dest, VarType src);
 char* sem_type_to_str(VarType t);
 
-// Reporting
 void sem_error(SemanticCtx *ctx, ASTNode *node, const char *fmt, ...);
 void sem_info(SemanticCtx *ctx, ASTNode *node, const char *fmt, ...);
 void sem_hint(SemanticCtx *ctx, ASTNode *node, const char *fmt, ...);
