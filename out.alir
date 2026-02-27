@@ -66,7 +66,7 @@ resume_2:
 define func i32 @main() {
 entry:
   %0 = call %gen (100)
-  %1 = onstack i32
+  %1 = onstack %FluxCtx_gen ptr
   store any %0, %1
   %2 = onheap i8 ptr 32
   %3 = bitcast i32 ptr %2

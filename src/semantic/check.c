@@ -89,6 +89,7 @@ void sem_scan_class_members(SemanticCtx *ctx, ClassNode *cn, SemSymbol *class_sy
             sym->is_has_a = fd->is_has_a;
             sym->is_pure = fd->is_pure;
             sym->is_pristine = fd->is_pristine;
+            sym->is_flux = fd->is_flux; // Attach coroutine context
         }
         mem = mem->next;
     }
@@ -107,6 +108,7 @@ void sem_scan_top_level(SemanticCtx *ctx, ASTNode *node) {
             sym->is_has_a = fd->is_has_a;
             sym->is_pure = fd->is_pure;
             sym->is_pristine = fd->is_pristine;
+            sym->is_flux = fd->is_flux;
         }
         else if (node->type == NODE_VAR_DECL) {
             VarDeclNode *vd = (VarDeclNode*)node;
@@ -223,6 +225,14 @@ void sem_check_call(SemanticCtx *ctx, CallNode *node) {
     if (sym->kind == SYM_CLASS) {
         VarType instance = {TYPE_CLASS, 1, 0, arena_strdup(ctx->compiler_ctx->arena, sym->name), 0, NULL, NULL, 0, 0, 0, 0}; 
         sem_set_node_type(ctx, (ASTNode*)node, instance);
+    } else if (sym->kind == SYM_FUNC && sym->is_flux) {
+        // Rewrite flux generator return type dynamically for iterators to intercept!
+        char buf[256];
+        snprintf(buf, sizeof(buf), "FluxCtx_%s", sym->name);
+        VarType flux_type = {TYPE_CLASS, 1, 0, arena_strdup(ctx->compiler_ctx->arena, buf), 0, NULL, NULL, 0, 0, 0, 0};
+        flux_type.fp_ret_type = arena_alloc_type(ctx->compiler_ctx->arena, VarType);
+        *flux_type.fp_ret_type = sym->type; // Save underlying yield type
+        sem_set_node_type(ctx, (ASTNode*)node, flux_type);
     } else {
         sem_set_node_type(ctx, (ASTNode*)node, sym->type);
     }

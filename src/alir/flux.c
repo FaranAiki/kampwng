@@ -46,7 +46,14 @@ void collect_flux_vars_recursive(AlirCtx *ctx, ASTNode *node, int *idx_ptr) {
 }
 
 
-void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
+void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
+    char func_name[512];
+    if (class_name) {
+        snprintf(func_name, sizeof(func_name), "%s_%s", class_name, fn->name);
+    } else {
+        snprintf(func_name, sizeof(func_name), "%s", fn->name);
+    }
+
     // 1. Collect Variables to Capture
     ctx->flux_vars = NULL;
     int struct_idx = 3; 
@@ -54,14 +61,14 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     Parameter *p = fn->params;
     while(p) { param_count++; p = p->next; }
     
-    int start_locals = struct_idx + param_count + (fn->class_name ? 1 : 0);
+    int start_locals = struct_idx + param_count + (class_name ? 1 : 0);
     int current_idx = start_locals;
     
     collect_flux_vars_recursive(ctx, fn->body, &current_idx);
     
     // 2. Register Context Struct
-    char struct_name[256];
-    snprintf(struct_name, 256, "FluxCtx_%s", fn->name);
+    char struct_name[1024];
+    snprintf(struct_name, sizeof(struct_name), "FluxCtx_%s", func_name);
     
     AlirField *fields = NULL;
     AlirField **tail = &fields;
@@ -71,10 +78,10 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     { AlirField *f = alir_alloc(ctx->module, sizeof(AlirField)); f->name = alir_strdup(ctx->module, "result"); f->type = fn->ret_type; f->index=2; *tail=f; tail=&f->next; }
     
     int p_idx = 3;
-    if (fn->class_name) {
+    if (class_name) {
         AlirField *f = alir_alloc(ctx->module, sizeof(AlirField));
         f->name = alir_strdup(ctx->module, "this");
-        f->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; 
+        f->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, class_name)}; 
         f->index = p_idx++;
         *tail=f; tail=&f->next;
     }
@@ -102,9 +109,9 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     
     // 3. Generate INIT Function (The Generator Factory)
     VarType ret_type = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, struct_name)};
-    ctx->current_func = alir_add_function(ctx->module, fn->name, ret_type, 0); 
+    ctx->current_func = alir_add_function(ctx->module, func_name, ret_type, 0); 
     
-    if (fn->class_name) alir_func_add_param(ctx->module, ctx->current_func, "this", (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)});
+    if (class_name) alir_func_add_param(ctx->module, ctx->current_func, "this", (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, class_name)});
     p = fn->params;
     while(p) {
         alir_func_add_param(ctx->module, ctx->current_func, p->name, p->type);
@@ -132,12 +139,12 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     
     int param_offset = 0;
     p_idx = 3;
-    if (fn->class_name) {
-        char arg_name[16]; sprintf(arg_name, "p%d", param_offset-1);
+    if (class_name) {
+        char arg_name[16]; sprintf(arg_name, "p%d", param_offset++);
         AlirValue *arg_val = alir_val_var(ctx->module, arg_name); 
-        arg_val->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; 
+        arg_val->type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, class_name)}; 
         
-        AlirValue *f_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 2, 0, alir_strdup(ctx->module, fn->class_name)});
+        AlirValue *f_ptr = new_temp(ctx, (VarType){TYPE_CLASS, 2, 0, alir_strdup(ctx->module, class_name)});
         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, f_ptr, ctx_ptr, alir_const_int(ctx->module, p_idx++)));
         emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, arg_val, f_ptr));
     }
@@ -157,7 +164,7 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
     emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, ctx_ptr, NULL));
     
     // 4. Generate RESUME Function
-    char resume_name[256]; snprintf(resume_name, 256, "%s_Resume", fn->name);
+    char resume_name[1024]; snprintf(resume_name, sizeof(resume_name), "%s_Resume", func_name);
     ctx->current_func = alir_add_function(ctx->module, resume_name, (VarType){TYPE_VOID}, 0);
     alir_func_add_param(ctx->module, ctx->current_func, "ctx", ret_type); 
     
@@ -179,11 +186,11 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn) {
 
     ctx->symbols = NULL; 
     p_idx = 3;
-    if (fn->class_name) {
-         VarType pt = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)}; pt.ptr_depth++;
+    if (class_name) {
+         VarType pt = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, class_name)}; pt.ptr_depth++;
          AlirValue *ptr = new_temp(ctx, pt);
          emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr, ctx->flux_ctx_ptr, alir_const_int(ctx->module, p_idx++)));
-         alir_add_symbol(ctx, "this", ptr, (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, fn->class_name)});
+         alir_add_symbol(ctx, "this", ptr, (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, class_name)});
     }
     p = fn->params;
     while(p) {

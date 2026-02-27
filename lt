@@ -1,2 +1,2 @@
 llc -relocation-model=pic -filetype=obj out.ll -o mout.o
-clang -fPIC out.o -fuse-ld=lld -o mout -fPIE
+clang -fPIC mout.o -fuse-ld=lld -o mout -fPIE

@@ -42,6 +42,7 @@ typedef struct SemSymbol {
     bool is_used_as_composition : 1;
     bool is_pure : 1;
     bool is_pristine : 1;
+    bool is_flux : 1;          // Marks a function as a flux generator 
 } SemSymbol;
 
 typedef struct SemScope {

@@ -377,7 +377,7 @@ void alir_gen_implicit_constructor(AlirCtx *ctx, ClassNode *cn) {
 
 void alir_gen_function_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
     if (fn->is_flux) {
-        alir_gen_flux_def(ctx, fn);
+        alir_gen_flux_def(ctx, fn, class_name);
         return;
     }
 

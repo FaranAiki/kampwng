@@ -245,7 +245,7 @@ AlirValue* promote(AlirCtx *ctx, AlirValue *v, VarType target);
 void alir_add_symbol(AlirCtx *ctx, const char *name, AlirValue *ptr, VarType t);
 AlirSymbol* alir_find_symbol(AlirCtx *ctx, const char *name);
 
-void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn);
+void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name);
 void alir_gen_flux_yield(AlirCtx *ctx, EmitNode *en);
 void collect_flux_vars_recursive(AlirCtx *ctx, ASTNode *node, int *idx_ptr);
 

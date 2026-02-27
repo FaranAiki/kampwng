@@ -30,7 +30,16 @@ void sem_lookup_class_call(SemanticCtx *ctx, MethodCallNode *node) {
                     }
 
                     if (member->kind == SYM_FUNC) {
-                        sem_set_node_type(ctx, (ASTNode*)node, member->type); 
+                        if (member->is_flux) {
+                            char buf[256];
+                            snprintf(buf, sizeof(buf), "FluxCtx_%s_%s", current_class->name, member->name);
+                            VarType flux_type = {TYPE_CLASS, 1, 0, arena_strdup(ctx->compiler_ctx->arena, buf), 0, NULL, NULL, 0, 0, 0, 0};
+                            flux_type.fp_ret_type = arena_alloc_type(ctx->compiler_ctx->arena, VarType);
+                            *flux_type.fp_ret_type = member->type; // Bind the underlying yield type natively!
+                            sem_set_node_type(ctx, (ASTNode*)node, flux_type);
+                        } else {
+                            sem_set_node_type(ctx, (ASTNode*)node, member->type); 
+                        }
                         node->owner_class = current_class->name; 
                         found = 1;
                     } 

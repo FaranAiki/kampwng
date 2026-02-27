@@ -8,7 +8,13 @@ void sem_check_for_in(SemanticCtx *ctx, ASTNode *node) {
     VarType col_type = sem_get_node_type(ctx, fn->collection);
     VarType iter_type = col_type;
     
-    if (iter_type.array_size > 0) {
+    if (iter_type.base == TYPE_CLASS && iter_type.class_name && strncmp(iter_type.class_name, "FluxCtx_", 8) == 0) {
+        if (iter_type.fp_ret_type) {
+            iter_type = *iter_type.fp_ret_type;
+        } else {
+            iter_type = (VarType){TYPE_UNKNOWN, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0};
+        }
+    } else if (iter_type.array_size > 0) {
         iter_type.array_size = 0;
     } else if (iter_type.ptr_depth > 0) {
         iter_type.ptr_depth--;
@@ -18,7 +24,6 @@ void sem_check_for_in(SemanticCtx *ctx, ASTNode *node) {
         iter_type.base = TYPE_CHAR;
     } else if (is_integer(iter_type)) {
         // Allowed: integers act as valid iterators (0 to N-1) 
-        // Flux generator functions also map their return values to a base integer type
     } else {
         sem_error(ctx, node, "Cannot iterate over non-iterable type");
         iter_type = (VarType){TYPE_UNKNOWN, 0, 0, NULL, 0, NULL, NULL, 0, 0, 0, 0};
