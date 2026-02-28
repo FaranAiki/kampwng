@@ -1,13 +1,13 @@
 #include "codegen.h"
 
-void llvm_codegen_flux_iter_init(CodegenCtx *ctx, AlirInst *inst, LLVMValueRef op1, LLVMValueRef res) {
+void llvm_codegen_flux_iter_init(CodegenCtx *ctx, AlirInst *inst, LLVMValueRef op1, LLVMValueRef *res) {
     LLVMTypeRef i64_ty = LLVMInt64TypeInContext(ctx->llvm_ctx);
     LLVMTypeRef ptr_ty = LLVMPointerType(LLVMInt8TypeInContext(ctx->llvm_ctx), 0);
     
     // Standardizing an inline iterator state block: { i8* base, i64 max_length, i64 current_index }
     LLVMTypeRef iter_struct_ty = LLVMStructTypeInContext(ctx->llvm_ctx, (LLVMTypeRef[]){ptr_ty, i64_ty, i64_ty}, 3, 0);
 
-    res = LLVMBuildAlloca(ctx->builder, iter_struct_ty, "iter_state");
+    *res = LLVMBuildAlloca(ctx->builder, iter_struct_ty, "iter_state");
 
     // 1. Force the Collection to 
     LLVMValueRef base_ptr = op1;
@@ -32,17 +32,17 @@ void llvm_codegen_flux_iter_init(CodegenCtx *ctx, AlirInst *inst, LLVMValueRef o
         length = LLVMConstInt(i64_ty, 0x7FFFFFFF, 0); 
     }
 
-    LLVMValueRef p_base = LLVMBuildStructGEP2(ctx->builder, iter_struct_ty, res, 0, "p_base");
+    LLVMValueRef p_base = LLVMBuildStructGEP2(ctx->builder, iter_struct_ty, *res, 0, "p_base");
     LLVMBuildStore(ctx->builder, base_ptr, p_base);
 
-    LLVMValueRef p_len = LLVMBuildStructGEP2(ctx->builder, iter_struct_ty, res, 1, "p_len");
+    LLVMValueRef p_len = LLVMBuildStructGEP2(ctx->builder, iter_struct_ty, *res, 1, "p_len");
     LLVMBuildStore(ctx->builder, length, p_len);
 
-    LLVMValueRef p_idx = LLVMBuildStructGEP2(ctx->builder, iter_struct_ty, res, 2, "p_idx");
+    LLVMValueRef p_idx = LLVMBuildStructGEP2(ctx->builder, iter_struct_ty, *res, 2, "p_idx");
     LLVMBuildStore(ctx->builder, LLVMConstInt(i64_ty, 0, 0), p_idx);
 }
 
-void llvm_codegen_flux_iter_get(CodegenCtx *ctx, AlirInst *inst, LLVMValueRef op1, LLVMValueRef res) {
+void llvm_codegen_flux_iter_get(CodegenCtx *ctx, AlirInst *inst, LLVMValueRef op1, LLVMValueRef *res) {
     LLVMTypeRef i64_ty = LLVMInt64TypeInContext(ctx->llvm_ctx);
     LLVMTypeRef ptr_ty = LLVMPointerType(LLVMInt8TypeInContext(ctx->llvm_ctx), 0);
     LLVMTypeRef iter_struct_ty = LLVMStructTypeInContext(ctx->llvm_ctx, (LLVMTypeRef[]){ptr_ty, i64_ty, i64_ty}, 3, 0);
@@ -59,7 +59,7 @@ void llvm_codegen_flux_iter_get(CodegenCtx *ctx, AlirInst *inst, LLVMValueRef op
         LLVMValueRef typed_base = LLVMBuildBitCast(ctx->builder, base, LLVMPointerType(elem_ty, 0), "typed_base");
         
         LLVMValueRef elem_ptr = LLVMBuildGEP2(ctx->builder, elem_ty, typed_base, &idx, 1, "elem_ptr");
-        res = LLVMBuildLoad2(ctx->builder, elem_ty, elem_ptr, "iter_val");
+        *res = LLVMBuildLoad2(ctx->builder, elem_ty, elem_ptr, "iter_val");
     }
 }
 
@@ -77,7 +77,7 @@ void llvm_codegen_flux_iter_next(CodegenCtx *ctx, LLVMValueRef op1) {
     }
 }
 
-void llvm_codegen_flux_iter_valid(CodegenCtx *ctx, LLVMValueRef op1, LLVMValueRef res) {
+void llvm_codegen_flux_iter_valid(CodegenCtx *ctx, LLVMValueRef op1, LLVMValueRef *res) {
     LLVMTypeRef i64_ty = LLVMInt64TypeInContext(ctx->llvm_ctx);
     LLVMTypeRef ptr_ty = LLVMPointerType(LLVMInt8TypeInContext(ctx->llvm_ctx), 0);
     LLVMTypeRef iter_struct_ty = LLVMStructTypeInContext(ctx->llvm_ctx, (LLVMTypeRef[]){ptr_ty, i64_ty, i64_ty}, 3, 0);
@@ -89,8 +89,8 @@ void llvm_codegen_flux_iter_valid(CodegenCtx *ctx, LLVMValueRef op1, LLVMValueRe
         LLVMValueRef p_len = LLVMBuildStructGEP2(ctx->builder, iter_struct_ty, op1, 1, "p_len");
         LLVMValueRef len = LLVMBuildLoad2(ctx->builder, i64_ty, p_len, "len");
 
-        res = LLVMBuildICmp(ctx->builder, LLVMIntSLT, idx, len, "iter_valid");
+        *res = LLVMBuildICmp(ctx->builder, LLVMIntSLT, idx, len, "iter_valid");
     } else {
-        res = LLVMConstInt(LLVMInt1TypeInContext(ctx->llvm_ctx), 0, 0);
+        *res = LLVMConstInt(LLVMInt1TypeInContext(ctx->llvm_ctx), 0, 0);
     }
 }
