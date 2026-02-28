@@ -35,6 +35,8 @@ include_directories(
     include/semantic
     include/driver
     include/common
+
+    include/llvm_codegen
 )
 
 set(FRONTEND_SOURCES 
@@ -86,6 +88,8 @@ set (ALICK_SOURCES
 
 set (LLVM_CODEGEN_SOURCES
     src/llvm_codegen/codegen.c
+    src/llvm_codegen/translate.c
+    src/llvm_codegen/fragment/flux.c
 )
 
 set(HELPER_SOURCES

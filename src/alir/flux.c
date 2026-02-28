@@ -1,5 +1,9 @@
 #include "alir.h"
 
+static int is_terminator_op(AlirOpcode op) {
+    return op == ALIR_OP_RET || op == ALIR_OP_JUMP || op == ALIR_OP_CONDI || op == ALIR_OP_SWITCH || op == ALIR_OP_YIELD;
+}
+
 void collect_flux_vars_recursive(AlirCtx *ctx, ASTNode *node, int *idx_ptr) {
     if (!node) return;
     
@@ -56,7 +60,7 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
 
     // 1. Collect Variables to Capture
     ctx->flux_vars = NULL;
-    int struct_idx = 3; 
+    int struct_idx = 4; // Shifted up 1 to accommodate the resume func pointer
     int param_count = 0;
     Parameter *p = fn->params;
     while(p) { param_count++; p = p->next; }
@@ -76,8 +80,9 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
     { AlirField *f = alir_alloc(ctx->module, sizeof(AlirField)); f->name = alir_strdup(ctx->module, "state"); f->type = (VarType){TYPE_INT}; f->index=0; *tail=f; tail=&f->next; }
     { AlirField *f = alir_alloc(ctx->module, sizeof(AlirField)); f->name = alir_strdup(ctx->module, "finished"); f->type = (VarType){TYPE_BOOL}; f->index=1; *tail=f; tail=&f->next; }
     { AlirField *f = alir_alloc(ctx->module, sizeof(AlirField)); f->name = alir_strdup(ctx->module, "result"); f->type = fn->ret_type; f->index=2; *tail=f; tail=&f->next; }
+    { AlirField *f = alir_alloc(ctx->module, sizeof(AlirField)); f->name = alir_strdup(ctx->module, "resume_func"); f->type = (VarType){TYPE_VOID, 1}; f->index=3; *tail=f; tail=&f->next; } // Map Resume Pointer natively
     
-    int p_idx = 3;
+    int p_idx = 4;
     if (class_name) {
         AlirField *f = alir_alloc(ctx->module, sizeof(AlirField));
         f->name = alir_strdup(ctx->module, "this");
@@ -137,8 +142,16 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
     emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr_fin, ctx_ptr, alir_const_int(ctx->module, 1)));
     emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, alir_const_int(ctx->module, 0), ptr_fin));
     
+    char resume_name[1024]; snprintf(resume_name, sizeof(resume_name), "%s_Resume", func_name);
+    AlirValue *resume_val = alir_val_var(ctx->module, resume_name);
+    resume_val->type = (VarType){TYPE_VOID, 1}; // Function pointer
+
+    AlirValue *ptr_res = new_temp(ctx, (VarType){TYPE_VOID, 2}); 
+    emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, ptr_res, ctx_ptr, alir_const_int(ctx->module, 3)));
+    emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, resume_val, ptr_res)); // Bind Resume to the Struct Call
+    
     int param_offset = 0;
-    p_idx = 3;
+    p_idx = 4;
     if (class_name) {
         char arg_name[16]; sprintf(arg_name, "p%d", param_offset++);
         AlirValue *arg_val = alir_val_var(ctx->module, arg_name); 
@@ -164,7 +177,6 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
     emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, ctx_ptr, NULL));
     
     // 4. Generate RESUME Function
-    char resume_name[1024]; snprintf(resume_name, sizeof(resume_name), "%s_Resume", func_name);
     ctx->current_func = alir_add_function(ctx->module, resume_name, (VarType){TYPE_VOID}, 0);
     alir_func_add_param(ctx->module, ctx->current_func, "ctx", ret_type); 
     
@@ -185,7 +197,7 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
     emit(ctx, mk_inst(ctx->module, ALIR_OP_LOAD, current_state, ptr_st, NULL));
 
     ctx->symbols = NULL; 
-    p_idx = 3;
+    p_idx = 4;
     if (class_name) {
          VarType pt = {TYPE_CLASS, 1, 0, alir_strdup(ctx->module, class_name)}; pt.ptr_depth++;
          AlirValue *ptr = new_temp(ctx, pt);
@@ -226,7 +238,8 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
     ASTNode *stmt = fn->body;
     while(stmt) { alir_gen_stmt(ctx, stmt); stmt = stmt->next; }
     
-    if (!ctx->current_block->tail || ctx->current_block->tail->op != ALIR_OP_RET) {
+    // Prevent LLVM unreachable exceptions by ONLY dropping a closing ret if the block doesn't naturally terminate via jumps/rets
+    if (!ctx->current_block->tail || !is_terminator_op(ctx->current_block->tail->op)) {
         AlirValue *p_fin = new_temp(ctx, (VarType){TYPE_BOOL, 1});
         emit(ctx, mk_inst(ctx->module, ALIR_OP_GET_PTR, p_fin, ctx->flux_ctx_ptr, alir_const_int(ctx->module, 1)));
         emit(ctx, mk_inst(ctx->module, ALIR_OP_STORE, NULL, alir_const_int(ctx->module, 1), p_fin));
@@ -234,7 +247,9 @@ void alir_gen_flux_def(AlirCtx *ctx, FuncDefNode *fn, const char *class_name) {
     }
     
     ctx->current_block = end_bb;
-    emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, NULL, NULL));
+    if (!ctx->current_block->tail || !is_terminator_op(ctx->current_block->tail->op)) {
+        emit(ctx, mk_inst(ctx->module, ALIR_OP_RET, NULL, NULL, NULL));
+    }
     
     ctx->in_flux_resume = 0;
     ctx->flux_vars = NULL;

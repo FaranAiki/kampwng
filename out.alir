@@ -1,7 +1,8 @@
 ; Module: main_module
 
 ; Struct Definitions
-%struct.FluxCtx_gen = type { i32:state, i1:finished, i32:result, i32:max, i32:t }
+%struct.FluxCtx_gen_double = type { i32:state, i1:finished, double:result, void ptr:resume_func, i32:max, double:t }
+%struct.FluxCtx_gen = type { i32:state, i1:finished, i32:result, void ptr:resume_func, i32:max, i32:t }
 
 ; Globals
 @str.2 = string "%d\n"
@@ -17,47 +18,108 @@ entry:
   store i32 0, %3
   %4 = getptr i1 ptr %2, 1
   store i32 0, %4
-  %5 = getptr i32 ptr %2, 3
-  store i32 %p0, %5
+  %5 = getptr void ptr* %2, 3
+  store void ptr %gen_Resume, %5
+  %6 = getptr i32 ptr %2, 4
+  store i32 %p0, %6
   return %FluxCtx_gen ptr %2
 }
 
 define func void @gen_Resume(%FluxCtx_gen ptr %p0) {
 entry:
-  %6 = getptr i32 ptr %p0, 0
-  %7 = load i32 %6
-  %8 = getptr i32 ptr %p0, 3
+  %7 = getptr i32 ptr %p0, 0
+  %8 = load i32 %7
   %9 = getptr i32 ptr %p0, 4
-  jumpint %7 { 2: resume_2,  1: resume_1,  0: flux_start, } default flux_end
+  %10 = getptr i32 ptr %p0, 5
+  jumpint %8 { 2: resume_2,  1: resume_1,  0: flux_start, } default flux_end
 flux_start:
-  store i32 0, %9
+  store i32 0, %10
   jump while_cond
 flux_end:
   return void
 while_cond:
-  %10 = load any %9
-  %11 = add any %10, 1
-  store any %11, %9
-  %12 = load i32 %8
-  %13 = lte i1 %11, %12
-  condition %13, while_body (while_end)
+  %11 = load any %10
+  %12 = add any %11, 1
+  store any %12, %10
+  %13 = load i32 %9
+  %14 = lte i1 %12, %13
+  condition %14, while_body (while_end)
 while_body:
-  %14 = getptr i32 ptr %p0, 2
-  store i32 5, %14
-  %15 = getptr i32 ptr %p0, 0
-  store i32 1, %15
+  %15 = getptr i32 ptr %p0, 2
+  store i32 5, %15
+  %16 = getptr i32 ptr %p0, 0
+  store i32 1, %16
   return void
 while_end:
-  %20 = getptr i1 ptr %p0, 1
-  store i32 1, %20
+  %21 = getptr i1 ptr %p0, 1
+  store i32 1, %21
   return void
 resume_1:
-  %16 = load i32 %9
-  %17 = mul i32 %16, 2
-  %18 = getptr i32 ptr %p0, 2
-  store i32 %17, %18
-  %19 = getptr i32 ptr %p0, 0
-  store i32 2, %19
+  %17 = load i32 %10
+  %18 = mul i32 %17, 2
+  %19 = getptr i32 ptr %p0, 2
+  store i32 %18, %19
+  %20 = getptr i32 ptr %p0, 0
+  store i32 2, %20
+  return void
+resume_2:
+  jump while_cond
+}
+
+define func %FluxCtx_gen_double ptr @gen_double(i32 %p0) {
+entry:
+  %22 = sizeof i32 type(FluxCtx_gen_double)
+  %23 = onheap i8 ptr %22
+  %24 = bitcast %FluxCtx_gen_double ptr %23
+  %25 = getptr i32 ptr %24, 0
+  store i32 0, %25
+  %26 = getptr i1 ptr %24, 1
+  store i32 0, %26
+  %27 = getptr void ptr* %24, 3
+  store void ptr %gen_double_Resume, %27
+  %28 = getptr i32 ptr %24, 4
+  store i32 %p0, %28
+  return %FluxCtx_gen_double ptr %24
+}
+
+define func void @gen_double_Resume(%FluxCtx_gen_double ptr %p0) {
+entry:
+  %29 = getptr i32 ptr %p0, 0
+  %30 = load i32 %29
+  %31 = getptr i32 ptr %p0, 4
+  %32 = getptr double ptr %p0, 5
+  jumpint %30 { 2: resume_2,  1: resume_1,  0: flux_start, } default flux_end
+flux_start:
+  store i32 0, %32
+  jump while_cond
+flux_end:
+  return void
+while_cond:
+  %33 = load any %32
+  %34 = add any %33, 1
+  store any %34, %32
+  %35 = load i32 %31
+  %36 = cast double %35
+  %37 = lte i1 %33, %36
+  condition %37, while_body (while_end)
+while_body:
+  %38 = getptr i32 ptr %p0, 2
+  store i32 1, %38
+  %39 = getptr i32 ptr %p0, 0
+  store i32 1, %39
+  return void
+while_end:
+  %45 = getptr i1 ptr %p0, 1
+  store i32 1, %45
+  return void
+resume_1:
+  %40 = load double %32
+  %41 = cast double 3
+  %42 = mul i32 %40, %41
+  %43 = getptr i32 ptr %p0, 2
+  store i32 %42, %43
+  %44 = getptr i32 ptr %p0, 0
+  store i32 2, %44
   return void
 resume_2:
   jump while_cond
@@ -94,7 +156,7 @@ for_body:
   jump for_cond
 for_end:
   %15 = call %printf (@str.1)
-  %16 = call %gen (10000)
+  %16 = call %gen (100)
   %17 = iter_init void ptr %16
   jump for_cond2
 for_cond2:
