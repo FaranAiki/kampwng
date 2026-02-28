@@ -6,14 +6,6 @@ flux int gen(int max) {
   }
 }
 
-flux double gen_double(int max) {
-  double t = 0;
-  while t++ <= max {
-    emit 1;
-    emit t * 3;
-  }
-}
-
 int main() {
   let t = gen(100);
   let my_arr = [1,2,3,4];

@@ -327,6 +327,32 @@ AlirValue* alir_gen_call_std(AlirCtx *ctx, CallNode *cn) {
     // Result type from Semantic Table
     VarType ret_type = sem_get_node_type(ctx->sem, (ASTNode*)cn);
     
+    // [FIX] Infer flux generator context type properly to prevent Array-like iteration SIGSEGVs
+    int found = 0;
+    if (ctx->sem) {
+        SemScope *scope = NULL;
+        SemSymbol *sym = sem_symbol_lookup(ctx->sem, cn->name, &scope);
+        if (sym && sym->kind == SYM_FUNC && sym->is_flux) {
+            char struct_name[512];
+            snprintf(struct_name, sizeof(struct_name), "FluxCtx_%s", cn->name);
+            ret_type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, struct_name), 0, NULL, NULL, 0, 0, 0, 0};
+            found = 1;
+        }
+    }
+    
+    if (!found && ctx->module) {
+        // Fallback if Semantic Analyzer runs dry or was cleaned up by driver
+        AlirFunction *f = ctx->module->functions;
+        while(f) {
+            if (strcmp(f->name, cn->name) == 0 && f->is_flux) {
+                ret_type = f->ret_type;
+                found = 1;
+                break;
+            }
+            f = f->next;
+        }
+    }
+    
     AlirValue *dest = new_temp(ctx, ret_type); 
     call->dest = dest;
     emit(ctx, call);
@@ -384,6 +410,40 @@ AlirValue* alir_gen_method_call(AlirCtx *ctx, MethodCallNode *mc) {
     }
     
     VarType ret_type = sem_get_node_type(ctx->sem, (ASTNode*)mc);
+    
+    // [FIX] Infer flux generator context type properly for methods to prevent SIGSEGVs
+    int found_flux = 0;
+    if (ctx->sem && cname) {
+        SemScope *scope = NULL;
+        SemSymbol *class_sym = sem_symbol_lookup(ctx->sem, cname, &scope);
+        if (class_sym && class_sym->inner_scope) {
+            SemSymbol *method_sym = class_sym->inner_scope->symbols;
+            while(method_sym) {
+                if (strcmp(method_sym->name, mc->method_name) == 0) {
+                    if (method_sym->is_flux) {
+                        char struct_name[512];
+                        snprintf(struct_name, sizeof(struct_name), "FluxCtx_%s", func_name);
+                        ret_type = (VarType){TYPE_CLASS, 1, 0, alir_strdup(ctx->module, struct_name), 0, NULL, NULL, 0, 0, 0, 0};
+                        found_flux = 1;
+                    }
+                    break;
+                }
+                method_sym = method_sym->next;
+            }
+        }
+    }
+    
+    if (!found_flux && ctx->module) {
+        AlirFunction *f = ctx->module->functions;
+        while(f) {
+            if (strcmp(f->name, func_name) == 0 && f->is_flux) {
+                ret_type = f->ret_type;
+                break;
+            }
+            f = f->next;
+        }
+    }
+
     AlirValue *dest = new_temp(ctx, ret_type);
     call->dest = dest;
     emit(ctx, call);
