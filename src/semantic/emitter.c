@@ -41,6 +41,7 @@ void semantic_emit_type_str(StringBuilder *sb, VarType t) {
         case TYPE_ENUM: sb_append_fmt(sb, "enum %s", t.class_name ? t.class_name : ""); break;
         case TYPE_ARRAY: sb_append_fmt(sb, "array"); break;
         case TYPE_VECTOR: sb_append_fmt(sb, "vector"); break;
+        // TODO type hashmap, type_unknown
         default: sb_append_fmt(sb, "unknown"); break;
     }
 

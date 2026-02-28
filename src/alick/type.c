@@ -67,9 +67,10 @@ void alick_check_types(AlickCtx *ctx, AlirFunction *func) {
                     if (!i->op1) alick_error(ctx, func, b, i, "CALL requires a function target (op1).");
                     // Note: dest is optional for CALL if return type is void
                     break;
-                    
+                   
+                // TODO if needed, untoggle this
                 default:
-                    break;
+                   break;
             }
             
             i = i->next;

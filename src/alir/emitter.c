@@ -12,6 +12,8 @@ void alir_fprint_type(FILE *f, VarType t) {
         case TYPE_STRING: fprintf(f, "string"); break;
         case TYPE_CLASS: fprintf(f, "%%%s", t.class_name ? t.class_name : "obj"); break;
         case TYPE_ENUM: fprintf(f, "i32"); break;
+        
+        // TODO add ll, ld, array, vector, hashmap, auto, unknown
         default: fprintf(f, "any"); break;
     }
     // [FIX] Correct pointer depth logic. 
