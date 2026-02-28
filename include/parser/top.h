@@ -8,7 +8,6 @@ ASTNode* parse_enum(Parser *p);
 ASTNode* parse_class(Parser *p);
 ASTNode* parse_define(Parser *p);
 ASTNode* parse_typedef(Parser *p);
-ASTNode* parse_import(Parser *p);
 ASTNode* parse_link(Parser *p);
 ASTNode* parse_extern(Parser *p, int modifier);
 

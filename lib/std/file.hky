@@ -44,5 +44,5 @@ File open(char *filename, char *mode) {
   let *file = fopen(filename, mode);
 }*/
 
-};
-;
+}
+

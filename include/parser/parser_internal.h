@@ -86,5 +86,6 @@ ASTNode* parse_expression(Parser *p);
 #include "modif.h"
 #include "stmt.h"
 #include "top.h"
+#include "semantic.h"
 
 #endif // PARSER_INTERNAL_H

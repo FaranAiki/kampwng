@@ -57,13 +57,14 @@ int main(int argc, char *argv[]) {
 
   Parser p;
   parser_init(&p, &l);
+
   ASTNode *root = parse_program(&p);
-  
+
   if (!root && comp_ctx.parser_error_count > 0) {
       free(code);
       return 1;
   }
-  
+
   Parser p_debug;
   parser_init(&p_debug, &l_debug);
   ASTNode *root_debug = parse_program(&p_debug);
@@ -71,11 +72,11 @@ int main(int argc, char *argv[]) {
   to_ast_out(&p_debug, root_debug, BASENAME ".ast");
 
   debug_step("Start Semantic Analysis.");
-  
+
   SemanticCtx sem_ctx;
   sem_init(&sem_ctx, &comp_ctx);
   sem_ctx.current_source = code; // Enable source snippet printing for errors
-  
+
   int sem_errors = sem_check_program(&sem_ctx, root);
   if (sem_errors > 0) {
       fprintf(stderr, "Semantic analysis failed with %d errors.\n", sem_errors);
