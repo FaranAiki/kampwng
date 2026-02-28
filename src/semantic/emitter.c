@@ -39,6 +39,7 @@ void semantic_emit_type_str(StringBuilder *sb, VarType t) {
         case TYPE_AUTO: sb_append_fmt(sb, "let"); break;
         case TYPE_CLASS: sb_append_fmt(sb, "%s", t.class_name ? t.class_name : "class"); break;
         case TYPE_ENUM: sb_append_fmt(sb, "enum %s", t.class_name ? t.class_name : ""); break;
+        case TYPE_NAMESPACE: sb_append_fmt(sb, "namespace %s", t.class_name ? t.class_name : ""); break;
         case TYPE_ARRAY: sb_append_fmt(sb, "array"); break;
         case TYPE_VECTOR: sb_append_fmt(sb, "vector"); break;
         // TODO type hashmap, type_unknown

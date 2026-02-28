@@ -219,3 +219,4 @@ int is_bool(VarType t) {
 int is_pointer(VarType t) {
     return t.ptr_depth > 0 || t.array_size > 0 || t.base == TYPE_STRING || t.is_func_ptr;
 }
+

@@ -2,19 +2,26 @@
 
 void alir_fprint_type(FILE *f, VarType t) {
     switch(t.base) {
-        case TYPE_INT: fprintf(f, "i32"); break;
-        case TYPE_LONG: fprintf(f, "i64"); break;
+        case TYPE_INT: fprintf(f, "int"); break;
+        case TYPE_LONG: fprintf(f, "long"); break;
         case TYPE_FLOAT: fprintf(f, "float"); break;
         case TYPE_DOUBLE: fprintf(f, "double"); break;
-        case TYPE_CHAR: fprintf(f, "i8"); break;
-        case TYPE_BOOL: fprintf(f, "i1"); break;
+        case TYPE_CHAR: fprintf(f, "char"); break;
+        case TYPE_BOOL: fprintf(f, "bool"); break;
         case TYPE_VOID: fprintf(f, "void"); break;
         case TYPE_STRING: fprintf(f, "string"); break;
         case TYPE_CLASS: fprintf(f, "%%%s", t.class_name ? t.class_name : "obj"); break;
-        case TYPE_ENUM: fprintf(f, "i32"); break;
-        
+        case TYPE_ENUM: fprintf(f, "int"); break;
+        case TYPE_LONG_LONG: fprintf(f, "ll"); break;
+        case TYPE_LONG_DOUBLE: fprintf(f, "ld"); break;
+        case TYPE_ARRAY: fprintf(f, "array"); break;
+        case TYPE_VECTOR: fprintf(f, "vec"); break;
+        case TYPE_HASHMAP: fprintf(f, "hashmap"); break;
+        case TYPE_AUTO: fprintf(f, "any"); break;
+        case TYPE_UNKNOWN: fprintf(f, "unknown"); break;
+
         // TODO add ll, ld, array, vector, hashmap, auto, unknown
-        default: fprintf(f, "any"); break;
+        default: fprintf(f, "def"); break;
     }
     // [FIX] Correct pointer depth logic. 
     // It used to evaluate `if(0 - 1)` which is TRUE, printing 'ptr' for 0 depth.

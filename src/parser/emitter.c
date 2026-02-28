@@ -29,6 +29,7 @@ void parser_emit_type(StringBuilder *sb, VarType t) {
         case TYPE_STRING: sb_append(sb, "string"); break;
         case TYPE_AUTO: sb_append(sb, "let"); break;
         case TYPE_CLASS: sb_append(sb, t.class_name ? t.class_name : "class"); break;
+        case TYPE_NAMESPACE: sb_append(sb, t.class_name ? t.class_name : "namespace"); break;
         default: sb_append(sb, "auto"); break;
     }
 

@@ -59,6 +59,7 @@ typedef enum {
   TYPE_AUTO,
   TYPE_CLASS, 
   TYPE_ENUM, 
+  TYPE_NAMESPACE,
   TYPE_UNKNOWN
 } BaseType;
 
@@ -284,7 +285,6 @@ typedef struct {
   ASTNode *elements; 
 } ArrayLitNode;
 
-// TODO implement this!
 typedef struct {
   ASTNode base;
   ASTNode *target; 

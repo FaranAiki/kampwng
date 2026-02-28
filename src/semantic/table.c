@@ -257,7 +257,7 @@ int sem_types_are_equal(VarType a, VarType b) {
     if (a.array_size != b.array_size) return 0;
     if (a.is_unsigned != b.is_unsigned) return 0; 
     
-    if (a.base == TYPE_CLASS || a.base == TYPE_ENUM) {
+    if (a.base == TYPE_CLASS || a.base == TYPE_ENUM || a.base == TYPE_NAMESPACE) {
         if (a.class_name && b.class_name) {
             return strcmp(a.class_name, b.class_name) == 0;
         }
@@ -334,6 +334,7 @@ char* sem_type_to_str(VarType t) {
         case TYPE_AUTO: base = "let"; break;
         case TYPE_CLASS: base = t.class_name ? t.class_name : "class"; break;
         case TYPE_ENUM: base = t.class_name ? t.class_name : "enum"; break;
+        case TYPE_NAMESPACE: base = t.class_name ? t.class_name : "namespace"; break;
         default: base = "unknown"; break;
     }
     

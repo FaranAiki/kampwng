@@ -86,7 +86,7 @@ void translate_inst(CodegenCtx *ctx, AlirInst *inst) {
         case ALIR_OP_XOR: res = LLVMBuildXor(ctx->builder, op1, op2, "xor"); break;
         case ALIR_OP_SHL: res = LLVMBuildShl(ctx->builder, op1, op2, "shl"); break;
         case ALIR_OP_SHR: res = LLVMBuildAShr(ctx->builder, op1, op2, "shr"); break;
-        case ALIR_OP_NOT: res = LLVMBuildNot(ctx->builder, op1, "not"); break;
+        case ALIR_OP_NOT: res = (LLVMGetTypeKind(LLVMTypeOf(op1)) == LLVMPointerTypeKind) ? LLVMBuildIsNull(ctx->builder, op1, "isnull") : LLVMBuildNot(ctx->builder, op1, "not"); break;
         
         // Comparisons
         case ALIR_OP_EQ:  res = is_float ? LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, op1, op2, "feq") : LLVMBuildICmp(ctx->builder, LLVMIntEQ, op1, op2, "ieq"); break;

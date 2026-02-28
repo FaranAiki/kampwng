@@ -25,7 +25,17 @@ ASTNode* parse_import(Parser *p) {
   Parser import_p;
   parser_init(&import_p, &import_l);
   
+  // Share state to allow macros, typedefs, and struct types to cross file boundaries
+  import_p.macro_head = p->macro_head;
+  import_p.type_head = p->type_head;
+  import_p.alias_head = p->alias_head;
+  
   ASTNode* imported_root = parse_program(&import_p);
+  
+  // Bring the global definitions back into the parent parser's scope
+  p->macro_head = import_p.macro_head;
+  p->type_head = import_p.type_head;
+  p->alias_head = import_p.alias_head;
   
   return imported_root; 
 }
@@ -47,4 +57,3 @@ ASTNode* parse_link(Parser *p) {
   node->lib_name = lib_name;
   return (ASTNode*)node;
 }
-
