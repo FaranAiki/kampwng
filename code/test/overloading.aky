@@ -1,16 +1,13 @@
 int s(int p) {
   print "True!\n";
-  return 0;
 }
 
 int s(double p) {
   print "True! ss\n";
-  return 0;
 }
 
 int s(char *s) {
    printf "%s\n", s;
-  return 0;
 }
 
 int main() {

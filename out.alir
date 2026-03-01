@@ -1,46 +1,14 @@
 ; Module: main_module
 
 ; Globals
-@str.6 = string "tesjt"
-@str.5 = string "int s(char *s)\n"
-@str.4 = string "int s(char *p)\n"
-@str.3 = string "int s(int p)\n"
-@str.2 = string "%s\n"
-@str.1 = string "True! ss\n"
-@str.0 = string "True!\n"
+@str.0 = cstring "Supposed!"
 
-codeblock func int @s(int %p0) {
+codeblock func char ptr @suppose() {
 entry:
-  %0 = onstack int
-  store int %p0, %0
-  %1 = call %print (@str.0)
-  return int 0
-}
-
-codeblock func int @s(double %p0) {
-entry:
-  %0 = onstack double
-  store double %p0, %0
-  %1 = call %print (@str.1)
-  return int 0
-}
-
-codeblock func int @s(char ptr %p0) {
-entry:
-  %0 = onstack char ptr
-  store char ptr %p0, %0
-  %1 = load char ptr %0
-  %2 = call %printf (@str.2, %1)
-  return int 0
+  return char ptr @str.0
 }
 
 codeblock func int @main() {
 entry:
-  %0 = call %print (@str.3)
-  %1 = call %s (1)
-  %2 = call %print (@str.4)
-  %3 = call %s (0)
-  %4 = call %print (@str.5)
-  %5 = call %s (@str.6)
   return int 0
 }

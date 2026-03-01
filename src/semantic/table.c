@@ -173,7 +173,7 @@ SemSymbol* sem_symbol_add(SemanticCtx *ctx, const char *name, SymbolKind kind, V
     sym->parent_name = NULL; 
     sym->is_mutable = 1; 
     sym->is_initialized = 1; 
-    sym->is_pure = 1; // default to false       
+    sym->is_pure = 0; // default to false       
     sym->is_pristine = 0;  
     sym->inner_scope = NULL;
     

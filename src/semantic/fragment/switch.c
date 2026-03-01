@@ -1,5 +1,6 @@
 #include "semantic.h"
 
+// TODO check for in
 void sem_check_for_in(SemanticCtx *ctx, ASTNode *node) {
     ForInNode *fn = (ForInNode*)node;
     sem_check_expr(ctx, fn->collection);

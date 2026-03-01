@@ -110,16 +110,14 @@ int main(int argc, char *argv[]) {
   // Pass to ALIR 
   AlirModule *alir_module = alir_generate(&sem_ctx, root); 
   alir_emit_to_file(alir_module, BASENAME ".alir");
-  // TODO: THIS NEEDS A FUCKING REFORMAT NOOOOOOOOOOOOOOOOOOOOO 
 
   debug_step("Finished alir. Start alir check and analysis.");
 
   int alick_error = alick_check_module(alir_module);    
   if (alick_error > 0) {
     printf("Error occured in alick.\n");
+    exit(1);
   }
-
-  // exit(0);
 
   LLVMInitializeNativeTarget();
   LLVMInitializeNativeAsmPrinter();

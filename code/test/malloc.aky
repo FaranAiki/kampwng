@@ -1,10 +1,15 @@
+
 char *suppose() {
   return c"Supposed!";
 }
 
-int t = 0;
+char *new_malloc() {
+  return malloc(256);
+}
 
 int main() {
-  printf("%d", t);
+  // let t = new_malloc();
+  // char *mw = new_malloc();
+  let me = suppose;
   return 0;
 }
