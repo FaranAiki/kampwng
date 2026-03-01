@@ -173,8 +173,8 @@ SemSymbol* sem_symbol_add(SemanticCtx *ctx, const char *name, SymbolKind kind, V
     sym->parent_name = NULL; 
     sym->is_mutable = 1; 
     sym->is_initialized = 1; 
-    sym->is_pure = 1;      
-    sym->is_pristine = 1;  
+    sym->is_pure = 1; // default to false       
+    sym->is_pristine = 0;  
     sym->inner_scope = NULL;
     
     sym->next = ctx->current_scope->symbols;
@@ -304,7 +304,8 @@ int sem_types_are_compatible(VarType dest, VarType src) {
         return 1;
     }
 
-    if (dest.base == TYPE_VOID && dest.ptr_depth > 0 && src.ptr_depth > 0) return 1;
+    // casting char*, int* to void* or int* to void*
+    if ((dest.base == TYPE_VOID && dest.ptr_depth > 0 && src.ptr_depth > 0) || (src.base == TYPE_VOID && src.ptr_depth > 0 && dest.ptr_depth > 0)) return 1;
 
     return 0;
 }

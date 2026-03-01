@@ -1,0 +1,10 @@
+char *suppose() {
+  return c"Supposed!";
+}
+
+int t = 0;
+
+int main() {
+  printf("%d", t);
+  return 0;
+}

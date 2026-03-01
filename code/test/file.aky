@@ -3,7 +3,7 @@ import "std";
 
 int main() {
   let file = io.fopen("code/test/file.aky", "r");
-  char *myread = malloc(256 as long) as char*; // emang tolol builtin akowkawo
+  char *myread = malloc(256); // emang tolol builtin akowkawo
   print "Tipe file itu apa: %s\n", typeof(file);
   print "Tipe myread itu apa: %s\n", typeof(myread);
 

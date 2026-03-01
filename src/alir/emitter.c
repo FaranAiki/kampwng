@@ -79,7 +79,7 @@ void alir_emit_function(AlirModule *mod, FILE *f) {
           fprintf(f, ")\n");
           
       } else {
-          fprintf(f, "\ndefine %s ", func->is_flux ? "flux" : "func");
+          fprintf(f, "\ncodeblock %s ", func->is_flux ? "flux" : "func");
           alir_fprint_type(f, func->ret_type);
           fprintf(f, " @%s(", func->name);
           

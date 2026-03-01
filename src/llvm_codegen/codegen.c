@@ -258,7 +258,7 @@ LLVMModuleRef codegen_generate(CodegenCtx *ctx) {
                 if (func->ret_type.base == TYPE_VOID) {
                     LLVMBuildRetVoid(ctx->builder);
                 } else {
-                    printf("unreachable\n");
+                    printf("Unreachable!\n");
                     LLVMBuildUnreachable(ctx->builder);
                 }
             }

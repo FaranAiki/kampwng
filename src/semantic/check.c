@@ -153,8 +153,8 @@ void sem_scan_top_level(SemanticCtx *ctx, ASTNode *node) {
                 mem->type = enum_type; 
                 mem->is_mutable = 0;
                 mem->is_initialized = 1;
-                mem->is_pure = 1;
-                mem->is_pristine = 1;
+                mem->is_pure = 1; // todo default to false
+                mem->is_pristine = 0; // todo default to false
                 mem->param_types = NULL;
                 mem->param_count = 0;
                 mem->parent_name = NULL;

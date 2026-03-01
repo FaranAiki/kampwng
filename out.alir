@@ -1,106 +1,46 @@
 ; Module: main_module
 
-; Struct Definitions
-%struct.File = type { string:filename, string:mode, %FILE ptr:fd_ptr, int:is_closed }
-%struct.FILE = type {  }
-
 ; Globals
-@str.6 = string "%c"
-@str.5 = string "%s\n"
-@str.4 = string "No file found"
-@str.3 = string "Tipe myread itu apa: %s\n"
-@str.2 = string "Tipe file itu apa: %s\n"
-@str.1 = string "r"
-@str.0 = string "code/test/file.aky"
+@str.6 = string "tesjt"
+@str.5 = string "int s(char *s)\n"
+@str.4 = string "int s(char *p)\n"
+@str.3 = string "int s(int p)\n"
+@str.2 = string "%s\n"
+@str.1 = string "True! ss\n"
+@str.0 = string "True!\n"
 
-define func void @FILE(%FILE ptr %p0) {
-entry:
-  %0 = onstack %FILE ptr
-  store void %p0, %0
-  return void
-}
-
-promise %FILE ptr @fopen(char ptr, char ptr)
-
-promise int @fclose(%FILE ptr)
-
-promise ll @fread(void ptr*, ll, ll, %FILE ptr)
-
-promise int @fgetc(%FILE ptr)
-
-promise char ptr @fgets(char ptr, int, %FILE ptr)
-
-promise string @File_read(%File ptr)
-
-promise string @File_readline(%File ptr)
-
-define func void @File(%File ptr %p0, string %p1, string %p2, %FILE ptr %p3, int %p4) {
-entry:
-  %1 = onstack %File ptr
-  store void %p0, %1
-  %2 = load %File ptr %1
-  %3 = getptr string ptr %2, 0
-  store string %p1, %3
-  %4 = load %File ptr %1
-  %5 = getptr string ptr %4, 1
-  store string %p2, %5
-  %6 = load %File ptr %1
-  %7 = getptr %FILE ptr* %6, 2
-  store %FILE ptr %p3, %7
-  %8 = load %File ptr %1
-  %9 = getptr int ptr %8, 3
-  store int %p4, %9
-  return void
-}
-
-define func int @main() {
+codeblock func int @s(int %p0) {
 entry:
   %0 = onstack int
-  %1 = call %fopen (%0, @str.0, @str.1)
-  %2 = onstack %FILE ptr
-  store unknown %1, %2
-  %3 = cast long 256
-  %4 = call %malloc (%3)
-  %5 = cast char ptr %4
-  %6 = onstack char ptr
-  store char ptr %5, %6
-  %7 = onstack unknown
-  %8 = call %print (@str.2, %7)
-  %9 = onstack unknown
-  %10 = call %print (@str.3, %9)
-  %11 = load %FILE ptr %2
-  %12 = not unknown %11
-  condition %12, then (merge)
-then:
-  %13 = call %print (@str.4)
-  return int 1
-else:
-merge:
-  %14 = onstack int
-  %15 = load %FILE ptr %2
-  %16 = call %fgetc (%14, %15)
-  %17 = onstack int
-  store unknown %16, %17
-  %18 = onstack unknown
-  %19 = call %print (@str.5, %18)
-  jump while_cond
-while_cond:
-  %20 = load int %17
-  %21 = sub unknown 0, 1
-  %22 = neq bool %20, %21
-  condition %22, while_body (while_end)
-while_body:
-  %23 = load int %17
-  %24 = cast char %23
-  %25 = call %print (@str.6, %24)
-  %26 = onstack int
-  %27 = load %FILE ptr %2
-  %28 = call %fgetc (%26, %27)
-  store unknown %28, %17
-  jump while_cond
-while_end:
-  %29 = onstack int
-  %30 = load %FILE ptr %2
-  %31 = call %fclose (%29, %30)
+  store int %p0, %0
+  %1 = call %print (@str.0)
+  return int 0
+}
+
+codeblock func int @s(double %p0) {
+entry:
+  %0 = onstack double
+  store double %p0, %0
+  %1 = call %print (@str.1)
+  return int 0
+}
+
+codeblock func int @s(char ptr %p0) {
+entry:
+  %0 = onstack char ptr
+  store char ptr %p0, %0
+  %1 = load char ptr %0
+  %2 = call %printf (@str.2, %1)
+  return int 0
+}
+
+codeblock func int @main() {
+entry:
+  %0 = call %print (@str.3)
+  %1 = call %s (1)
+  %2 = call %print (@str.4)
+  %3 = call %s (0)
+  %4 = call %print (@str.5)
+  %5 = call %s (@str.6)
   return int 0
 }
