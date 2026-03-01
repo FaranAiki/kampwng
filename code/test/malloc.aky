@@ -1,15 +1,18 @@
+import "std";
 
 char *suppose() {
   return c"Supposed!";
 }
 
-char *new_malloc() {
-  return malloc(256);
+tainted impure char *new_malloc() {
+  return malloc(256 as long);
 }
 
-int main() {
+impure int main() {
   // let t = new_malloc();
-  // char *mw = new_malloc();
-  let me = suppose;
+  char *mw = new_malloc();
+  let me = suppose();
+
+  printf "%s\n%s\n", me, mw;
   return 0;
 }

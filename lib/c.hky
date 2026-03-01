@@ -1,6 +1,12 @@
 // usage: import "lib/c.aky"
 
-import "cmath.hky";
-import "cstdlib.hky";
-import "cstring.hky";
-import "ctime.hky";
+/*
+import "c/math";
+import "c/ctype";
+import "c/stddef";
+import "c/string";
+import "c/time";
+import "c/stdlib";
+*/
+
+

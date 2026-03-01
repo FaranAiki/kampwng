@@ -1,5 +1,8 @@
 // This is to import all of the directories in std/*
-import "std/alias.hky";
-import "std/typedef.hky";
-import "std/file.hky";
+import "std/alias";
+import "std/typedef";
+import "std/file";
+// import "lib/c";
 
+extern int printf(char *s, ...);
+extern void* malloc(long size);

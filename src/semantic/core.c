@@ -99,7 +99,7 @@ void sem_info(SemanticCtx *ctx, ASTNode *node, const char *fmt, ...) {
 int sem_check_program(SemanticCtx *ctx, ASTNode *root) {
     if (!root) return 0;
     
-    sem_register_builtins(ctx);
+    // sem_register_builtins(ctx);
     sem_scan_top_level(ctx, root);
     
     int current_errors = 0;

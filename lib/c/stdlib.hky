@@ -26,3 +26,9 @@ extern void qsort(void*, size_t, size_t, int (*)(const void*, const void*));
 // Integer Arithmetic Functions
 extern int abs(int);
 extern div_t div(int, int);
+
+// For allocations
+/*
+extern int printf(char *s, ...);
+extern void* malloc(long size);
+*/
