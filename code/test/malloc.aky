@@ -8,7 +8,7 @@ tainted impure char *new_malloc() {
   return malloc(256 as long);
 }
 
-impure int main() {
+int main() {
   // let t = new_malloc();
   char *mw = new_malloc();
   let me = suppose();
